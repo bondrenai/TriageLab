@@ -17,6 +17,11 @@ import (
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Backend is the small upstream seam. Production always supplies a real KAgent client.
@@ -28,9 +33,15 @@ type Backend interface {
 }
 
 type Investigator struct {
-	Client          Backend
-	Config          Config
-	Progress        func(string)
+	Client Backend
+	Config Config
+	// Progress receives TriageLab-authored phase messages for the CLI or UI.
+	Progress func(string)
+	// Trigger labels the launch origin for telemetry ("cli", "ui", "ticket").
+	Trigger string
+	// Actor records who started the run in the report provenance; it is
+	// empty for CLI runs.
+	Actor           string
 	Secrets         []string
 	AdditionalTools []string
 }
@@ -65,10 +76,14 @@ func wait(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
-func (i *Investigator) progress(s string) {
+func (i *Investigator) progress(ctx context.Context, s string) {
 	if i.Progress != nil {
 		i.Progress(s)
 	}
+	// Messages are TriageLab-authored, but redact anyway so telemetry can
+	// never echo a credential that reached a phase message.
+	message, _ := report.Redacted(s, i.Secrets...)
+	telemetry.Logger().InfoContext(ctx, message)
 }
 func (i *Investigator) call(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
 	if err := ctx.Err(); err != nil {
@@ -85,6 +100,18 @@ func (i *Investigator) persist(dir string, r map[string]any) error {
 	return report.Write(dir, r, i.Secrets...)
 }
 
+func listLen(value any) int {
+	switch list := value.(type) {
+	case []string:
+		return len(list)
+	case []any:
+		return len(list)
+	}
+	return 0
+}
+
+func experimentCount(r map[string]any) int { return listLen(r["experiments"]) }
+
 // Run always attempts cleanup and persists an error report, including interrupted or failed runs.
 func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) (result map[string]any, returnErr error) {
 	if err := i.Config.Validate(); err != nil {
@@ -95,6 +122,17 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	}
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
 	defer cancel()
+	trigger := i.Trigger
+	if trigger == "" {
+		trigger = "unlabeled"
+	}
+	ctx, runSpan := tracer().Start(ctx, "investigation.run", trace.WithAttributes(
+		attribute.String("run_id", c.ID),
+		attribute.String("trigger", trigger),
+		attribute.String("agent", i.Config.Agent),
+		attribute.String("sandbox_template", i.Config.Template),
+	))
+	runStart := time.Now()
 	request := map[string]any{"namespace": i.Config.Namespace, "template": i.Config.Template, "request_id": c.ID, "name": "triagelab-" + c.ID, "ttl_seconds": i.Config.SandboxTTL}
 	result = map[string]any{
 		"schema_version": 1, "run_id": c.ID, "case": c, "started_at": stamp(), "finished_at": nil,
@@ -106,6 +144,9 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		"connection": map[string]any{"endpoint": i.Config.Endpoint, "user_id": i.Config.UserID, "namespace": i.Config.Namespace},
 		"cleanup":    map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}},
 		"upstream":   map[string]any{"kagent": kagent.Version, "substrate": "v1.0.0"},
+	}
+	if i.Actor != "" {
+		result["started_by"] = i.Actor
 	}
 	if err := i.persist(dir, result); err != nil {
 		return result, err
@@ -125,9 +166,9 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			result["status"] = status
 			result["errors"] = append(result["errors"].([]string), returnErr.Error())
 		}
-		i.progress("Collecting final evidence and cleaning up")
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
+		i.progress(cleanupCtx, "Collecting final evidence and cleaning up")
 		// If invocation timed out, recover its task through the already-journalled Session.
 		session := obj(result["session"])
 		if str(session["id"]) != "" && str(session["task_id"]) == "" {
@@ -151,12 +192,26 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if err := i.persist(dir, result); err != nil {
 			returnErr = errors.Join(returnErr, fmt.Errorf("save report: %w", err))
 		}
+		status, outcome := str(result["status"]), str(result["outcome"])
+		runSpan.SetAttributes(attribute.String("status", status), attribute.String("outcome", outcome))
+		if status != "completed" {
+			runSpan.SetStatus(codes.Error, "investigation ended with "+status)
+		}
+		runSpan.End()
+		loadInstruments().runEnded(status, outcome, trigger, time.Since(runStart).Seconds(), experimentCount(result))
 	}()
-	i.progress("Creating an isolated sandbox")
+	i.progress(ctx, "Creating an isolated sandbox")
+	sandboxCtx, sandboxSpan := tracer().Start(ctx, "investigation.sandbox.create")
+	sandboxAttempts := 0
+	defer func() {
+		sandboxSpan.SetAttributes(attribute.Int("attempts", sandboxAttempts))
+		sandboxSpan.End()
+	}()
 	var sandbox map[string]any
 	for attempt := 0; ; attempt++ {
+		sandboxAttempts = attempt + 1
 		var err error
-		sandbox, err = i.call(ctx, "create_sandbox", request)
+		sandbox, err = i.call(sandboxCtx, "create_sandbox", request)
 		if err != nil {
 			var upstream *kagent.Error
 			uncertain := errors.As(err, &upstream) && (upstream.Kind == "timeout" || upstream.Kind == "transport")
@@ -182,14 +237,19 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if sandbox["state"] == "RUNTIME_STATE_READY" && sandbox["operation"] == "RUNTIME_OPERATION_NONE" {
 			break
 		}
-		if err = i.pause(ctx); err != nil {
+		if err = i.pause(sandboxCtx); err != nil {
 			return result, err
 		}
 	}
+	sandboxSpan.End()
 	sid := str(sandbox["id"])
-	i.progress(fmt.Sprintf("Uploading %d files", len(c.Attachments)))
+	i.progress(ctx, fmt.Sprintf("Uploading %d files", len(c.Attachments)))
+	uploadCtx, uploadSpan := tracer().Start(ctx, "investigation.inputs.upload")
+	defer uploadSpan.End()
+	uploadedBytes := 0
 	for _, attachment := range c.Attachments {
-		uploaded, err := i.call(ctx, "write_sandbox_file", map[string]any{"sandbox_id": sid, "path": path.Join("/data/workspace", attachment.Path), "data_base64": base64.StdEncoding.EncodeToString(attachment.Content), "mode": 384})
+		uploadedBytes += len(attachment.Content)
+		uploaded, err := i.call(uploadCtx, "write_sandbox_file", map[string]any{"sandbox_id": sid, "path": path.Join("/data/workspace", attachment.Path), "data_base64": base64.StdEncoding.EncodeToString(attachment.Content), "mode": 384})
 		if err != nil {
 			return result, fmt.Errorf("upload file: %w", err)
 		}
@@ -198,6 +258,8 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			return result, fmt.Errorf("incomplete sandbox file upload")
 		}
 	}
+	uploadSpan.SetAttributes(attribute.Int("files", len(c.Attachments)), attribute.Int("bytes", uploadedBytes))
+	uploadSpan.End()
 	message, err := json.Marshal(map[string]any{
 		"run_context":    map[string]any{"sandbox_id": sid, "workspace": "/data/workspace", "max_experiments": i.Config.MaxExperiments, "process_timeout_seconds": i.Config.ProcessTimeout},
 		"untrusted_case": c,
@@ -205,16 +267,18 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err != nil {
 		return result, err
 	}
-	i.progress("Starting the KAgent investigator")
+	i.progress(ctx, "Starting the KAgent investigator")
 	sessionRequest := map[string]any{"agent": map[string]any{"namespace": i.Config.Namespace, "name": i.Config.Agent}, "request_id": c.ID, "name": "triagelab-" + c.ID}
 	result["session_request"] = sessionRequest
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
 	// Journal a Session ID before its first model invocation. Retry only the stable creation key.
+	sessionCtx, sessionSpan := tracer().Start(ctx, "investigation.session.create")
+	defer sessionSpan.End()
 	var created map[string]any
 	for attempt := 0; attempt < 2; attempt++ {
-		created, err = i.call(ctx, "create_session", sessionRequest)
+		created, err = i.call(sessionCtx, "create_session", sessionRequest)
 		if err == nil {
 			break
 		}
@@ -236,15 +300,19 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
+	sessionSpan.End()
 	invocation := map[string]any{}
 	for key, value := range sessionRequest {
 		invocation[key] = value
 	}
 	invocation["message"] = "Perform this investigation now using the supplied standalone sandbox. Inspect the files, execute experiments, and test a safe correction when feasible. Do not substitute a plan or invented process IDs for tool execution. Return the final structured report only after finishing the investigation or reaching its limits. The following JSON separates trusted run context from untrusted case data.\n\n" + string(message)
-	created, err = i.call(ctx, "create_session", invocation)
+	invocationCtx, invocationSpan := tracer().Start(ctx, "investigation.session.invoke")
+	defer invocationSpan.End()
+	created, err = i.call(invocationCtx, "create_session", invocation)
 	if err != nil {
 		return result, fmt.Errorf("invoke investigator: %w", err)
 	}
+	invocationSpan.End()
 	taskID := str(obj(created["turn"])["task_id"])
 	if taskID == "" {
 		return result, fmt.Errorf("investigator invocation omitted task ID")
@@ -253,66 +321,97 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
-	for {
-		summary, err := i.call(ctx, "get_session", map[string]any{"session_id": sessionID, "last_turns": 1, "max_bytes": 131072})
-		if err != nil {
-			return result, err
-		}
-		turns, ok := summary["turns"].([]any)
-		if !ok {
-			return result, fmt.Errorf("invalid session turn summary")
-		}
-		if len(turns) == 0 {
-			if err = i.pause(ctx); err != nil {
-				return result, err
-			}
-			continue
-		}
-		turn := obj(turns[len(turns)-1])
-		if str(turn["task_id"]) != taskID {
-			return result, fmt.Errorf("unexpected task identity")
-		}
-		result["task_state"] = turn["state"]
-		reply, err := i.observe(ctx, result, observed)
-		if err != nil {
-			return result, err
-		}
-		if err = i.persist(dir, result); err != nil {
-			return result, err
-		}
-		if stopped(str(turn["state"])) {
-			if turn["state"] != "TASK_STATE_COMPLETED" {
-				return result, fmt.Errorf("investigator stopped with %s", str(turn["state"]))
-			}
-			experiments := result["experiments"].([]map[string]any)
-			for _, e := range experiments {
-				if e["state"] != "PROCESS_STATE_EXITED" {
-					return result, fmt.Errorf("investigator finished with experiments still running")
-				}
-			}
-			if reply == "" {
-				if turn["clipped"] == true {
-					return result, fmt.Errorf("agent reply was truncated")
-				}
-				reply = str(turn["reply"])
-			}
-			analysis, warnings, err := ValidateAnalysis(reply, experiments)
-			if err != nil {
-				return result, err
-			}
-			result["analysis"] = analysis
-			result["warnings"] = warnings
-			result["outcome"] = analysis["outcome"]
-			result["status"] = "completed"
-			return result, nil
-		}
-		if err = i.pause(ctx); err != nil {
-			return result, err
+	for iteration := 0; ; iteration++ {
+		finished, pollErr := i.pollOnce(ctx, dir, taskID, result, observed, iteration)
+		if finished || pollErr != nil {
+			return result, pollErr
 		}
 	}
 }
 
+// pollOnce performs one session poll: read the latest turn, collect evidence,
+// and finalize the report when the task reaches a stopping state.
+func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r map[string]any, observed map[string]time.Time, iteration int) (finished bool, err error) {
+	ctx, span := tracer().Start(ctx, "investigation.session.poll", trace.WithAttributes(
+		attribute.Int("iteration", iteration),
+		attribute.String("run_id", str(r["run_id"])),
+	))
+	defer func() {
+		if err != nil {
+			span.SetStatus(codes.Error, "poll failed")
+		}
+		span.End()
+	}()
+	sessionID := str(obj(r["session"])["id"])
+	summary, err := i.call(ctx, "get_session", map[string]any{"session_id": sessionID, "last_turns": 1, "max_bytes": 131072})
+	if err != nil {
+		return false, err
+	}
+	turns, ok := summary["turns"].([]any)
+	if !ok {
+		return false, fmt.Errorf("invalid session turn summary")
+	}
+	if len(turns) == 0 {
+		if err = i.pause(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	turn := obj(turns[len(turns)-1])
+	if str(turn["task_id"]) != taskID {
+		return false, fmt.Errorf("unexpected task identity")
+	}
+	r["task_state"] = turn["state"]
+	reply, err := i.observe(ctx, r, observed)
+	if err != nil {
+		return false, err
+	}
+	if err = i.persist(dir, r); err != nil {
+		return false, err
+	}
+	if stopped(str(turn["state"])) {
+		if turn["state"] != "TASK_STATE_COMPLETED" {
+			return true, fmt.Errorf("investigator stopped with %s", str(turn["state"]))
+		}
+		experiments := r["experiments"].([]map[string]any)
+		for _, e := range experiments {
+			if e["state"] != "PROCESS_STATE_EXITED" {
+				return true, fmt.Errorf("investigator finished with experiments still running")
+			}
+		}
+		if reply == "" {
+			if turn["clipped"] == true {
+				return true, fmt.Errorf("agent reply was truncated")
+			}
+			reply = str(turn["reply"])
+		}
+		analysis, warnings, validateErr := ValidateAnalysis(reply, experiments)
+		if validateErr != nil {
+			return true, validateErr
+		}
+		r["analysis"] = analysis
+		r["warnings"] = warnings
+		r["outcome"] = analysis["outcome"]
+		r["status"] = "completed"
+		return true, nil
+	}
+	if err = i.pause(ctx); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
 func (i *Investigator) observe(ctx context.Context, r map[string]any, observed map[string]time.Time) (string, error) {
+	ctx, span := tracer().Start(ctx, "investigation.evidence.observe", trace.WithAttributes(attribute.String("run_id", str(r["run_id"]))))
+	reply, err := i.collectEvidence(ctx, r, observed)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+	return reply, err
+}
+
+func (i *Investigator) collectEvidence(ctx context.Context, r map[string]any, observed map[string]time.Time) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -340,7 +439,7 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 		if !known[start.ProcessID] {
 			experiments = append(experiments, map[string]any{"call_id": start.CallID, "process_id": start.ProcessID, "command": start.Command, "cwd": start.CWD, "env": start.Env})
 			known[start.ProcessID] = true
-			i.progress(fmt.Sprintf("Experiment %d started", len(experiments)))
+			i.progress(ctx, fmt.Sprintf("Experiment %d started", len(experiments)))
 		}
 	}
 	r["experiments"] = experiments
@@ -388,8 +487,9 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 				e[key] = value
 			}
 			e["outputs_complete"] = true
-			i.progress(fmt.Sprintf("Experiment finished: exit %d", code))
+			i.progress(ctx, fmt.Sprintf("Experiment finished: exit %d", code))
 		} else if time.Since(observed[pid]) >= time.Duration(i.Config.ProcessTimeout)*time.Second {
+			loadInstruments().processKilled()
 			_, err := i.call(ctx, "kill_sandbox_process", map[string]any{"sandbox_id": sid, "process_id": pid})
 			e["timed_out"] = true
 			if err != nil {
@@ -448,6 +548,22 @@ func (i *Investigator) readOutputs(ctx context.Context, sid, pid string) (map[st
 
 // Cleanup uses an independent caller-supplied context; get alone does not advance lifecycle work.
 func (i *Investigator) Cleanup(ctx context.Context, r map[string]any) {
+	ctx, span := tracer().Start(ctx, "investigation.cleanup", trace.WithAttributes(attribute.String("run_id", str(r["run_id"]))))
+	defer func() {
+		cleanup := obj(r["cleanup"])
+		errorCount := listLen(cleanup["errors"])
+		span.SetAttributes(
+			attribute.Bool("sandbox_deleted", cleanup["sandbox_deleted"] == true),
+			attribute.Bool("session_deleted", cleanup["session_deleted"] == true),
+			attribute.Int("errors", errorCount),
+		)
+		complete := cleanup["sandbox_deleted"] == true && cleanup["session_deleted"] == true && errorCount == 0
+		if !complete {
+			span.SetStatus(codes.Error, "cleanup incomplete")
+		}
+		span.End()
+		loadInstruments().cleanupEnded(complete)
+	}()
 	cleanup := obj(r["cleanup"])
 	issues := []string{}
 	for _, resource := range []struct{ kind, marker, request string }{{"session", "session_creation_uncertain", "session_request"}, {"sandbox", "creation_uncertain", "sandbox_request"}} {

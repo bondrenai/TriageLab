@@ -14,8 +14,20 @@
 - [ ] Repeat the Zendesk pilot with a controlled requester inbox and verify
       internal note delivery. Run a controlled GitHub issue pilot covering
       clarification follow-ups, investigation comments, and uncertain delivery.
-      Then add Bondren with shared ticket identity and one owner for automated
-      replies. Use pilot evidence to guide procedure authoring and CEL.
+      Add a Linear pilot for one workspace and team covering the same sends
+      (the connector is fixture-verified only). Then add Bondren with shared
+      ticket identity and one owner for automated replies. Use pilot evidence
+      to guide procedure authoring and CEL.
+- [ ] Exercise the new sign-in surface against a real identity provider (the
+      OIDC client is tested against a local fake only) and pilot the account
+      workflow: bootstrap, role changes, lockout recovery, and the shared
+      users-file limitation between the CLI and a running server. Consider an
+      append-only action audit log before widening who may launch runs.
+- [ ] Verify telemetry export against a real collector on the development VM
+      (run spans, phase spans, KAgent RPC metrics, HTTP route metrics, and
+      log correlation) and record it in docs/verification.md; the OTLP wire
+      behavior is currently verified by unit tests against an in-process
+      collector only.
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.

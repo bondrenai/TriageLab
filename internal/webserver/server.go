@@ -25,11 +25,16 @@ import (
 	"unicode"
 
 	"github.com/bondrenai/TriageLab/internal/agent"
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/telemetry"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const maxReportBytes = 64 << 20
@@ -58,6 +63,7 @@ type Server struct {
 	tickets        *ticketflow.Flow
 	deployments    *kagent.DeploymentReader
 	resourceWrites bool
+	auth           *gate
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -140,6 +146,9 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
 		return fmt.Errorf("the UI must listen on a loopback address; use an SSH tunnel for remote access")
 	}
+	if s.auth == nil {
+		return fmt.Errorf("the UI requires sign-in; create a local account (triagelab user add) or configure an identity provider")
+	}
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return err
@@ -151,6 +160,7 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	result := make(chan error, 1)
 	go func() { result <- server.Serve(listener) }()
 	fmt.Fprintf(out, "TriageLab UI: http://%s\n", listener.Addr())
+	telemetry.Logger().Info("server started", "addr", listener.Addr().String())
 	select {
 	case err = <-result:
 	case <-ctx.Done():
@@ -162,6 +172,7 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	if errors.Is(err, http.ErrServerClosed) {
 		err = nil
 	}
+	telemetry.Logger().Info("server stopped")
 	return err
 }
 
@@ -187,6 +198,27 @@ func fail(w http.ResponseWriter, status int, message string) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	route := routePattern(r.URL.Path)
+	recorder := &statusRecorder{ResponseWriter: w}
+	w = recorder
+	start := time.Now()
+	var span trace.Span
+	if strings.HasPrefix(route, "/api/") || strings.HasPrefix(route, "/oauth/") {
+		var spanCtx context.Context
+		spanCtx, span = tracer().Start(r.Context(), "http "+route, trace.WithAttributes(
+			attribute.String("http.request.method", r.Method),
+			attribute.String("route", route),
+		))
+		r = r.WithContext(spanCtx)
+	}
+	defer func() {
+		status := recorder.statusCode()
+		if span != nil {
+			span.SetAttributes(attribute.Int("http.response.status_code", status))
+			span.End()
+		}
+		loadHTTPInstruments().request(r.Method, route, status, time.Since(start).Seconds())
+	}()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -199,6 +231,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// own exact host, one-time state and browser cookie checks.
 	if r.URL.Path == ticketflow.OAuthCallbackPath {
 		s.zendeskCallback(w, r)
+		return
+	}
+	if r.URL.Path == "/healthz" {
+		healthRoute(w, r)
 		return
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
@@ -219,6 +255,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-TriageLab-Request") != "1" {
 		fail(w, http.StatusForbidden, "Missing request header")
 		return
+	}
+	// Sign-in routes manage their own credentials; account management below
+	// /api/auth/admin/ still requires an admin session. Everything else under
+	// /api/ requires an authenticated session with the route's minimum role.
+	if strings.HasPrefix(r.URL.Path, "/api/auth/admin/") {
+		if !s.authorize(w, r, auth.RoleAdmin) {
+			return
+		}
+	}
+	if s.authRoute(w, r) {
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		if !s.authorize(w, r, requiredRole(r.Method, r.URL.Path)) {
+			return
+		}
 	}
 	switch r.URL.Path {
 	case "/api/agents/status":
@@ -646,7 +698,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	if r.Context().Err() != nil {
 		return
 	}
-	if err := s.launchRun(c, nil, config, extraTools); err != nil {
+	if err := s.launchRun(c, nil, config, extraTools, actorFrom(r.Context()).Username, "ui"); err != nil {
 		writeLaunchError(w, err)
 		return
 	}
@@ -667,13 +719,15 @@ func writeLaunchError(w http.ResponseWriter, err error) {
 	}
 }
 
-func (s *Server) launchTicket(c casefile.Case, target ticketflow.RunTarget, reserve func() error) error {
-	config := s.config
-	config.Agent, config.Template = target.Agent, target.Sandbox
-	return s.launchRun(c, reserve, config, target.Tools)
+func (s *Server) launchTicketAs(actor string) ticketflow.Launch {
+	return func(c casefile.Case, target ticketflow.RunTarget, reserve func() error) error {
+		config := s.config
+		config.Agent, config.Template = target.Agent, target.Sandbox
+		return s.launchRun(c, reserve, config, target.Tools, actor, "ticket")
+	}
 }
 
-func (s *Server) launchRun(c casefile.Case, reserve func() error, config investigation.Config, extraTools []string) error {
+func (s *Server) launchRun(c casefile.Case, reserve func() error, config investigation.Config, extraTools []string, actor, trigger string) error {
 	s.mu.Lock()
 	if s.closed || s.ctx.Err() != nil {
 		s.mu.Unlock()
@@ -688,7 +742,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 		s.mu.Unlock()
 		return errRunStore
 	}
-	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "agent": map[string]string{"namespace": config.Namespace, "name": config.Agent}, "sandbox_template": config.Template, "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
+	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "agent": map[string]string{"namespace": config.Namespace, "name": config.Agent}, "sandbox_template": config.Template, "started_by": actor, "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
 	if err := report.Write(dir, initial, s.secrets...); err != nil {
 		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
@@ -707,7 +761,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 	s.mu.Unlock()
 	go func() {
 		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: extraTools, Secrets: s.secrets, Progress: func(message string) {
+		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: extraTools, Secrets: s.secrets, Actor: actor, Trigger: trigger, Progress: func(message string) {
 			safe := fmt.Sprint(report.Redact(message, s.secrets...))
 			s.mu.Lock()
 			defer s.mu.Unlock()

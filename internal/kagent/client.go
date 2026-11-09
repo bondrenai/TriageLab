@@ -17,6 +17,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -121,7 +127,32 @@ func printable(value string, allowSpace bool) bool {
 
 func (c *Client) Close() { c.http.CloseIdleConnections() }
 
+// rpc wraps one MCP round trip with telemetry. The span and metrics carry
+// only the fixed method/tool vocabulary and error kind; params and results,
+// which contain case content and credentials, are never recorded.
 func (c *Client) rpc(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
+	call := method
+	if method == "tools/call" {
+		if name, ok := params["name"].(string); ok {
+			call = name
+		}
+	}
+	start := time.Now()
+	ctx, span := tracer().Start(ctx, "kagent.rpc", trace.WithAttributes(attribute.String("mcp.call", call)))
+	result, err := c.rpcCall(ctx, method, params)
+	if err != nil {
+		kind := errorKind(err)
+		span.SetStatus(codes.Error, "kagent "+call+" failed")
+		span.SetAttributes(attribute.String("kagent.error.kind", kind))
+		loadInstruments().rpcEnded(call, time.Since(start).Seconds(), true)
+	} else {
+		loadInstruments().rpcEnded(call, time.Since(start).Seconds(), false)
+	}
+	span.End()
+	return result, err
+}
+
+func (c *Client) rpcCall(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
 		return nil, err
@@ -158,6 +189,8 @@ func (c *Client) rpc(ctx context.Context, method string, params map[string]any) 
 	if strings.HasPrefix(method, "tasks/") {
 		req.Header.Set("Mcp-Name", fmt.Sprint(params["taskId"]))
 	}
+	// Propagate the active trace so an instrumented controller can correlate.
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 	resp, err := c.http.Do(req)
 	if err != nil {
 		kind := "transport"

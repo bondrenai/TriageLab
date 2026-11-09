@@ -13,14 +13,16 @@ COPY web/ ./
 COPY docs/verification/agent-demo.json /docs/verification/agent-demo.json
 RUN npm run build
 
-# Build the statically linked CLI from the standard-library-only module.
-FROM golang:1.25.12-alpine AS build
+# Build the statically linked CLI. The OpenTelemetry SDK is vendored, so the
+# image build never reaches the network.
+FROM golang:1.27.3-alpine AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY internal/ internal/
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
-RUN go build -o /out/triagelab ./cmd/triagelab
+RUN go build -mod=vendor -o /out/triagelab ./cmd/triagelab
 
 # Busybox wget in Alpine backs the loopback liveness probe; there is no shell
 # access to investigation data because the workspace runs unprivileged.

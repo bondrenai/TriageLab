@@ -2,12 +2,16 @@ import { ArrowRight, FileCheck2, FlaskConical, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Stamp, StatusStamp } from "../components/ui";
 import { useRuns } from "../hooks/use-investigations";
+import { useSession } from "../hooks/use-auth";
+import { roleAtLeast } from "../lib/auth";
 import { caseTitle, formatDate } from "../lib/investigations";
 
 export function InvestigationsPage() {
   const runs = useRuns();
+  const session = useSession();
+  const canRun = roleAtLeast(session.data?.role, "user");
   return <>
-    <PageTitle title="Investigations" description="Reproduce an issue. Follow the experiments. Inspect the evidence." action={<ButtonLink to="/new" variant="primary"><Plus size={16} aria-hidden="true" />New investigation</ButtonLink>} />
+    <PageTitle title="Investigations" description="Reproduce an issue. Follow the experiments. Inspect the evidence." action={canRun ? <ButtonLink to="/new" variant="primary"><Plus size={16} aria-hidden="true" />New investigation</ButtonLink> : undefined} />
     {runs.isPending ? <Loading label="Loading investigations…" /> : runs.isError ? <ErrorPlate title="Investigations could not load" error={runs.error} action={<Button onClick={() => void runs.refetch()}>Try again</Button>} /> : runs.data.runs.length ? <section className="plate table-plate" aria-label="Investigation history">
       <div className="table-caption"><h2>Your investigations</h2><span className="annotation">{runs.data.runs.length} total</span></div>
       <div className="table-scroll"><table><thead><tr><th>Case</th><th>Status</th><th>Experiments</th><th>Started</th><th><span className="sr-only">Open</span></th></tr></thead><tbody>{runs.data.runs.map(run => <tr key={run.id}>

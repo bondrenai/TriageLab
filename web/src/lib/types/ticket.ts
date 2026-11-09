@@ -1,7 +1,9 @@
+export type TicketSource = "zendesk" | "github" | "linear";
+
 export interface TicketCase {
   ticket_id: string;
   account: string;
-  source?: "zendesk" | "github";
+  source?: TicketSource;
   url?: string;
   title: string;
   requester?: { id: string; name?: string; email?: string; url?: string };
@@ -76,7 +78,7 @@ export type TicketWorkspace =
   | { enabled: false }
   | {
       enabled: true;
-      source: "zendesk" | "github";
+      source: TicketSource;
       account: string;
       connected: boolean;
       repository?: string;

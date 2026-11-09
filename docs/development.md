@@ -22,7 +22,7 @@ unchanged (loopback listener, `kubectl port-forward` only).
 
 - Linux with Docker or a compatible kind provider. Docker is used to host kind;
   its socket is never mounted into an investigator or reproduction sandbox.
-- Go 1.25.12, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
+- Go 1.27.3, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
 - KAgent CLI **1.0.0-rc3**, matching the charts and runtime images.
 - A provider account/key for the real agent. The example uses the upstream
@@ -188,6 +188,25 @@ For the optional microVM backend, first provision a Linux node with usable
 matching `ateworker-microvm:v1.0.0` image. A template references the selected pool;
 TriageLab needs no new runtime implementation. This path needs separate real
 integration testing and is not implied to work merely because gVisor works.
+
+### Inspecting telemetry export locally
+
+The OpenTelemetry SDK exports only when a telemetry configuration is supplied.
+On the VM, run a throwaway collector on loopback and point a run at it:
+
+```sh
+docker run --rm -p 127.0.0.1:4318:4318 otel/opentelemetry-collector:0.165.0
+TRIAGELAB_OTLP_HEADERS= triagelab investigate --telemetry triagelab.telemetry.example.json ...
+```
+
+`triagelab.telemetry.example.json` targets `http://127.0.0.1:4318`. The
+collector's default config logs received traces, metrics, and logs to stdout,
+which is enough to eyeball run spans (`investigation.run` and its phases),
+KAgent RPC spans, HTTP server spans, and the run/cleanup metrics. For a
+collector that requires authentication, put the header lines in the
+environment variable named by `headers_env` (never in the file). The unit
+tests assert the exported OTLP payloads without a live collector; live export
+is exercised only to the extent recorded in docs/verification.md.
 
 ## Teardown
 

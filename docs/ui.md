@@ -8,7 +8,7 @@ inputs and recorded experiments rather than aggregate dashboard metrics.
 
 ## Run on a development VM
 
-Use Node.js 24 and Go 1.25.12. Install dependencies and build on the VM:
+Use Node.js 24 and Go 1.27.3. Install dependencies and build on the VM:
 
 ```sh
 make install-ui
@@ -55,11 +55,46 @@ make build-ui
 make check
 ```
 
-The API is a local single-user interface, not a hosted service. It accepts one
+The API is a local interface for a small team, not a hosted service. It accepts one
 investigation at a time. Closing a tab leaves the investigation running; use
 Cancel to stop it. Server shutdown also cancels active work and allows bounded
 cleanup. After an abrupt crash, inspect the report and use the CLI cleanup
 command if resources remain. A recorded outcome does not override cleanup errors.
+
+## Sign-in and roles
+
+The UI requires sign-in. Sessions are memory-only cookies, so everyone signs
+in again after a restart. Two methods can be configured, and they may coexist:
+
+- **Local accounts** live in `<output>/.auth/users.json` beside the reports,
+  hashed with PBKDF2-SHA256. Bootstrap and manage them from the CLI:
+
+  ```sh
+  echo 'initial-password' | bin/triagelab user add --username admin --role admin --password-stdin
+  bin/triagelab user list
+  ```
+
+  Admins can also manage accounts in the UI (Accounts page). Manage accounts
+  from the CLI while the server is stopped; a running server holds its own
+  copy and would overwrite CLI changes on its next save.
+
+- **Single sign-on** uses one OpenID Connect provider configured through an
+  optional file passed to `serve --auth auth.json` (see `auth.example.json`).
+  The client secret is read from an environment variable, never the file.
+  Roles come from a direct role claim or by mapping a groups claim through
+  `role_map`; accounts that match no mapping receive `default_role`
+  (least-privilege `viewer` unless configured otherwise).
+
+Three roles are enforced server-side on every API route:
+
+| Role | Can | Cannot |
+| --- | --- | --- |
+| viewer | Read reports, cases, deployment status | Change anything |
+| user | Everything a viewer can, plus launching and steering investigations and ticket actions | Define agents, sandbox templates, egress policies, procedures, or accounts |
+| admin | Everything, including saving KAgent definitions, ticket procedures, and account management | |
+
+Each report records `started_by`. Sign-in attempts are rate-limited per
+account. There is no per-user action audit log yet.
 
 ## Data flow
 

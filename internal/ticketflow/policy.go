@@ -26,6 +26,8 @@ type Config struct {
 	Source                string `json:"source,omitempty"`
 	Repository            string `json:"repository,omitempty"`
 	TokenEnv              string `json:"token_env,omitempty"`
+	Workspace             string `json:"workspace,omitempty"`
+	Team                  string `json:"team,omitempty"`
 	Subdomain             string `json:"subdomain"`
 	ClientID              string `json:"client_id"`
 	RedirectURI           string `json:"redirect_uri"`
@@ -66,6 +68,8 @@ func (config Config) provider() string {
 
 var githubRepository = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$`)
 var tokenEnvironment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+var linearWorkspace = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$`)
+var linearTeamKey = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,9}$`)
 
 func (config Config) validate() error {
 	p := config.Policy
@@ -76,6 +80,7 @@ func (config Config) validate() error {
 	if config.provider() == "github" {
 		if !githubRepository.MatchString(config.Repository) || strings.HasSuffix(config.Repository, "/.") || strings.HasSuffix(config.Repository, "/..") ||
 			(config.TokenEnv != "" && !tokenEnvironment.MatchString(config.TokenEnv)) ||
+			config.Workspace != "" || config.Team != "" ||
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" ||
 			config.InternalNotes || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
@@ -86,8 +91,18 @@ func (config Config) validate() error {
 		}
 		return nil
 	}
+	if config.provider() == "linear" {
+		if !linearWorkspace.MatchString(config.Workspace) || !linearTeamKey.MatchString(config.Team) ||
+			!tokenEnvironment.MatchString(config.TokenEnv) ||
+			config.Repository != "" || config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" ||
+			config.InternalNotes || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
+			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
+			return errors.New("Linear requires a workspace key, an uppercase team key, and token_env with a label policy; Zendesk connection, priority, field and internal-note settings do not apply")
+		}
+		return nil
+	}
 	if config.provider() != "zendesk" || config.Repository != "" || config.TokenEnv != "" || config.InvestigationComments {
-		return errors.New("ticket source must be zendesk or github with its own connection settings")
+		return errors.New("ticket source must be zendesk, github, or linear with its own connection settings")
 	}
 	if !subdomain.MatchString(config.Subdomain) || !oauthIdentifier.MatchString(config.ClientID) ||
 		p.Tag == "" || len(p.Tag) > 100 ||
@@ -111,8 +126,8 @@ func (config Config) validate() error {
 	return nil
 }
 
-func (p Policy) exclusion(t ticket) string {
-	if !slices.Contains([]string{"new", "open", "pending", "hold"}, t.Status) {
+func (p Policy) exclusion(provider string, t ticket) string {
+	if !openForInvestigation(provider, t.Status) {
 		return "The ticket is not open for investigation."
 	}
 	if !slices.Contains(t.Tags, p.Tag) {
@@ -130,4 +145,18 @@ func (p Policy) exclusion(t ticket) string {
 		return "The selected custom field does not match the procedure."
 	}
 	return ""
+}
+
+// openForInvestigation reports whether a source status admits investigation.
+// Linear workflow states carry a type: backlog, unstarted and started issues
+// are open for work; completed and canceled issues are not.
+func openForInvestigation(provider, status string) bool {
+	switch provider {
+	case "github":
+		return status == "open"
+	case "linear":
+		return status == "backlog" || status == "unstarted" || status == "started"
+	default:
+		return slices.Contains([]string{"new", "open", "pending", "hold"}, status)
+	}
 }

@@ -65,9 +65,10 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		settings.Policy = procedure.Procedure.Policy
 		workspace := map[string]any{"enabled": true, "source": flow.Provider(), "account": flow.Account(),
 			"settings": settings, "procedure": procedure, "cases": flow.Cases(), "connected": true}
-		if flow.Provider() == "github" {
+		switch flow.Provider() {
+		case "github":
 			workspace["repository"] = strings.TrimPrefix(flow.Account(), "https://github.com/")
-		} else {
+		case "zendesk":
 			oauth := flow.OAuthStatus()
 			workspace["oauth"], workspace["connected"] = oauth, oauth.Connected
 		}
@@ -151,7 +152,7 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 	case "clarify":
 		c, err = flow.Clarify(r.Context(), id, input.Revision)
 	case "approve":
-		c, err = flow.Approve(r.Context(), id, input.Plan, s.launchTicket)
+		c, err = flow.Approve(r.Context(), id, input.Plan, s.launchTicketAs(actorFrom(r.Context()).Username))
 	case "pause":
 		c, err = flow.Pause(id, true)
 	case "resume":

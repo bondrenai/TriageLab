@@ -7,3 +7,7 @@ metadata:
 data:
   config.json: |
     {{- .Values.config | toPrettyJson | nindent 4 }}
+  {{- if .Values.telemetry.enabled }}
+  telemetry.json: |
+    {{- .Values.telemetry.config | toPrettyJson | nindent 4 }}
+  {{- end }}

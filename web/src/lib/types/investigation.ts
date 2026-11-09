@@ -43,8 +43,8 @@ export interface Hypothesis {
 }
 
 export interface TicketNote {
-  source: "zendesk" | "github";
-  visibility: "internal" | "repository";
+  source: "zendesk" | "github" | "linear";
+  visibility: "internal" | "repository" | "workspace";
   ticket_id: string;
   ticket_url: string;
   status: "ready" | "posted" | "unconfirmed" | "blocked";

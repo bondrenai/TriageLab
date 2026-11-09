@@ -44,6 +44,12 @@ spec:
             {{- if .Values.tickets.enabled }}
             - --tickets=/etc/triagelab/tickets/tickets.json
             {{- end }}
+            {{- if .Values.telemetry.enabled }}
+            - --telemetry=/etc/triagelab/telemetry.json
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            - --auth=/etc/triagelab/auth/auth.json
+            {{- end }}
           env:
             - name: {{ .Values.config.token_env }}
               valueFrom:
@@ -57,6 +63,20 @@ spec:
                   name: {{ include "triagelab.ticketsTokenSecretName" . }}
                   key: {{ include "triagelab.ticketsTokenSecretKey" . }}
             {{- end }}
+            {{- if and .Values.telemetry.enabled .Values.telemetry.config.headers_env }}
+            - name: {{ .Values.telemetry.config.headers_env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "triagelab.telemetryHeadersSecretName" . }}
+                  key: {{ include "triagelab.telemetryHeadersSecretKey" . }}
+            {{- end }}
+            {{- if and .Values.auth.enabled .Values.auth.config.oidc .Values.auth.config.oidc.client_secret_env }}
+            - name: {{ .Values.auth.config.oidc.client_secret_env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "triagelab.authSecretTokenName" . }}
+                  key: {{ include "triagelab.authSecretTokenKey" . }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -69,7 +89,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - wget -q -O /dev/null -T 5 http://127.0.0.1:8080/api/settings
+                - wget -q -O /dev/null -T 5 http://127.0.0.1:8080/healthz
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           volumeMounts:
             - name: config
@@ -78,6 +98,11 @@ spec:
             {{- if .Values.tickets.enabled }}
             - name: tickets
               mountPath: /etc/triagelab/tickets
+              readOnly: true
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            - name: auth
+              mountPath: /etc/triagelab/auth
               readOnly: true
             {{- end }}
             - name: reports
@@ -96,6 +121,11 @@ spec:
         - name: tickets
           secret:
             secretName: {{ include "triagelab.fullname" . }}-tickets
+        {{- end }}
+        {{- if .Values.auth.enabled }}
+        - name: auth
+          secret:
+            secretName: {{ include "triagelab.fullname" . }}-auth
         {{- end }}
         - name: reports
           {{- if .Values.persistence.enabled }}

@@ -1,6 +1,8 @@
 import type { DeploymentResource } from "./types/agent";
 
 export const queryKeys = {
+  session: ["session"] as const,
+  accounts: ["accounts"] as const,
   tickets: ["tickets"] as const,
   settings: ["settings"] as const,
   runs: ["runs"] as const,

@@ -52,6 +52,30 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- .Values.tickets.token.key | default .Values.tickets.config.token_env -}}
 {{- end -}}
 
+{{- define "triagelab.authSecretTokenName" -}}
+{{- if .Values.auth.secret.secretName -}}
+{{- .Values.auth.secret.secretName -}}
+{{- else -}}
+{{- include "triagelab.fullname" . -}}-auth-token
+{{- end -}}
+{{- end -}}
+
+{{- define "triagelab.authSecretTokenKey" -}}
+{{- .Values.auth.secret.key | default .Values.auth.config.oidc.client_secret_env -}}
+{{- end -}}
+
+{{- define "triagelab.telemetryHeadersSecretName" -}}
+{{- if .Values.telemetry.headers.secretName -}}
+{{- .Values.telemetry.headers.secretName -}}
+{{- else -}}
+{{- include "triagelab.fullname" . -}}-telemetry-headers
+{{- end -}}
+{{- end -}}
+
+{{- define "triagelab.telemetryHeadersSecretKey" -}}
+{{- .Values.telemetry.headers.key | default "headers" -}}
+{{- end -}}
+
 {{/* Render-time configuration checks so mistakes fail at install, not as a
      crash-looping pod. */}}
 {{- define "triagelab.checks" -}}
@@ -69,5 +93,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- if and .Values.tickets.enabled .Values.tickets.config.token_env (not (or .Values.tickets.token.secretName .Values.tickets.token.create)) -}}
 {{- fail "tickets.config.token_env requires tickets.token.secretName or tickets.token.create with a value" -}}
+{{- end -}}
+{{- if and .Values.auth.enabled (not .Values.auth.config) -}}
+{{- fail "auth.enabled requires auth.config" -}}
+{{- end -}}
+{{- if and .Values.auth.enabled .Values.auth.config.oidc .Values.auth.config.oidc.client_secret_env (not (or .Values.auth.secret.secretName (and .Values.auth.secret.create .Values.auth.secret.value))) -}}
+{{- fail "auth.config.oidc.client_secret_env references a Secret key; provide auth.secret.secretName, or auth.secret.create with auth.secret.value" -}}
+{{- end -}}
+{{- if and .Values.telemetry.enabled (not .Values.telemetry.config) -}}
+{{- fail "telemetry.enabled requires telemetry.config" -}}
+{{- end -}}
+{{- if and .Values.telemetry.enabled .Values.telemetry.config.headers_env (not (or .Values.telemetry.headers.secretName .Values.telemetry.headers.create)) -}}
+{{- fail "telemetry.config.headers_env requires telemetry.headers.secretName or telemetry.headers.create with a value" -}}
 {{- end -}}
 {{- end -}}

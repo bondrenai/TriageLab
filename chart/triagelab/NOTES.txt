@@ -25,7 +25,12 @@ Before the first investigation:
        --audience=kagent-invocation --duration=1h
      kubectl -n {{ .Release.Namespace }} rollout restart deploy/{{ include "triagelab.fullname" . }}
 
-Reports and ticket state persist in the mounted volume under /data/reports.
+Reports, ticket state, and sign-in accounts persist in the mounted volume
+under /data/reports. The UI requires sign-in. Bootstrap the first local
+account if single sign-on is not configured:
+
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "triagelab.fullname" . }} -- \
+    triagelab user add --username admin --role admin --password-stdin --output /data/reports
 {{- if not .Values.persistence.enabled }}
 
 WARNING: persistence is disabled; reports and ticket state are lost on restart.

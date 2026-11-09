@@ -231,3 +231,33 @@ evidence directories sit under the symlinked `/var` temp prefix that
 `casefile.Ingest` refuses; the VM remains the check environment. Live KAgent
 integration, a real Zendesk or GitHub send, and the blocked-note browser UI
 were not exercised end to end and stay open with the roadmap item.
+
+## Linear issue connector verification
+
+On 2026-11-09, the shared bondren-build VM passed `make check` (gofmt, `go
+vet`, `go test` with `GOFLAGS=-trimpath`) and `make check-ui` (`tsc -b`) over
+the combined workspace snapshot, which also carried in-flight sign-in and
+telemetry work from a concurrent session. No build or test ran on the
+development laptop except the symlink-free `TMPDIR` ticketflow run used to
+confirm the local `/var` artifact.
+
+Linear GraphQL fixtures cover the pinned endpoint and raw Authorization
+header, the signed-URL request header, issue lookup scoped to the configured
+team key and per-team number, identifier/UUID/state/timestamp validation,
+label and creator identity, description-as-first-comment provenance, comment
+anchors, the 100-comment bound, and freshness receipts that detect edited or
+deleted comments. Attachment parsing accepts only Linear upload hosts with
+Markdown link names; downloads reject other hosts and fragments, never send
+the API key to the storage host, and enforce text and size bounds. Workflow
+tests cover author-only evidence, workspace investigation comments with
+durable receipts and restart persistence, the token account's own outgoing
+comments never counting as creator replies, team-scoped state, and refusal of
+configured credentials in facts, files, filenames, and attachment URLs.
+Configuration and HTTP tests reject unconfigured Linear writes, Zendesk-only
+settings, malformed keys, and Zendesk OAuth actions in a Linear workspace.
+Existing Zendesk and GitHub tests also pass.
+
+These are fixture and build checks. No Linear account was connected, and no
+live Linear clarification, summary send, or Linear-to-KAgent investigation
+was performed. The GraphQL document shapes were pinned against the published
+Linear API documentation; a controlled live pilot remains to be run.

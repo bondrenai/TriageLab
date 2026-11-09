@@ -6,13 +6,13 @@ import { useDeploymentStatus } from "../hooks/use-agents";
 import { useSettings } from "../hooks/use-investigations";
 import { usePreviewProcedure, useSaveProcedure } from "../hooks/use-tickets";
 import { orderedProcedures } from "../lib/tickets";
-import type { EvidenceRule, ProcedureVersion, TicketCase, TicketProcedure } from "../lib/types/ticket";
+import type { EvidenceRule, ProcedureVersion, TicketCase, TicketProcedure, TicketSource } from "../lib/types/ticket";
 
 const priorities = ["low", "normal", "high", "urgent"];
 
-export function TicketProcedureEditor({ version, github, connected, template, clarificationLimit, renderPreview }: {
+export function TicketProcedureEditor({ version, source, connected, template, clarificationLimit, renderPreview }: {
   version: ProcedureVersion;
-  github: boolean;
+  source: TicketSource;
   connected: boolean;
   template: string;
   clarificationLimit: number;
@@ -38,8 +38,9 @@ export function TicketProcedureEditor({ version, github, connected, template, cl
   ])];
   const busy = save.isPending || preview.isPending;
   const stale = version.revision !== revision;
-  const kind = github ? "issue" : "ticket";
-  const tagLabel = github ? "GitHub label" : "Zendesk tag";
+  const zendesk = source === "zendesk";
+  const kind = zendesk ? "ticket" : "issue";
+  const tagLabel = source === "github" ? "GitHub label" : source === "linear" ? "Linear label" : "Zendesk tag";
 
   function updateProcedures(next: TicketProcedure[], index = selected) {
     setProcedures(next);
@@ -132,7 +133,7 @@ export function TicketProcedureEditor({ version, github, connected, template, cl
           <Field label={`Required ${tagLabel}`}>
             <input className="field" required maxLength={100} value={draft.policy.tag} onChange={e => updatePolicy({ tag: e.target.value })} />
           </Field>
-          {!github && <>
+          {zendesk && <>
             <div className="agent-fields">
               <span className="field-label">Allowed priorities</span>
               <p className="field-help">Leave all unchecked to allow any priority.</p>
@@ -160,7 +161,7 @@ export function TicketProcedureEditor({ version, github, connected, template, cl
 
         <fieldset className="agent-fields agent-inset" disabled={busy}>
           <legend className="field-label">Evidence and clarification</legend>
-          <p className="field-help">Choose what to collect from the {github ? "issue author" : "requester"}. Only required items block approval or add a question to the clarification.</p>
+          <p className="field-help">Choose what to collect from the {zendesk ? "requester" : "issue author"}. Only required items block approval or add a question to the clarification.</p>
           {draft.evidence.length === 0 && <p>No evidence rules. Cases that match can proceed to approval without a checklist.</p>}
           {draft.evidence.map((rule, index) => <fieldset className="agent-fields agent-inset" key={index}>
             <legend className="field-label">{rule.kind === "field" ? "Text field" : "Attachment"} {index + 1}</legend>

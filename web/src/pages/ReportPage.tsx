@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowDownToLine, Check, ChevronDown, File, FlaskConical, Square, Terminal } from "lucide-react";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, StatusStamp } from "../components/ui";
 import { useCancelRun, usePostTicketNote, useRun } from "../hooks/use-investigations";
+import { useSession } from "../hooks/use-auth";
+import { roleAtLeast } from "../lib/auth";
 import { caseTitle, elapsed, exampleReport, fileSize, formatDate, reportURL } from "../lib/investigations";
 import type { Experiment, InvestigationReport, TicketNote } from "../lib/types";
 
@@ -15,6 +17,8 @@ export function ReportPage({ example = false }: { example?: boolean }) {
 }
 
 function Report({ report, example }: { report: InvestigationReport; example: boolean }) {
+  const session = useSession();
+  const canRun = roleAtLeast(session.data?.role, "user");
   const cancel = useCancelRun(report.run_id);
   const experiments = report.experiments ?? [];
   const [expanded, setExpanded] = useState<string[]>(experiments[0] ? [experiments[0].process_id] : []);
@@ -37,7 +41,7 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
   }
 
   return <>
-    <PageTitle title={example ? "The five-millisecond timeout" : caseTitle(report.case.description)} entity back="Investigations" description={<div className="report-meta"><StatusStamp status={report.status} outcome={report.outcome} active={active} /><span className="annotation">{report.run_id.slice(0, 8)}</span><time dateTime={report.started_at}>{formatDate(report.started_at)}</time></div>} action={example ? <ButtonLink to="/new" variant="primary"><FlaskConical size={16} aria-hidden="true" />Investigate your own issue</ButtonLink> : active ? <Button onClick={() => setConfirmCancel(true)} disabled={cancel.isPending || cancel.isSuccess}><Square size={14} aria-hidden="true" />{cancel.isSuccess ? "Stopping…" : "Stop investigation"}</Button> : <ButtonLink to="/new" variant="primary">New investigation</ButtonLink>} />
+    <PageTitle title={example ? "The five-millisecond timeout" : caseTitle(report.case.description)} entity back="Investigations" description={<div className="report-meta"><StatusStamp status={report.status} outcome={report.outcome} active={active} /><span className="annotation">{report.run_id.slice(0, 8)}</span><time dateTime={report.started_at}>{formatDate(report.started_at)}</time></div>} action={example ? canRun ? <ButtonLink to="/new" variant="primary"><FlaskConical size={16} aria-hidden="true" />Investigate your own issue</ButtonLink> : null : active ? canRun ? <Button onClick={() => setConfirmCancel(true)} disabled={cancel.isPending || cancel.isSuccess}><Square size={14} aria-hidden="true" />{cancel.isSuccess ? "Stopping…" : "Stop investigation"}</Button> : null : canRun ? <ButtonLink to="/new" variant="primary">New investigation</ButtonLink> : null} />
     {example && <div className="example-notice"><File size={17} aria-hidden="true" /><p><strong>Example investigation.</strong> A saved run from the included Python fixture, using a real agent and sandbox. The fixture simulates a health check; no external service was contacted.</p></div>}
     {confirmCancel && active && <div className="notice" role="alert"><strong>Stop this investigation?</strong><p>The current run will end and cleanup will begin. Collected evidence will remain in the report.</p><div className="button-row"><Button onClick={() => { void cancel.mutateAsync().then(() => setConfirmCancel(false)).catch(() => {}); }} disabled={cancel.isPending}>{cancel.isPending ? "Stopping…" : "Stop and clean up"}</Button><Button variant="ghost" onClick={() => setConfirmCancel(false)}>Keep investigating</Button></div></div>}
     {cancel.isError && <ErrorPlate title="The stop request failed" error={cancel.error} />}
@@ -53,7 +57,7 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
           {experiments.length ? <div className="experiment-list">{experiments.map((experiment, index) => <ExperimentRow key={experiment.process_id} experiment={experiment} index={index} open={expanded.includes(experiment.process_id)} toggle={() => setExpanded(previous => previous.includes(experiment.process_id) ? previous.filter(id => id !== experiment.process_id) : [...previous, experiment.process_id])} />)}</div> : <div className="inline-empty"><Terminal size={23} aria-hidden="true" /><p>{active ? "Waiting for the first experiment." : "No process evidence was recorded."}</p></div>}
         </Panel>
         {(analysis?.hypotheses?.length ?? 0) > 0 && <Panel title="Hypotheses tested"><div className="hypotheses-list">{analysis?.hypotheses?.map((hypothesis, index) => <div className="hypothesis-row" key={index}><div className="hypothesis-heading"><span className="annotation">H{index + 1}</span><Stamp hue={hypothesis.status === "supported" ? "green" : hypothesis.status === "rejected" ? "gray" : "amber"}>{hypothesis.status}</Stamp></div><p>{hypothesis.statement}</p>{evidenceRefs(hypothesis.evidence_process_ids)}</div>)}</div></Panel>}
-        {!example && report.ticket_note && <TicketNotePanel runID={report.run_id} note={report.ticket_note} />}
+        {!example && report.ticket_note && <TicketNotePanel runID={report.run_id} note={report.ticket_note} canPost={canRun} />}
         {(analysis?.reproduction_steps?.length ?? 0) > 0 && <Panel title="Reproduction steps"><div className="panel-body"><ol className="prose-list numbered">{analysis?.reproduction_steps?.map((step, index) => <li key={index}>{step}</li>)}</ol></div></Panel>}
         {((analysis?.next_actions?.length ?? 0) > 0 || (analysis?.missing_information?.length ?? 0) > 0) && <Panel title="What comes next"><div className="panel-body">{(analysis?.next_actions?.length ?? 0) > 0 && <ul className="prose-list">{analysis?.next_actions?.map((action, index) => <li key={index}>{action}</li>)}</ul>}{(analysis?.missing_information?.length ?? 0) > 0 && <div className="unknowns"><h3>Still unknown</h3><ul className="prose-list">{analysis?.missing_information?.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}</div></Panel>}
       </div>
@@ -66,33 +70,36 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
   </>;
 }
 
-function TicketNotePanel({ runID, note }: { runID: string; note: TicketNote }) {
+function TicketNotePanel({ runID, note, canPost }: { runID: string; note: TicketNote; canPost: boolean }) {
   const [reviewedPlan, setReviewedPlan] = useState<string>();
   const review = !!reviewedPlan && reviewedPlan === note.plan;
   const post = usePostTicketNote(runID);
   const github = note.source === "github";
-  const provider = github ? "GitHub" : "Zendesk";
-  return <Panel title={github ? "GitHub investigation comment" : "Zendesk internal note"}>
+  const linear = note.source === "linear";
+  const issue = github || linear;
+  const provider = github ? "GitHub" : linear ? "Linear" : "Zendesk";
+  return <Panel title={issue ? `${provider} investigation comment` : "Zendesk internal note"}>
     <div className="panel-body ticket-detail">
       <p><a className="ticket-source" href={note.ticket_url} target="_blank" rel="noreferrer">{provider} #{note.ticket_id} ↗</a></p>
-      {note.status === "posted" && <p role="status">Posted as {github ? "GitHub comment" : "internal note"} {note.comment_id}.</p>}
+      {note.status === "posted" && <p role="status">Posted as {issue ? `${provider} comment` : "internal note"} {note.comment_id}.</p>}
       {note.status === "unconfirmed" && <p role="status">Delivery is unconfirmed. Check the {provider} conversation for run <code>{runID}</code>.</p>}
       {note.status === "blocked" && <>
-        <p role="status">The output sanitizer held this {github ? "comment" : "note"} for review.</p>
+        <p role="status">The output sanitizer held this {issue ? "comment" : "note"} for review.</p>
         {note.findings && <ul className="prose-list">{note.findings.map((finding, index) => <li key={index}>{finding}</li>)}</ul>}
         <p className="ticket-draft">{note.body}</p>
-        <p>Posting stays disabled while a finding stands. Review the held text above before sharing anything with the {github ? "repository" : "agents on this ticket"}.</p>
+        <p>Posting stays disabled while a finding stands. Review the held text above before sharing anything with the {github ? "repository" : linear ? "workspace" : "agents on this ticket"}.</p>
       </>}
       {note.status === "ready" && <>
-        <p>{github ? "Share the outcome and selected experiment evidence on this issue." : "Share the outcome and selected experiment evidence with agents on this ticket."}</p>
+        <p>{issue ? "Share the outcome and selected experiment evidence on this issue." : "Share the outcome and selected experiment evidence with agents on this ticket."}</p>
         {github && <p>This comment is visible to everyone with access to the repository. In a public repository, it is public.</p>}
-        {!review ? <div className="button-row"><Button disabled={!note.plan} onClick={() => setReviewedPlan(note.plan)}>{github ? "Review comment" : "Review internal note"}</Button></div> : <>
+        {linear && <p>This comment is visible to everyone with access to the workspace.</p>}
+        {!review ? <div className="button-row">{canPost && <Button disabled={!note.plan} onClick={() => setReviewedPlan(note.plan)}>{issue ? "Review comment" : "Review internal note"}</Button>}</div> : <>
           <p className="ticket-draft">{note.body}</p>
           <div className="button-row">
-            <Button disabled={!note.can_post || !note.plan || post.isPending} onClick={() => note.plan && post.mutate(note.plan)}>{post.isPending ? "Posting…" : github ? "Post comment" : "Post internal note"}</Button>
+            <Button disabled={!note.can_post || !note.plan || post.isPending} onClick={() => note.plan && post.mutate(note.plan)}>{post.isPending ? "Posting…" : issue ? "Post comment" : "Post internal note"}</Button>
             <Button variant="ghost" disabled={post.isPending} onClick={() => { post.reset(); setReviewedPlan(undefined); }}>Cancel</Button>
           </div>
-          {!note.can_post && <p>{github ? "GitHub posting is unavailable. Review the repository connection in " : "Connect Zendesk from "}<Link className="ticket-source" to="/tickets">Ticket cases</Link>{github ? "." : " to post."}</p>}
+          {!note.can_post && <p>{github ? "GitHub posting is unavailable. Review the repository connection in " : linear ? "Linear posting is unavailable. Review the connection in " : "Connect Zendesk from "}<Link className="ticket-source" to="/tickets">Ticket cases</Link>{issue ? "." : " to post."}</p>}
         </>}
       </>}
       {post.isError && <ErrorPlate title={github ? "Comment could not be posted" : "Internal note could not be posted"} error={post.error} />}

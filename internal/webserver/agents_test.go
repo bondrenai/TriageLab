@@ -110,6 +110,7 @@ JSON
 	}
 	r := httptest.NewRequest("POST", "http://localhost:8080"+endpoint, strings.NewReader(definition))
 	r.Header.Set("X-TriageLab-Request", "1")
+	r.AddCookie(adminCookie(s))
 	r.Header.Set("If-Match", `"stale-revision"`)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
@@ -179,7 +180,7 @@ func TestManualRunUsesOnlyAnAllowedAgent(t *testing.T) {
 	}{
 		{"some-other-agent", 400}, {"network", 202},
 	} {
-		r := formRequest(t, "An issue")
+		r := formRequest(t, s, "An issue")
 		r.Header.Set("X-TriageLab-Agent", tc.agent)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
@@ -265,7 +266,7 @@ esac
 		name string
 		want int
 	}{{"external", 400}, {"pending", 409}, {"saved", 202}} {
-		r := formRequest(t, "An issue")
+		r := formRequest(t, s, "An issue")
 		r.Header.Set("X-TriageLab-Agent", tc.name)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
