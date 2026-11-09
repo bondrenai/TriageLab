@@ -52,6 +52,6 @@ jobs:
       - name: Package, check, and push the Helm chart
         run: |
           CHART_REPO="oci://ghcr.io/$(echo '${{ github.repository_owner }}' | tr 'A-Z' 'a-z')/charts"
-          helm package chart/triagelab --version "$VERSION" --app-version "$VERSION"
+          helm package chart/triagelab --version "${VERSION#v}" --app-version "$VERSION"
           helm template ./triagelab-*.tgz --set token.value=release-check > /dev/null
           helm push ./triagelab-*.tgz "$CHART_REPO"
