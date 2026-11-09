@@ -223,6 +223,20 @@ func TestInfrastructureFailureIsInconclusive(t *testing.T) {
 	}
 }
 
+func TestMarkdownShowsUpstreamTaskFailure(t *testing.T) {
+	directory := t.TempDir()
+	data := sample()
+	data["status"], data["outcome"] = "error", "inconclusive"
+	data["errors"] = []string{"investigator stopped with TASK_STATE_FAILED"}
+	data["task_failure"] = "provider rejected the follow-up request"
+	if err := Write(directory, data); err != nil {
+		t.Fatal(err)
+	}
+	if markdown := read(t, filepath.Join(directory, "report.md")); !strings.Contains(markdown, "provider rejected the follow-up request") {
+		t.Error("Markdown omits the upstream task failure")
+	}
+}
+
 func TestSymlinkOutputRefusedAndInvalidDataDoesNotOverwrite(t *testing.T) {
 	directory := t.TempDir()
 	actual := filepath.Join(directory, "actual")

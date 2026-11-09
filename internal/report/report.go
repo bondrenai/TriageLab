@@ -219,7 +219,11 @@ func render(data map[string]any) string {
 		output.WriteString(fence(value))
 	}
 	section("Tool-call record", data["tool_calls"])
-	section("Errors and warnings", selectFields(data, "errors", "warnings"))
+	issues := selectFields(data, "errors", "warnings")
+	if reason, ok := data["task_failure"]; ok {
+		issues["task_failure"] = reason
+	}
+	section("Errors and warnings", issues)
 	section("Cleanup outcome", data["cleanup"])
 	return output.String()
 }
