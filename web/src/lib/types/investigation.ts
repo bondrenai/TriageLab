@@ -1,4 +1,9 @@
 export interface Settings {
+  agent: string;
+  sandbox_template?: string;
+  namespace: string;
+  manual_agents: string[];
+  resource_writes?: boolean;
   max_description_bytes: number;
   max_file_bytes: number;
   max_total_bytes: number;
@@ -42,14 +47,17 @@ export interface TicketNote {
   visibility: "internal" | "repository";
   ticket_id: string;
   ticket_url: string;
-  status: "ready" | "posted" | "unconfirmed";
+  status: "ready" | "posted" | "unconfirmed" | "blocked";
   body?: string;
   plan?: string;
   comment_id?: string;
   can_post: boolean;
+  findings?: string[];
 }
 
 export interface InvestigationReport {
+  agent?: { namespace: string; name: string };
+  sandbox_template?: string;
   run_id: string;
   status: string;
   outcome: string;

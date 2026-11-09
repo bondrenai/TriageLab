@@ -189,3 +189,45 @@ No live GitHub write or GitHub-to-KAgent investigation was performed. HTTP and
 workflow fixtures demonstrate the tested request and persistence behavior, not
 provider permissions, real notification delivery, or an atomic GitHub
 compare-and-send guarantee.
+
+
+## Custom agent definitions
+
+The remote development VM passed `make check`, `make build`, `make check-ui`,
+and `make build-ui` with Go 1.25.12 and Node 24.18.1. Unit and HTTP fixtures
+covered native manifest generation, input restrictions, manual agent routing,
+ticket-default separation, and the watchdog's treatment of added MCP calls.
+Both agent types passed offline structural validation against the pinned
+KAgent rc3 CRD schemas. Kubernetes CEL rules and controller reconciliation
+require a deployment.
+
+Remote Chromium exercised the built workspace and real manifest preview API
+at desktop and mobile widths. It rendered declarative and BYO definitions,
+downloaded the generated JSON, rejected a reserved tool name, and submitted the
+selected agent in an intercepted manual-run request. Live custom-agent startup,
+model and MCP connectivity, and sandbox ownership with scoped token
+passthrough remain unverified.
+
+The separate resource editors passed the same Go and UI checks. Chromium
+verified that each editor retains its draft when switching views, models and
+servers export standalone resources, agents reference them by name, and
+changing to a custom image adds a Harness. The checks used the temporary
+workspace's manifest API and covered desktop and mobile widths.
+
+## Input and output sanitizers
+
+Verified on November 9, 2026 on the shared Linux build VM (Go 1.26.10, Node
+toolchain from `make install-ui`). The ticket sanitizer changes passed
+`make check` (gofmt, `go vet ./...`, and all unit and HTTP protocol tests) and
+`make check-ui`. New fixture tests cover redaction provenance in
+`report.Redacted`, outbound deny-list terms (other tracked requesters and
+internal note lines), held clarification drafts, blocked note previews that
+refuse to post, and sanitized fact text reaching the case description, stored
+facts, and sandbox environment with `input_redactions` provenance. Refusal of
+configured credentials in facts, files, filenames, and attachment URLs remains
+covered by the existing evidence tests. The full ticketflow suite also fails
+on this macOS laptop at HEAD regardless of these changes, because fixture
+evidence directories sit under the symlinked `/var` temp prefix that
+`casefile.Ingest` refuses; the VM remains the check environment. Live KAgent
+integration, a real Zendesk or GitHub send, and the blocked-note browser UI
+were not exercised end to end and stay open with the roadmap item.

@@ -98,25 +98,7 @@
         },
         "systemPrompt": "",
         "outputSchema": {},
-        "outputSchemaStrict": true,
-        "tools": [
-          {
-            "mcp": {
-              "server": {
-                "kind": "RemoteMCPServer",
-                "name": "triagelab-sandbox-api"
-              },
-              "tools": [
-                "start_sandbox_process",
-                "get_sandbox_process",
-                "kill_sandbox_process",
-                "read_sandbox_outputs",
-                "read_sandbox_file",
-                "write_sandbox_file"
-              ]
-            }
-          }
-        ]
+        "outputSchemaStrict": true
       }
     },
     {

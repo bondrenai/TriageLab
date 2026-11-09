@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
@@ -26,10 +28,11 @@ type Backend interface {
 }
 
 type Investigator struct {
-	Client   Backend
-	Config   Config
-	Progress func(string)
-	Secrets  []string
+	Client          Backend
+	Config          Config
+	Progress        func(string)
+	Secrets         []string
+	AdditionalTools []string
 }
 
 func str(v any) string         { s, _ := v.(string); return s }
@@ -87,13 +90,18 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err := i.Config.Validate(); err != nil {
 		return nil, err
 	}
+	if err := agent.ValidateExtraTools(i.AdditionalTools); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
 	defer cancel()
 	request := map[string]any{"namespace": i.Config.Namespace, "template": i.Config.Template, "request_id": c.ID, "name": "triagelab-" + c.ID, "ttl_seconds": i.Config.SandboxTTL}
 	result = map[string]any{
 		"schema_version": 1, "run_id": c.ID, "case": c, "started_at": stamp(), "finished_at": nil,
 		"status": "running", "outcome": "inconclusive", "sandbox": map[string]any{}, "session": map[string]any{},
-		"sandbox_request": request, "experiments": []map[string]any{}, "tool_calls": []kagent.ToolCall{}, "analysis": map[string]any{},
+		"agent":            map[string]string{"namespace": i.Config.Namespace, "name": i.Config.Agent},
+		"sandbox_template": i.Config.Template,
+		"sandbox_request":  request, "experiments": []map[string]any{}, "tool_calls": []kagent.ToolCall{}, "analysis": map[string]any{},
 		"warnings": []string{}, "errors": []string{},
 		"connection": map[string]any{"endpoint": i.Config.Endpoint, "user_id": i.Config.UserID, "namespace": i.Config.Namespace},
 		"cleanup":    map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}},
@@ -319,7 +327,6 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 		return "", err
 	}
 	r["tool_calls"] = calls
-	allowed := map[string]bool{"start_sandbox_process": true, "get_sandbox_process": true, "kill_sandbox_process": true, "read_sandbox_outputs": true, "read_sandbox_file": true, "write_sandbox_file": true}
 	starts, err := kagent.ProcessStarts(calls, sid)
 	if err != nil {
 		return "", err
@@ -338,8 +345,8 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 	}
 	r["experiments"] = experiments
 	for _, call := range calls {
-		if !allowed[call.Name] {
-			return "", fmt.Errorf("investigator used a tool outside the allowed sandbox tool set")
+		if !agent.IsSandboxTool(call.Name) && !slices.Contains(i.AdditionalTools, call.Name) {
+			return "", fmt.Errorf("investigator used a tool outside the configured tool set")
 		}
 	}
 	startAttempts := 0

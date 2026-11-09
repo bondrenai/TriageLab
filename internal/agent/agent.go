@@ -21,9 +21,11 @@ func Schema() map[string]any {
 	return value
 }
 
+var digestImage = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
+
 // Manifest renders reviewed v1alpha3 objects. It has no cluster side effects.
 func Manifest(image string) ([]byte, error) {
-	if image != "" && !regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`).MatchString(image) {
+	if image != "" && !digestImage.MatchString(image) {
 		return nil, fmt.Errorf("workload image must be pinned by SHA-256 digest")
 	}
 	data, _ := assets.ReadFile("resources.json")
@@ -38,6 +40,7 @@ func Manifest(image string) ([]byte, error) {
 		case "AgentTemplate":
 			spec["systemPrompt"] = Prompt()
 			spec["outputSchema"] = Schema()
+			spec["tools"] = []map[string]any{mcpBinding("triagelab-sandbox-api", sandboxTools)}
 		case "SandboxTemplate":
 			if image != "" {
 				spec["workload"].(map[string]any)["image"] = image

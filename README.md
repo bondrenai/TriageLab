@@ -123,6 +123,11 @@ cloud usage can incur charges even though TriageLab is free. The server binds
 only to loopback and accepts one active run at a time. It has no accounts or
 multi-user access control; keep it behind your SSH tunnel.
 
+The **Agents** workspace and `triagelab agent-manifest` render native KAgent
+definitions for declarative investigators or compatible custom runtime images.
+Choose a provider and model, attach specific MCP tools, and select the deployed
+agent for a manual run. See [defining agents](docs/agents.md).
+
 The [Zendesk ticket pilot](docs/tickets.md) adds a case queue, configurable ticket
 selection and clarification, and approval before the existing investigation run.
 [GitHub issue support](docs/github-issues.md) brings issue and attachment imports,
@@ -134,6 +139,14 @@ with the configuration passed to `serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.
+
+### Helm deployment
+
+The same single-user workspace can run as one pod next to an existing
+KAgent/Substrate installation, installed from the public chart
+`oci://ghcr.io/bondrenai/charts/triagelab`. The UI still binds to loopback
+inside the pod and is reached through `kubectl port-forward`; the chart
+creates no Service or Ingress by design. See [Helm deployment](docs/helm.md).
 
 ### Checks
 
@@ -159,7 +172,9 @@ for what has actually been executed.
 Sandbox egress is denied by default. The pinned tools image has Python installed;
 reproductions do not need to fetch dependencies. Operators may configure explicit
 upstream EgressPolicy references or different digest-pinned templates for other
-cases. MicroVMs are an upstream option requiring a suitable WorkerPool and KVM;
+cases — through reviewed manifests or the workspace's Sandboxes and Egress editors,
+with per-run template selection gated behind `--allow-resource-writes`. MicroVMs
+are an upstream option requiring a suitable WorkerPool and KVM;
 the initial setup uses gVisor.
 
 KAgent's pinned development authentication is not an internet-facing security

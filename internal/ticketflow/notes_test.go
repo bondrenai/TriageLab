@@ -25,7 +25,7 @@ func completedTicketReport(t *testing.T, flow *Flow, f *fixture) (string, map[st
 		t.Fatal(err)
 	}
 	var source map[string]any
-	launched, err := flow.Approve(ctx, 42, tracked.Plan, func(c casefile.Case, reserve func() error) error {
+	launched, err := flow.Approve(ctx, 42, tracked.Plan, func(c casefile.Case, _ RunTarget, reserve func() error) error {
 		source = c.Source
 		return reserve()
 	})
@@ -97,6 +97,25 @@ func TestInternalNotePreviewAndDurableDelivery(t *testing.T) {
 				t.Fatal("repeated approval posted another note")
 			}
 		})
+	}
+}
+
+func TestInternalNoteHeldWhenSummaryMayDisclose(t *testing.T) {
+	f := newFixture(t)
+	flow := noteTestFlow(t, filepath.Join(t.TempDir(), "cases"), f)
+	id, saved := completedTicketReport(t, flow, f)
+	if err := flow.store.save(Case{TicketID: 43, Account: f.server.URL, State: "review",
+		Requester: &Requester{Name: "Rival Customer", Email: "rival@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	saved["analysis"].(map[string]any)["summary"] = "The 5 ms timeout was reproduced. Rival Customer reported the same."
+	preview := flow.NotePreview(id, saved)
+	if preview == nil || preview.Status != "blocked" || preview.Plan != "" || preview.CanPost ||
+		len(preview.Findings) != 1 || !strings.Contains(preview.Findings[0], "another tracked requester's identity") {
+		t.Fatalf("disclosing note was not held: %+v", preview)
+	}
+	if _, err := flow.PostNote(t.Context(), id, saved, ""); !errors.Is(err, ErrBlocked) || f.count() != 0 {
+		t.Fatalf("held note was posted: %v %d", err, f.count())
 	}
 }
 

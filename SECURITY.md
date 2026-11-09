@@ -15,7 +15,9 @@ mount, privileged interface, or production credential inside that sandbox.
 The supplied SandboxTemplate has no egress policy references. KAgent/Substrate deny
 outbound connections by default, including package downloads. Preinstall dependencies
 in a reviewed, digest-pinned tools image, or explicitly review and grant narrowly
-scoped egress through upstream policies. Do not enable broad egress just to make an
+scoped egress through upstream policies; the workspace's Egress and Sandboxes editors
+author those same upstream resources behind `--allow-resource-writes`, and every
+grant stays an explicit operator action. Do not enable broad egress just to make an
 experiment pass. Images and the trusted Substrate host components remain part of
 the supply-chain and isolation trust boundary.
 
@@ -43,8 +45,13 @@ search removes list/grep, not all local file access. Do not place sensitive file
 in that investigator runtime or treat the MCP allowlist as its complete capability
 inventory. Provider credentials belong to KAgent's model/egress configuration, not uploaded files or
 SandboxTemplate environment variables. TriageLab reads its API token from a named
-environment variable and does not place it in the reproduction environment. Caller
-identity propagation is required so the agent and CLI can access the same sandbox.
+environment variable and does not place it in the reproduction environment. The
+trusted sandbox MCP binding forwards the verified invocation token to preserve
+ownership. Keep global runtime token propagation disabled before attaching MCP
+servers. In rc3 it forwards the caller credential and identity to all MCP
+servers. Custom runtime images can receive the invocation credential and must be
+trusted. Review model and server references for explicit caller passthrough.
+See [custom agent deployment](docs/agents.md#deploy-and-use).
 
 Ownership is broader than a single investigation: an authenticated identity can
 access other sandboxes it owns. TriageLab's instructions constrain the agent to the
@@ -73,6 +80,23 @@ and secret detection is incomplete. Review selected files before submitting a ca
 Support text and relevant file/output contents may be sent to the configured model
 provider; choose a provider and retention configuration appropriate for that data.
 
+Ticket prose crosses two sanitizer boundaries around the investigator. The input
+sanitizer delouses requester fact text before it becomes case evidence, so the
+description, stored facts, and sandbox environment carry the same redacted text
+(credential assignments, known token shapes, terminal escapes, and control
+characters are rewritten), and the applied redaction classes are recorded in the
+case source for provenance. A fact that contains a configured credential holds
+the whole case for review instead: a customer echoing one of our credentials is
+an incident to inspect, not text to launder. Attachments and the composed
+description keep the conservative refusal checks above and are never silently
+rewritten, because code evidence must run as submitted. The output sanitizer
+never rewrites: an outbound clarification or investigation comment that still
+contains credential-like content, the identity of another tracked requester, or
+verbatim internal note text is held for operator review with its findings shown
+next to the blocked body. Both sanitizers are pattern-based best effort — they
+can miss variants and can hold harmless drafts (short or common names match
+loosely) — and do not replace operator review of the exact outbound text.
+
 Reports use private file/directory permissions, atomic replacement of each file,
 best-effort secret redaction, and fenced rendering of untrusted Markdown. They can
 still contain sensitive support data. Redaction is not a guarantee, and rendered
@@ -91,11 +115,19 @@ public proxy. The browser receives redacted reports, not the configured API
 token. Selected uploads use the same ingestion limits and credential screening
 as CLI inputs.
 
+The optional [Helm chart](docs/helm.md) runs the same workspace as one pod in
+a dedicated cluster. The loopback rule is unchanged: the UI is reached through
+`kubectl port-forward`, and the chart creates no Service or Ingress. Its
+`allow_cluster_http` setting additionally permits plain HTTP only to
+`*.svc`/`*.svc.cluster.local` KAgent endpoints inside that cluster's pod
+network; every other host still requires HTTPS or loopback.
+
 With the optional [Zendesk procedure](docs/tickets.md), the server can add
 public clarifications to explicitly tracked tickets after the operator approves
-the first draft and requester. Public replies use fixed templates. Optional
-internal notes contain a reviewed, bounded summary and selected evidence from
-a completed linked run. The ticket record journals comment attempts before
+the first draft and requester. Public replies use fixed templates, and every
+outbound clarification passes the output sanitizer before it can be sent.
+Optional internal notes contain a reviewed, bounded summary and selected
+evidence from a completed linked run. The ticket record journals comment attempts before
 sending and holds uncertain writes for manual inspection. OAuth uses PKCE and
 a one-time loopback callback bound to the initiating browser. Credentials stay
 on the server and are sent only to the configured Zendesk account. Temporary
@@ -113,7 +145,9 @@ summaries require separate review of the exact body and repository audience.
 All GitHub comments are visible to everyone with repository access and public
 in public repositories; GitHub has no private internal notes. Summaries render
 imported content in literal Markdown code blocks to avoid accidental mentions,
-links, or images. Confirmed outgoing clarification IDs are excluded from author
+links, or images, and pass the same output sanitizer before posting; a summary
+that trips it is shown as blocked with its findings instead. Confirmed outgoing
+clarification IDs are excluded from author
 replies even when the token account is also the issue author.
 
 Delivery reservations and receipts persist in the private case state. Uncertain

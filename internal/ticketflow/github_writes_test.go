@@ -253,7 +253,7 @@ func completedGitHubReport(t *testing.T, flow *Flow) (string, map[string]any) {
 	t.Helper()
 	tracked := trackGitHubFlowFixture(t, flow)
 	var source map[string]any
-	launched, err := flow.Approve(t.Context(), 42, tracked.Plan, func(input casefile.Case, reserve func() error) error {
+	launched, err := flow.Approve(t.Context(), 42, tracked.Plan, func(input casefile.Case, _ RunTarget, reserve func() error) error {
 		source = input.Source
 		return reserve()
 	})

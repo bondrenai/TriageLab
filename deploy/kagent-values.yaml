@@ -23,8 +23,10 @@ config:
   runtimeDefaults:
     cpu: "1"
     memory: 1Gi
+    # Forward the verified invocation token only through the sandbox API's
+    # RemoteMCPServer tokenPassthrough setting.
     tokenPropagation:
-      enabled: true
+      enabled: false
     builtinTools:
       disableBash: true
       disableFileSearch: true

@@ -19,15 +19,16 @@ type NoteDelivery struct {
 }
 
 type NotePreview struct {
-	Source     string `json:"source"`
-	Visibility string `json:"visibility"`
-	TicketID   int64  `json:"ticket_id,string"`
-	TicketURL  string `json:"ticket_url"`
-	Body       string `json:"body,omitempty"`
-	Plan       string `json:"plan,omitempty"`
-	Status     string `json:"status"`
-	CommentID  int64  `json:"comment_id,string,omitempty"`
-	CanPost    bool   `json:"can_post"`
+	Source     string   `json:"source"`
+	Visibility string   `json:"visibility"`
+	TicketID   int64    `json:"ticket_id,string"`
+	TicketURL  string   `json:"ticket_url"`
+	Body       string   `json:"body,omitempty"`
+	Plan       string   `json:"plan,omitempty"`
+	Status     string   `json:"status"`
+	CommentID  int64    `json:"comment_id,string,omitempty"`
+	CanPost    bool     `json:"can_post"`
+	Findings   []string `json:"findings,omitempty"`
 }
 
 func (f *Flow) NotePreview(runID string, saved map[string]any) *NotePreview {
@@ -157,6 +158,13 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 		}
 		fence := strings.Repeat("`", width)
 		preview.Body = fence + "text\n" + preview.Body + "\n" + fence
+	}
+	// The output sanitizer holds the note instead of rewriting it; the
+	// operator reviews the findings with the exact blocked body.
+	if findings := sanitizeOutput(preview.Body, f.currentSecrets(), outboundTerms(f.store.list(), c.TicketID, nil)); len(findings) > 0 {
+		preview.Status = "blocked"
+		preview.Findings = findings
+		return preview
 	}
 	preview.Plan = digest(struct {
 		RunID, TicketURL, Body, Source, Visibility string

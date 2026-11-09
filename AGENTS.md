@@ -25,6 +25,9 @@ or agent framework. The UI is a private, single-user client of the same workflow
   Read `web/AGENTS.md` before changing the frontend.
 - `deploy/` configures KAgent and Agent Substrate. KAgent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
+- `chart/` and the root `Dockerfile` package the single-user workspace for a
+  dedicated cluster. Keep the loopback-only UI and port-forward access model;
+  never add a Service, Ingress, or multi-replica deployment to the chart.
 
 ## Development conventions
 
