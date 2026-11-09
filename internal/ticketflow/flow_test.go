@@ -359,3 +359,33 @@ func TestTextWrappedReproductionFiles(t *testing.T) {
 		t.Fatalf("colliding filenames were accepted: %+v %v", c, err)
 	}
 }
+
+func TestEarlierRequesterReplySuppliesMissingConfiguration(t *testing.T) {
+	f := newFixture(t)
+	f.reply()
+	f.mu.Lock()
+	config := attachment{ID: 61, Name: "config.json.txt", URL: f.server.URL + "/attachments/config.json.txt", Size: 3}
+	latest := len(f.comments) - 1
+	script := f.comments[latest]
+	f.comments[latest] = comment{ID: 3, Author: 10, Public: true, Files: []attachment{config}}
+	f.comments = append(f.comments, script, comment{ID: 5, Author: 11, Public: true, Files: []attachment{{Name: "other.json", URL: f.server.URL + "/attachments/config.json.txt", Size: 3}}})
+	f.mu.Unlock()
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, false)
+	c, err := flow.Preview(t.Context(), 42)
+	if err != nil || c.State != "approval" || len(c.Files) != 2 || c.Files[0].Path != "app.py" || c.Files[1].Path != "config.json" {
+		t.Fatalf("expected both requester attachments in the approval plan: %+v %v", c, err)
+	}
+	c, err = flow.Track(t.Context(), 42, c.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = flow.Approve(t.Context(), 42, c.Plan, func(input casefile.Case, reserve func() error) error {
+		if !strings.Contains(strings.Join(input.Evidence, "\n"), "Configuration files from Zendesk public requester comment 3") {
+			t.Fatalf("configuration source missing from run evidence: %v", input.Evidence)
+		}
+		return reserve()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

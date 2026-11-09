@@ -390,8 +390,9 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		{"Actual", "Actual: What happened instead, including the exact error if available?"},
 	}
 	facts := make(map[string]Fact)
-	var files []attachment
-	var fileCommentID int64
+	var files, configFiles []attachment
+	var fileCommentID, configCommentID int64
+	isConfig := func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".json") }
 	var latestPublic comment
 	var latestRequester comment
 	for _, m := range s.Comments {
@@ -420,11 +421,19 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 				}
 			}
 		}
-		// Use one attachment set from one message. Do not mix incompatible
-		// versions of a script and its configuration across replies.
+		// Prefer the latest script and any files sent alongside it.
 		if slices.ContainsFunc(m.Files, func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".py") }) {
 			files, fileCommentID = m.Files, m.ID
+		} else if slices.ContainsFunc(m.Files, isConfig) {
+			configFiles = slices.DeleteFunc(slices.Clone(m.Files), func(a attachment) bool { return !isConfig(a) })
+			configCommentID = m.ID
 		}
+	}
+	// A separate config reply can fill a gap in the selected script's bundle.
+	if len(files) > 0 && configCommentID > 0 && !slices.ContainsFunc(files, isConfig) {
+		files = append(slices.Clone(files), configFiles...)
+	} else {
+		configCommentID = 0
 	}
 	var missing []string
 	var lines []string
@@ -484,6 +493,9 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		input.Evidence = append(input.Evidence, fact.Label+" from Zendesk public requester comment "+fact.CommentID)
 	}
 	input.Evidence = append(input.Evidence, "Reproduction files from Zendesk public requester comment "+strconv.FormatInt(fileCommentID, 10))
+	if configCommentID != 0 {
+		input.Evidence = append(input.Evidence, "Configuration files from Zendesk public requester comment "+strconv.FormatInt(configCommentID, 10))
+	}
 	c.Files = slices.Clone(input.Attachments)
 	for i := range c.Files {
 		c.Files[i].Content = nil
@@ -494,7 +506,8 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		Policy                             Policy
 		Runtime                            investigation.Config
 		Files                              []casefile.Attachment
-	}{procedure, c.Account, input.Description, id, t.Requester, fileCommentID, f.settings.Policy, f.runtime, c.Files})
+		ConfigCommentID                    int64 `json:",omitempty"`
+	}{procedure, c.Account, input.Description, id, t.Requester, fileCommentID, f.settings.Policy, f.runtime, c.Files, configCommentID})
 	c.PlanExpires = c.CheckedAt.Add(approvalLifetime)
 	c.State, c.Reason = "approval", "Evidence is ready. Approve the proposed sandbox run."
 	return c, t, input, nil
