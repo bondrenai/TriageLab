@@ -261,3 +261,51 @@ These are fixture and build checks. No Linear account was connected, and no
 live Linear clarification, summary send, or Linear-to-KAgent investigation
 was performed. The GraphQL document shapes were pinned against the published
 Linear API documentation; a controlled live pilot remains to be run.
+
+## OpenTelemetry export verification
+
+On 2026-11-09, live OTLP/HTTP export from real TriageLab processes was
+verified on the shared bondren-build VM against `otel/opentelemetry-collector:0.165.0`
+(loopback 4318, debug exporter), using the binary built at commit `4543e4c`
+(Go 1.27.3 toolchain) and `triagelab.telemetry.example.json` plus the
+`headers_env` indirection.
+
+- `triagelab doctor --telemetry` against the live KAgent controller
+  (kind cluster, `triagelab-tools` port-forward, short-lived
+  `kagent-invocation` token): exported the `triagelab doctor` command span and
+  a child `kagent.rpc` span (`mcp.call=list_sandbox_templates`) under one
+  trace, plus the `triagelab.kagent.rpc.duration` data point.
+- `triagelab investigate --telemetry` with the scripted `triagelab-demo-runtime`
+  agent on the standard config-bug fixture: a real sandbox was created,
+  populated, and deleted through KAgent. The task ended `TASK_STATE_FAILED`
+  (the scripted demo model does not drive this agent's investigation to a
+  completed analysis), so the run completed on the **failure path** with
+  `status=error`, `outcome=inconclusive`, exit code 4, and complete cleanup
+  (`sandbox_deleted=true`, `session_deleted=true`, no cleanup errors). The
+  collector received the full tree: `investigation.run` (attrs: run_id,
+  trigger=cli, agent, sandbox_template, status, outcome) with child spans
+  `investigation.sandbox.create`, `inputs.upload`, `session.create`,
+  `session.invoke`, two `session.poll`, three `evidence.observe`, and
+  `investigation.cleanup` (attrs: sandbox_deleted, session_deleted, errors=0),
+  alongside 14 `kagent.rpc` spans. The `triagelab.investigation.runs`,
+  `duration`, `experiments`, and `cleanup` metrics were exported.
+- `triagelab serve --telemetry` (loopback 8099, local-account sign-in):
+  exported `server started`/`server stopped` log records and `http` spans for
+  `/api/settings` (both the 401 before login and the 200 after), the login
+  POST, and an unknown deep API path collapsed to `http /api/other`;
+  `triagelab.http.requests`/`http.duration` arrived with route/method/status
+  attributes. `/healthz` correctly produced a metric without a span, and a
+  serve start that failed on an occupied port exported its command span with
+  the error status on shutdown flush.
+- Log correlation: the phase log records ("Creating an isolated sandbox",
+  "Uploading 3 files") carried the run span's exact trace and span IDs. The
+  final-cleanup message is uncorrelated by design because cleanup runs on its
+  independent bounded context.
+
+Not exercised live: a **successful** model-backed investigation outcome
+(the scripted demo model cannot produce one; no provider credential was used),
+ticketflow action spans against a live helpdesk, and collector header
+authentication (the wire behavior is covered by unit tests decoding real OTLP
+protobuf in `internal/telemetry/telemetry_test.go`). Resource attributes were
+`service.name=triagelab`, `service.version=0.1.0`; no case content, prompts,
+credentials, or account names appeared in the exported telemetry.
