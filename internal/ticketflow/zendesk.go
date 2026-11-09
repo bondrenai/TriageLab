@@ -22,6 +22,7 @@ import (
 const maxProviderBytes = 2 << 20
 
 var subdomain = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+var attachmentHost = regexp.MustCompile(`^p[0-9]+\.zdusercontent\.com$`)
 
 var ErrChanged = errors.New("ticket changed; refresh it before taking action")
 
@@ -137,6 +138,13 @@ func (z *zendesk) requestAuthorized(ctx context.Context, method, target string, 
 	if res.StatusCode == http.StatusConflict {
 		return nil, ErrChanged
 	}
+	if res.StatusCode == http.StatusFound && method == http.MethodGet && attachmentPath(req.URL.Path) {
+		return z.downloadAttachment(ctx, res.Header.Get("Location"), limit)
+	}
+	return readZendeskResponse(res, limit)
+}
+
+func readZendeskResponse(res *http.Response, limit int64) ([]byte, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Zendesk returned HTTP %d", res.StatusCode)
 	}
@@ -145,6 +153,25 @@ func (z *zendesk) requestAuthorized(ctx context.Context, method, target string, 
 		return nil, errors.New("Zendesk response is incomplete or too large")
 	}
 	return data, nil
+}
+
+func (z *zendesk) downloadAttachment(ctx context.Context, target string, limit int64) ([]byte, error) {
+	u, err := url.Parse(target)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Fragment != "" || !attachmentHost.MatchString(u.Host) {
+		return nil, errors.New("unsupported Zendesk attachment redirect")
+	}
+	// Zendesk authorizes the download on the account host. The temporary URL
+	// carries its own authority, so start a fresh request without OAuth headers.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, errors.New("invalid Zendesk attachment redirect")
+	}
+	res, err := z.client.Do(req)
+	if err != nil {
+		return nil, errors.New("Zendesk attachment download could not be completed")
+	}
+	defer res.Body.Close()
+	return readZendeskResponse(res, limit)
 }
 
 func (z *zendesk) ticket(ctx context.Context, id int64) (ticket, error) {
@@ -204,8 +231,7 @@ func (z *zendesk) confirm(ctx context.Context, t ticket) error {
 
 func (z *zendesk) file(ctx context.Context, f attachment) ([]byte, error) {
 	u, err := url.Parse(f.URL)
-	if err != nil || (!strings.HasPrefix(u.Path, "/attachments/") && !strings.HasPrefix(u.Path, "/api/v2/attachments/")) ||
-		strings.Contains(u.Path, "..") || strings.Contains(u.Path, "\\") {
+	if err != nil || !attachmentPath(u.Path) {
 		return nil, errors.New("unsupported Zendesk attachment location")
 	}
 	data, err := z.request(ctx, http.MethodGet, f.URL, nil, casefile.MaxFileBytes)
@@ -213,6 +239,11 @@ func (z *zendesk) file(ctx context.Context, f attachment) ([]byte, error) {
 		return nil, errors.New("Zendesk attachment size changed")
 	}
 	return data, err
+}
+
+func attachmentPath(path string) bool {
+	return (strings.HasPrefix(path, "/attachments/") || strings.HasPrefix(path, "/api/v2/attachments/")) &&
+		!strings.Contains(path, "..") && !strings.Contains(path, "\\")
 }
 
 func (z *zendesk) ask(ctx context.Context, t ticket, message string) error {

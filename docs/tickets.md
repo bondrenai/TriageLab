@@ -62,13 +62,17 @@ Actual: The deadline expires after five milliseconds.
 ```
 
 Attach a sanitized `.py` reproduction and any required `.json`, `.txt`, or
-`.log` files together on one public requester message. For a disposable ticket,
+`.log` files together on one public requester message. If Zendesk rejects a
+script or config extension, append `.txt` to the filename, as in `app.py.txt`
+or `config.json.txt`. TriageLab removes that suffix for the sandbox and rejects
+files that resolve to the same name. For a disposable ticket,
 the files in [the timeout fixture](../examples/config-bug/) provide a small
 example. The latest requester message with a Python attachment defines the
-file set. Only four files of up to 1 MiB each are accepted. Attachment downloads
-must stay on the configured Zendesk origin and cannot redirect. A ticket with
-more than 100 comments, an unsupported Python version or attachment, or unsafe
-evidence requires review.
+file set. Only four files of up to 1 MiB each are accepted. Attachment requests
+start on the configured account. TriageLab accepts one temporary HTTPS redirect
+to a numbered Zendesk attachment host and fetches it without the OAuth token.
+A ticket with more than 100 comments, an unsupported Python version or
+attachment, or unsafe evidence requires review.
 
 The server checks one waiting ticket each configured polling interval
 (60–3600 seconds, round robin). Set `poll_seconds: 0` to refresh manually.

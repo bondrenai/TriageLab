@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -60,12 +61,14 @@ func newFixture(t *testing.T) *fixture {
 				t.Error("wrong bounded comment query")
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"comments": f.comments, "meta": map[string]bool{"has_more": f.more}})
-		case "GET /attachments/app.py":
+		case "GET /attachments/app.py", "GET /attachments/app.py.txt":
 			if f.redirect != "" {
 				http.Redirect(w, r, f.redirect, 302)
 				return
 			}
 			_, _ = w.Write([]byte(f.contents))
+		case "GET /attachments/config.json.txt":
+			_, _ = w.Write([]byte("{}\n"))
 		case "PUT /api/v2/tickets/42.json":
 			f.attempts++
 			var body struct {
@@ -263,7 +266,7 @@ func TestPolicyAndSourceLimitsFailClosed(t *testing.T) {
 	}
 }
 
-func TestAttachmentCannotFollowProviderRedirect(t *testing.T) {
+func TestAttachmentRejectsUntrustedHosts(t *testing.T) {
 	f := newFixture(t)
 	foreign := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Error("untrusted attachment endpoint was contacted")
@@ -279,5 +282,80 @@ func TestAttachmentCannotFollowProviderRedirect(t *testing.T) {
 		if _, err := z.file(ctx, attachment{URL: url, Size: 9}); err == nil {
 			t.Fatal("accepted untrusted attachment location")
 		}
+	}
+}
+
+type attachmentTransport func(*http.Request) (*http.Response, error)
+
+func (f attachmentTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestAttachmentDownloadsFromZendeskHostWithoutCredentials(t *testing.T) {
+	f := newFixture(t)
+	z := f.connector()
+	account := z.client.Transport
+	for _, tc := range []struct {
+		name, target string
+		status       int
+		wantDownload bool
+	}{
+		{"temporary URL", "https://p27.zdusercontent.com/attachment?download=temporary", 200, true},
+		{"second redirect", "https://p27.zdusercontent.com/attachment?download=temporary", 302, true},
+		{"foreign host", "https://p27.zdusercontent.com.example/attachment", 200, false},
+		{"plain HTTP", "http://p27.zdusercontent.com/attachment", 200, false},
+		{"embedded user", "https://user@p27.zdusercontent.com/attachment", 200, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f.mu.Lock()
+			f.redirect = tc.target
+			f.mu.Unlock()
+			downloads := 0
+			z.client.Transport = attachmentTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Scheme+"://"+r.URL.Host == f.server.URL {
+					return account.RoundTrip(r)
+				}
+				downloads++
+				if !tc.wantDownload || r.URL.String() != tc.target || r.Method != http.MethodGet || len(r.Header) != 0 {
+					t.Fatal("unexpected or credentialed download request")
+				}
+				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader("print(1)\n")), Header: http.Header{"Location": {"https://example.com/next"}}}, nil
+			})
+			data, err := z.file(t.Context(), attachment{URL: f.server.URL + "/attachments/app.py", Size: 9})
+			if tc.wantDownload && downloads != 1 || !tc.wantDownload && downloads != 0 {
+				t.Fatalf("download requests = %d", downloads)
+			}
+			if tc.wantDownload && tc.status == 200 {
+				if err != nil || string(data) != "print(1)\n" {
+					t.Fatalf("attachment download failed: %q %v", data, err)
+				}
+			} else if err == nil {
+				t.Fatal("accepted an unsafe redirect")
+			}
+		})
+	}
+}
+
+func TestTextWrappedReproductionFiles(t *testing.T) {
+	f := newFixture(t)
+	f.reply()
+	f.mu.Lock()
+	m := &f.comments[len(f.comments)-1]
+	m.Files[0].Name = "app.py.txt"
+	m.Files[0].URL += ".txt"
+	m.Files = append(m.Files, attachment{ID: 61, Name: "config.json.txt", URL: f.server.URL + "/attachments/config.json.txt", Size: 3})
+	f.mu.Unlock()
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, false)
+	c, err := flow.Preview(t.Context(), 42)
+	if err != nil || c.State != "approval" || len(c.Files) != 2 || c.Files[0].Path != "app.py" || c.Files[1].Path != "config.json" {
+		t.Fatalf("expected the original filenames in the approval plan: %+v %v", c, err)
+	}
+
+	f.mu.Lock()
+	duplicate := m.Files[0]
+	duplicate.ID, duplicate.Name = 62, "app.py"
+	m.Files = append(m.Files, duplicate)
+	f.mu.Unlock()
+	c, err = flow.Preview(t.Context(), 42)
+	if err != nil || c.State != "review" || c.Plan != "" {
+		t.Fatalf("colliding filenames were accepted: %+v %v", c, err)
 	}
 }

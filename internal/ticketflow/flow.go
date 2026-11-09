@@ -422,7 +422,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		}
 		// Use one attachment set from one message. Do not mix incompatible
 		// versions of a script and its configuration across replies.
-		if slices.ContainsFunc(m.Files, func(a attachment) bool { return strings.HasSuffix(a.Name, ".py") }) {
+		if slices.ContainsFunc(m.Files, func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".py") }) {
 			files, fileCommentID = m.Files, m.ID
 		}
 	}
@@ -511,10 +511,11 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 	defer os.RemoveAll(dir)
 	seen := make(map[string]bool)
 	for _, a := range files {
-		if !fileName.MatchString(a.Name) || a.Size <= 0 || a.Size > casefile.MaxFileBytes || seen[a.Name] {
+		name := reproductionName(a.Name)
+		if !fileName.MatchString(name) || a.Size <= 0 || a.Size > casefile.MaxFileBytes || seen[name] {
 			return casefile.Case{}, errors.New("Attachments must be unique .py, .json, .txt or .log files, each at most 1 MiB.")
 		}
-		seen[a.Name] = true
+		seen[name] = true
 	}
 	for _, a := range files {
 		data, err := f.source.file(ctx, a)
@@ -524,7 +525,7 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 		if f.hasSecret(data) {
 			return casefile.Case{}, errors.New("An attachment contains a configured credential.")
 		}
-		if err := os.WriteFile(filepath.Join(dir, a.Name), data, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, reproductionName(a.Name)), data, 0600); err != nil {
 			return casefile.Case{}, errors.New("Could not prepare ticket evidence.")
 		}
 	}
@@ -537,6 +538,13 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 		return casefile.Case{}, errors.New("The selected evidence failed ingestion checks. Review the ticket for secrets or unsafe files.")
 	}
 	return c, nil
+}
+
+func reproductionName(name string) string {
+	if strings.HasSuffix(name, ".py.txt") || strings.HasSuffix(name, ".json.txt") {
+		return strings.TrimSuffix(name, ".txt")
+	}
+	return name
 }
 
 func (f *Flow) hasSecret(data []byte) bool {
