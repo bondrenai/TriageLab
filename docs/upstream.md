@@ -107,6 +107,42 @@ Authoritative references:
   TriageLab's private development setup does not claim a multi-tenant perimeter.
   Prompt-injection instructions reduce risk but are not a security boundary.
 
+## microVM backend
+
+Source-reviewed 2026-11-09 at the pins above and **not exercised**. The sandbox
+class belongs to the WorkerPool. KAgent compiles a SandboxTemplate into an
+ActorTemplate using the class of the pool it references, so TriageLab's
+templates and tool calls do not change.
+
+- KAgent's chart renders `substrateWorkerPool.sandboxClass: microvm` with the
+  `ateworker-microvm` image and defaults the SandboxConfig reference to
+  `microvm`. Its Helm README states that KAgent does not install the `microvm`
+  SandboxConfig, the runtime assets, or KVM-capable workers. The Substrate
+  chart ships only the gVisor SandboxConfig.
+- Substrate's `ate-setup deploy sandboxconfig --sandbox-classes=microvm`
+  supplies them. At `v1.0.0` it downloads Kata Containers 4.3.1 and Cloud
+  Hypervisor v53.0, checks the per-architecture SHA-256 digests pinned in its
+  SandboxConfig template, stages the four files under
+  `microvm-assets/<arch>/<sha256>` in the kind RustFS bucket `ate-snapshots`
+  using the chart's default RustFS credentials, and applies the SandboxConfig.
+  It also reapplies the SandboxConfig admission policy from the same release.
+  KAgent rc3's CI runs this step after `kagent install`;
+  `scripts/install-microvm-assets.sh` does the same and refuses a tag that no
+  longer resolves to the reviewed commit.
+- Workers reach KVM through the `ate.dev/kvm` extended resource, which atelet's
+  device plugin advertises only on nodes where `/dev/kvm` exists. A kind node
+  needs the device bind-mounted (`deploy/kind-microvm.yaml`); otherwise the
+  workers stay Pending.
+- Upstream requires assets to stay outside any snapshot location's
+  `/atespaces/` prefix. The `microvm-assets/` prefix satisfies that.
+
+References:
+
+- [KAgent microVM values and prerequisites](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/helm/README.md)
+- [KAgent's kind microVM setup](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/scripts/kind/setup-microvm.sh)
+- [Substrate local microVM guide](https://github.com/kagent-dev/substrate/blob/563df06f6be751c101539986896c17c55aa22a9d/docs/dev/microvm-local.md)
+- [Pinned microVM SandboxConfig and asset digests](https://github.com/kagent-dev/substrate/blob/563df06f6be751c101539986896c17c55aa22a9d/manifests/ate-install/sandboxconfig-microvm.yaml.tmpl)
+
 ## Custom investigators
 
 TriageLab renders native `Agent.spec.template.inline` and

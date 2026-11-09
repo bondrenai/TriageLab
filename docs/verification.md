@@ -69,6 +69,12 @@ workload security testing. Exact binary artifact export and external issue
 connectors remain roadmap items. The development VM is ephemeral; saved evidence
 is retained in the repository, not dependent on its continued availability.
 
+The microVM configuration and opt-in CI job added on 2026-11-09 were checked
+only statically: shell and workflow linting, YAML parsing, and a `helm template`
+of the pinned KAgent chart showing the `microvm` class, SandboxConfig reference,
+and worker image on `kagent-default`. No KVM host ran them, so no microVM
+sandbox, asset staging, or investigation has been executed.
+
 After verification, the dedicated VM, its boot disk, and its IAP SSH firewall
 rule were deleted. Cloud inventory checks found none of those resources remaining.
 Shared infrastructure used by other work was retained.

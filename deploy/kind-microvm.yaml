@@ -1,0 +1,20 @@
+# Dedicated development cluster for the optional microVM WorkerPool. Same as
+# kind.yaml, plus the host's KVM device on the node for Substrate's microVM
+# workers. Use it only on a Linux host with a usable /dev/kvm, and keep the
+# gates below in step with kind.yaml. No workload receives a Docker socket.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: "127.0.0.1"
+featureGates:
+  ClusterTrustBundle: true
+  ClusterTrustBundleProjection: true
+  PodCertificateRequest: true
+runtimeConfig:
+  "api/alpha": "false"
+  "certificates.k8s.io/v1beta1": "true"
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: /dev/kvm
+        containerPath: /dev/kvm

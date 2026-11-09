@@ -182,13 +182,6 @@ proof it exited; the CLI observes completion and records cleanup failures. If a
 controller outage prevents cleanup, retain the report's IDs and retry against
 the same controller once it recovers.
 
-For the optional microVM backend, first provision a Linux node with usable
-`/dev/kvm`, install Substrate's microVM runtime assets, then select
-`substrateWorkerPool.sandboxClass: microvm`, `sandboxConfigRef: microvm`, and the
-matching `ateworker-microvm:v1.0.0` image. A template references the selected pool;
-TriageLab needs no new runtime implementation. This path needs separate real
-integration testing and is not implied to work merely because gVisor works.
-
 ### Inspecting telemetry export locally
 
 The OpenTelemetry SDK exports only when a telemetry configuration is supplied.
@@ -207,6 +200,66 @@ collector that requires authentication, put the header lines in the
 environment variable named by `headers_env` (never in the file). The unit
 tests assert the exported OTLP payloads without a live collector; live export
 is exercised only to the extent recorded in docs/verification.md.
+
+## Optional microVM backend
+
+Substrate's `microvm` sandbox class runs each actor as a KVM guest (Kata
+Containers on Cloud Hypervisor) instead of under gVisor. TriageLab needs no new
+runtime implementation: KAgent takes the class from the WorkerPool that a
+template references. The host, the kind node, and the install differ.
+
+- **Host.** Linux with a usable `/dev/kvm`: bare metal, or a VM with nested
+  virtualization enabled. Many cloud machine types and organization policies
+  disable nested virtualization, and Apple Silicon before M3 cannot provide it.
+- **Cluster.** Create it from `deploy/kind-microvm.yaml`, which is `kind.yaml`
+  plus a `/dev/kvm` mount on the node.
+- **Install.** `TRIAGELAB_SANDBOX_CLASS=microvm` makes the install script use
+  `deploy/kagent-cli-microvm.yaml`, which gives `kagent-default` the `microvm`
+  class, the `microvm` SandboxConfig reference, and the matching
+  `ateworker-microvm:v1.0.0` image. It then runs
+  `scripts/install-microvm-assets.sh`.
+
+```sh
+kind create cluster --name triagelab --image kindest/node:v1.35.0 \
+  --config deploy/kind-microvm.yaml --wait 120s
+TRIAGELAB_SANDBOX_CLASS=microvm bash scripts/install-dev.sh
+```
+
+Neither pinned chart installs the cluster-wide `microvm` SandboxConfig or the
+guest assets it names. The assets script runs Substrate's own installer from
+the pinned `v1.0.0` commit, as KAgent rc3 does in its own CI. That installer
+downloads the Kata and Cloud Hypervisor releases from GitHub, verifies their
+pinned SHA-256 digests, stages them in the in-cluster RustFS bucket through a
+Docker `aws-cli` container, and applies the SandboxConfig. It needs Docker,
+`git`, and network access, and caches the downloads under `.tools/`.
+
+The investigator runtime and the reproduction sandbox both use
+`kagent-default`, so both move to microVMs. Upstream counts VMM and `virtiofsd`
+overhead against worker capacity on top of guest RAM; the 3 GiB worker limit is
+carried over from gVisor and is untested for microVMs.
+
+Confirm the backend before trusting a run:
+
+```sh
+kubectl --context kind-triagelab get nodes \
+  -o jsonpath='{.items[*].status.capacity.ate\.dev/kvm}'
+kubectl --context kind-triagelab get sandboxconfig microvm
+kubectl --context kind-triagelab -n kagent get workerpool kagent-default \
+  -o jsonpath='{.spec.sandboxClasses[0].name}'
+```
+
+Then run the demonstration and `make test-integration` unchanged. These checks
+show which pool class served the run; the report itself does not record the
+isolation backend.
+
+GitHub-hosted Linux runners expose `/dev/kvm`, so the opt-in `microvm` CI job
+(the `run_microvm` input of a manually dispatched run) performs these steps on
+a disposable runner. It needs an `OPENAI_API_KEY` repository secret, incurs
+provider charges, and uploads the investigation report as a run artifact.
+
+This path is prepared from the pinned upstream sources and is **not yet
+verified**: no microVM run is recorded in [verification.md](verification.md).
+It is not implied to work merely because gVisor works.
 
 ## Teardown
 
