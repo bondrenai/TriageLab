@@ -1,0 +1,121 @@
+/* ============================================================
+   TriageLab documentation — the Bondren drafting-ink system,
+   ported from the product application (same tokens as the
+   TriageLab web workspace and the Bondren docs site). Warm
+   vellum paper under cool graphite ink, a single ultramarine
+   accent, drafter's line weights, near-square corners, and a
+   whisper of shadow. Depth comes from tone and line-weight
+   hierarchy, never flat elevation.
+   ============================================================ */
+
+@import "./fonts.css";
+
+:root {
+  /* --- Surface tiers: paper ground -> sunken well -> raised plate --- */
+  --bondren-paper: #efebe2; /* warm vellum ground (gray-50) */
+  --bondren-well: #e7e2d6; /* sunken well / subtle fill (gray-100) */
+  --bondren-plate: #fbfaf6; /* raised white drawing sheet, brighter than ground */
+
+  /* --- Ink --- */
+  --bondren-ink: #1b1916; /* graphite ink (gray-900) */
+  --bondren-ink-2: #403c35;
+  --bondren-ink-muted: #565248; /* darkened so muted text clears WCAG AA on paper */
+
+  /* --- Drafter's line weights --- */
+  --bondren-line-construction: #e7e2d6; /* faintest (gray-100) */
+  --bondren-line-object: #dbd5c7; /* standard hairline (gray-200) */
+  --bondren-line-frame: #c6bfae; /* panel frames (gray-300) */
+  --bondren-rule-cut: #9a9488; /* heavy cut rule (gray-400) */
+
+  /* --- Ultramarine accent (reads cool against warm ground) --- */
+  --bondren-accent: #1f3fd8;
+  --bondren-accent-press: #1a34b0;
+  --bondren-accent-soft: #eef1fd;
+
+  /* --- Status hues (vermilion / goldenrod / pine) --- */
+  --bondren-danger: #ad2817;
+  --bondren-caution: #946608;
+  --bondren-success: #1a7a50;
+
+  /* --- Near-square radii: surfaces read as cut stone --- */
+  --bondren-radius: 3px;
+  --bondren-radius-sm: 2px;
+
+  /* --- Whisper shadows --- */
+  --shadow-plate:
+    0 1px 2px rgba(16, 15, 12, 0.04), 0 1px 1px rgba(16, 15, 12, 0.03);
+  --shadow-pop:
+    0 8px 24px rgba(16, 15, 12, 0.1), 0 2px 6px rgba(16, 15, 12, 0.06);
+
+  /* --- Typefaces --- */
+  --bondren-font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --bondren-font-display: "Marcellus", "Times New Roman", serif;
+  --bondren-font-mono:
+    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Map onto Starlight semantic tokens --- */
+  --sl-font: var(--bondren-font-sans);
+  --sl-font-mono: var(--bondren-font-mono);
+  --sl-font-heading: var(--bondren-font-display);
+  --sl-content-width: 48rem;
+  --sl-color-bg: var(--bondren-paper);
+  --sl-color-bg-sidebar: var(--bondren-paper);
+  --sl-color-bg-nav: var(--bondren-plate);
+  --sl-color-bg-card: var(--bondren-plate);
+  --sl-color-text: var(--bondren-ink);
+  --sl-color-heading: var(--bondren-ink);
+  --sl-color-accent: var(--bondren-accent);
+  --sl-color-accent-high: var(--bondren-accent);
+  --sl-color-accent-low: var(--bondren-accent-soft);
+  --sl-color-hairline: var(--bondren-line-object);
+  --sl-color-hairline-shade: var(--bondren-line-frame);
+  /* Starlight's white/black are the foreground/background text pair, not literal
+     colors — in light mode "white" is the dark ink and "black" the light ground.
+     Map them to the ink/paper pair so headings stay high-contrast. */
+  --sl-color-white: var(--bondren-ink);
+  --sl-color-black: var(--bondren-paper);
+  --sl-shadow-sm: var(--shadow-plate);
+  --sl-shadow-md: var(--shadow-pop);
+
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  /* Same token swap the product uses for dark mode. */
+  --bondren-paper: #100f0c;
+  --bondren-well: #2c2a25;
+  --bondren-plate: #1b1916;
+  --bondren-ink: #efebe2;
+  --bondren-ink-2: #dbd5c7;
+  --bondren-ink-muted: #9a9488;
+  --bondren-line-construction: #2c2a25;
+  --bondren-line-object: #403c35;
+  --bondren-line-frame: #565248;
+  --bondren-rule-cut: #716c61;
+  --bondren-accent: #6a7ce6; /* blue-400 stays cool on dark ground */
+  --bondren-accent-press: #92a1ee;
+  --bondren-accent-soft: #152570;
+  --bondren-danger: #e78a7a;
+  --bondren-caution: #d9b14e;
+  --bondren-success: #74bf9c;
+
+  color-scheme: dark;
+}
+
+/* Display face for headings. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--bondren-font-display);
+  letter-spacing: 0.01em;
+}
+
+body {
+  font-family: var(--bondren-font-sans);
+}
+
+/* Heavy cut rule under title blocks and banded headers. */
+.rule-cut {
+  border-bottom: 2px solid var(--bondren-line-frame);
+}

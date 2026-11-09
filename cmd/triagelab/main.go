@@ -33,6 +33,101 @@ type stringsFlag []string
 func (v *stringsFlag) String() string     { return fmt.Sprint([]string(*v)) }
 func (v *stringsFlag) Set(s string) error { *v = append(*v, s); return nil }
 
+// runOptions holds the flag-defined inputs of the investigation commands.
+// Registration lives in one place so the docs generator renders the real
+// command surface instead of a copy that can drift.
+type runOptions struct {
+	configPath          string
+	description         string
+	descriptionFile     string
+	repo                string
+	output              string
+	reportPath          string
+	listen              string
+	assets              string
+	tickets             string
+	telemetryPath       string
+	statusKubeconfig    string
+	statusContext       string
+	authConfigPath      string
+	usersPath           string
+	allowResourceWrites bool
+	manualAgent         string
+	files               stringsFlag
+	logs                stringsFlag
+}
+
+// registerRunFlags declares the flags shared by investigate, serve, doctor,
+// and cleanup, plus the command-specific flags for serve and investigate.
+func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
+	opts := &runOptions{}
+	flags.StringVar(&opts.configPath, "config", "", "JSON configuration (default: built-in localhost settings)")
+	flags.StringVar(&opts.description, "description", "", "local issue description")
+	flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
+	flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
+	flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
+	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for cleanup")
+	flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
+	flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
+	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, or Linear case configuration (serve only)")
+	flags.StringVar(&opts.telemetryPath, "telemetry", "", "optional OTLP telemetry configuration exporting logs, metrics, and traces")
+	if command == "serve" {
+		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
+		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
+		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save KAgent definitions in the configured namespace")
+		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
+		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
+	}
+	if command == "investigate" {
+		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
+	}
+	flags.Var(&opts.files, "file", "attachment (repeatable)")
+	flags.Var(&opts.logs, "log", "log file (repeatable)")
+	return opts
+}
+
+type manifestOptions struct {
+	workloadImage string
+}
+
+func registerManifestFlags(flags *flag.FlagSet) *manifestOptions {
+	opts := &manifestOptions{}
+	flags.StringVar(&opts.workloadImage, "workload-image", "", "digest-pinned replacement tools image")
+	return opts
+}
+
+type agentManifestOptions struct {
+	definition string
+	namespace  string
+}
+
+func registerAgentManifestFlags(flags *flag.FlagSet) *agentManifestOptions {
+	opts := &agentManifestOptions{}
+	flags.StringVar(&opts.definition, "definition", "", "local agent definition JSON file")
+	flags.StringVar(&opts.namespace, "namespace", investigation.DefaultConfig().Namespace, "KAgent namespace")
+	return opts
+}
+
+type userOptions struct {
+	output        string
+	usersFile     string
+	username      string
+	role          string
+	password      string
+	passwordStdin bool
+}
+
+func registerUserFlags(flags *flag.FlagSet) *userOptions {
+	opts := &userOptions{}
+	flags.StringVar(&opts.output, "output", "reports", "parent directory for the default account file")
+	flags.StringVar(&opts.usersFile, "users", "", "account file (default <output>/.auth/users.json)")
+	flags.StringVar(&opts.username, "username", "", "account name")
+	flags.StringVar(&opts.role, "role", "", "viewer, user, or admin")
+	flags.StringVar(&opts.password, "password", "", "initial or replacement password (prefer --password-stdin)")
+	flags.BoolVar(&opts.passwordStdin, "password-stdin", false, "read the password from standard input")
+	return opts
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -41,7 +136,7 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode int) {
 	if len(args) == 0 {
-		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|agent-manifest|user|version> [options]")
+		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
 		return 2
 	}
 	if args[0] == "version" {
@@ -51,11 +146,11 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(errout)
 	if args[0] == "manifest" {
-		image := flags.String("workload-image", "", "digest-pinned replacement tools image")
+		manifestOpts := registerManifestFlags(flags)
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
-		data, err := agent.Manifest(*image)
+		data, err := agent.Manifest(manifestOpts.workloadImage)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -64,16 +159,15 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		return 0
 	}
 	if args[0] == "agent-manifest" {
-		definitionPath := flags.String("definition", "", "local agent definition JSON file")
-		namespace := flags.String("namespace", investigation.DefaultConfig().Namespace, "KAgent namespace")
+		agentOpts := registerAgentManifestFlags(flags)
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
-		if *definitionPath == "" || flags.NArg() != 0 {
+		if agentOpts.definition == "" || flags.NArg() != 0 {
 			fmt.Fprintln(errout, "Use agent-manifest --definition FILE [--namespace NAMESPACE]")
 			return 2
 		}
-		f, err := os.Open(*definitionPath)
+		f, err := os.Open(agentOpts.definition)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -84,7 +178,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		data, err := agent.RenderDefinition(*namespace, definition)
+		data, err := agent.RenderDefinition(agentOpts.namespace, definition)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -98,32 +192,10 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	if args[0] == "user" {
 		return runUserCommand(args[1:], out, errout, os.Stdin)
 	}
-	configPath := flags.String("config", "", "JSON configuration (default: built-in localhost settings)")
-	description := flags.String("description", "", "local issue description")
-	descriptionFile := flags.String("description-file", "", "UTF-8 issue description file")
-	repo := flags.String("repo", "", "small local repository or fixture directory")
-	output := flags.String("output", "reports", "parent directory for private reports")
-	reportPath := flags.String("report", "", "saved report.json for cleanup")
-	listen := flags.String("listen", "127.0.0.1:8080", "loopback address for the private web UI")
-	assets := flags.String("assets", "web/dist", "built frontend directory")
-	tickets := flags.String("tickets", "", "optional Zendesk, GitHub, or Linear case configuration (serve only)")
-	telemetryPath := flags.String("telemetry", "", "optional OTLP telemetry configuration exporting logs, metrics, and traces")
-	var statusKubeconfig, statusContext, authConfigPath, usersPath string
-	var allowResourceWrites bool
-	if args[0] == "serve" {
-		flags.StringVar(&statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
-		flags.StringVar(&statusContext, "status-context", "", "Kubernetes context for live deployment status")
-		flags.BoolVar(&allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save KAgent definitions in the configured namespace")
-		flags.StringVar(&authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
-		flags.StringVar(&usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
+	if args[0] == "docs" {
+		return runDocsCommand(args[1:], out, errout)
 	}
-	var manualAgent string
-	if args[0] == "investigate" {
-		flags.StringVar(&manualAgent, "agent", "", "agent name configured under manual_agents")
-	}
-	var files, logs stringsFlag
-	flags.Var(&files, "file", "attachment (repeatable)")
-	flags.Var(&logs, "log", "log file (repeatable)")
+	opts := registerRunFlags(flags, args[0])
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -131,8 +203,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		fmt.Fprintln(errout, "Unexpected positional arguments")
 		return 2
 	}
-	if *telemetryPath != "" {
-		telemetryConfig, err := telemetry.LoadConfig(*telemetryPath)
+	if opts.telemetryPath != "" {
+		telemetryConfig, err := telemetry.LoadConfig(opts.telemetryPath)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -152,7 +224,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			}
 		}()
 	}
-	config, err := investigation.LoadConfig(*configPath)
+	config, err := investigation.LoadConfig(opts.configPath)
 	if err != nil {
 		fmt.Fprintln(errout, err)
 		return 2
@@ -179,32 +251,32 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	}()
 	switch args[0] {
 	case "serve":
-		workspace, err := webserver.New(ctx, config, *output, *assets, client, token)
+		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, token)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if err := enableSignIn(ctx, workspace, authConfigPath, resolveUsersPath(*output, usersPath), *listen); err != nil {
+		if err := enableSignIn(ctx, workspace, opts.authConfigPath, resolveUsersPath(opts.output, opts.usersPath), opts.listen); err != nil {
 			_ = workspace.Close(ctx)
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if statusKubeconfig != "" || statusContext != "" {
-			if err := workspace.EnableDeploymentStatus(statusKubeconfig, statusContext); err != nil {
+		if opts.statusKubeconfig != "" || opts.statusContext != "" {
+			if err := workspace.EnableDeploymentStatus(opts.statusKubeconfig, opts.statusContext); err != nil {
 				_ = workspace.Close(ctx)
 				fmt.Fprintln(errout, err)
 				return 2
 			}
 		}
-		if allowResourceWrites {
+		if opts.allowResourceWrites {
 			if err := workspace.EnableResourceWrites(); err != nil {
 				_ = workspace.Close(ctx)
 				fmt.Fprintln(errout, err)
 				return 2
 			}
 		}
-		if *tickets != "" {
-			ticketConfig, err := ticketflow.LoadConfig(*tickets)
+		if opts.tickets != "" {
+			ticketConfig, err := ticketflow.LoadConfig(opts.tickets)
 			if err == nil {
 				err = workspace.EnableTickets(ticketConfig)
 			}
@@ -214,7 +286,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 				return 2
 			}
 		}
-		if err = webserver.Serve(ctx, *listen, workspace, out); err != nil {
+		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))
 			return 4
 		}
@@ -230,17 +302,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		fmt.Fprintln(out, "KAgent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
 		return 0
 	case "investigate":
-		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(manualAgent)
+		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(opts.manualAgent)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if *description != "" && *descriptionFile != "" {
+		if opts.description != "" && opts.descriptionFile != "" {
 			fmt.Fprintln(errout, "Use either --description or --description-file")
 			return 2
 		}
-		if *descriptionFile != "" {
-			f, err := os.Open(*descriptionFile)
+		if opts.descriptionFile != "" {
+			f, err := os.Open(opts.descriptionFile)
 			if err != nil {
 				fmt.Fprintln(errout, err)
 				return 2
@@ -251,14 +323,14 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 				fmt.Fprintln(errout, "Cannot read description, or it exceeds 32 KiB")
 				return 2
 			}
-			*description = string(data)
+			opts.description = string(data)
 		}
-		c, err := casefile.Ingest(*description, *repo, files, logs)
+		c, err := casefile.Ingest(opts.description, opts.repo, opts.files, opts.logs)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		dir, err := filepath.Abs(filepath.Join(*output, c.ID))
+		dir, err := filepath.Abs(filepath.Join(opts.output, c.ID))
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -301,11 +373,11 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 3
 		}
 	case "cleanup":
-		if *reportPath == "" {
+		if opts.reportPath == "" {
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
 			return 2
 		}
-		f, err := os.Open(*reportPath)
+		f, err := os.Open(opts.reportPath)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -328,7 +400,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		cleanupCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		runner.Cleanup(cleanupCtx, saved)
-		if err = report.Write(filepath.Dir(*reportPath), saved, token); err != nil {
+		if err = report.Write(filepath.Dir(opts.reportPath), saved, token); err != nil {
 			fmt.Fprintln(errout, err)
 			return 4
 		}
@@ -400,41 +472,36 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 	}
 	flags := flag.NewFlagSet("user "+args[0], flag.ContinueOnError)
 	flags.SetOutput(errout)
-	output := flags.String("output", "reports", "parent directory for the default account file")
-	usersFile := flags.String("users", "", "account file (default <output>/.auth/users.json)")
-	username := flags.String("username", "", "account name")
-	role := flags.String("role", "", "viewer, user, or admin")
-	password := flags.String("password", "", "initial or replacement password (prefer --password-stdin)")
-	passwordStdin := flags.Bool("password-stdin", false, "read the password from standard input")
+	opts := registerUserFlags(flags)
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
 	rest := flags.Args()
-	store, err := auth.OpenStore(resolveUsersPath(*output, *usersFile))
+	store, err := auth.OpenStore(resolveUsersPath(opts.output, opts.usersFile))
 	if err != nil {
 		fmt.Fprintln(errout, err)
 		return 2
 	}
 	readPassword := func(prompt string) (string, error) {
 		switch {
-		case *passwordStdin:
+		case opts.passwordStdin:
 			content, err := io.ReadAll(stdin)
 			if err != nil {
 				return "", err
 			}
 			return strings.TrimSpace(string(content)), nil
-		case *password != "":
-			return *password, nil
+		case opts.password != "":
+			return opts.password, nil
 		}
 		return "", fmt.Errorf("%s; pass --password-stdin (recommended) or --password", prompt)
 	}
 	switch args[0] {
 	case "add":
-		if *username == "" || len(rest) != 0 {
+		if opts.username == "" || len(rest) != 0 {
 			fmt.Fprintln(errout, "Use user add --username NAME --role ROLE [--password-stdin]")
 			return 2
 		}
-		accountRole := *role
+		accountRole := opts.role
 		if accountRole == "" {
 			// The first account bootstraps the workspace and needs full
 			// control; after that the default is least privilege.
@@ -454,11 +521,11 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if err := store.Create(*username, secret, parsed); err != nil {
+		if err := store.Create(opts.username, secret, parsed); err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		fmt.Fprintf(out, "Added %s (%s) to %s\n", *username, parsed, store.Path())
+		fmt.Fprintf(out, "Added %s (%s) to %s\n", opts.username, parsed, store.Path())
 		return 0
 	case "list":
 		if len(rest) != 0 {
@@ -483,7 +550,7 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		}
 		return 0
 	case "remove":
-		name := *username
+		name := opts.username
 		if name == "" && len(rest) == 1 {
 			name = rest[0]
 		}
@@ -498,7 +565,7 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		fmt.Fprintf(out, "Removed %s from %s\n", name, store.Path())
 		return 0
 	case "set-role":
-		name, newRole := *username, ""
+		name, newRole := opts.username, ""
 		if name == "" && len(rest) == 2 {
 			name, newRole = rest[0], rest[1]
 		}
@@ -518,7 +585,7 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		fmt.Fprintf(out, "%s is now %s\n", name, parsed)
 		return 0
 	case "set-password":
-		name := *username
+		name := opts.username
 		if name == "" && len(rest) == 1 {
 			name = rest[0]
 		}
