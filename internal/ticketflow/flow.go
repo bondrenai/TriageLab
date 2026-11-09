@@ -42,7 +42,6 @@ type Fact struct {
 	Label     string `json:"label"`
 	Value     string `json:"value"`
 	CommentID string `json:"comment_id"`
-	URL       string `json:"url,omitempty"`
 }
 
 type Question struct {
@@ -56,8 +55,6 @@ type Question struct {
 type Case struct {
 	TicketID    int64                 `json:"ticket_id,string"`
 	Account     string                `json:"account"`
-	Source      string                `json:"source,omitempty"`
-	URL         string                `json:"url,omitempty"`
 	Title       string                `json:"title"`
 	State       string                `json:"state"`
 	Reason      string                `json:"reason"`
@@ -92,7 +89,6 @@ type Settings struct {
 
 type Flow struct {
 	source   source
-	provider string
 	oauth    *zendeskOAuth
 	store    *store
 	settings Settings
@@ -109,22 +105,6 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
-	if config.provider() == "github" {
-		var token string
-		if config.TokenEnv != "" {
-			token = os.Getenv(config.TokenEnv)
-			if token == "" || !validOAuthToken(token) {
-				return nil, errors.New("the configured GitHub token environment variable is missing or invalid")
-			}
-		}
-		g := newGitHub(config.Repository, token)
-		s, err := openStore(dir, g.account())
-		if err != nil {
-			g.client.CloseIdleConnections()
-			return nil, err
-		}
-		return newFlow(config, g, s, runtime, append(slices.Clone(secrets), token)), nil
-	}
 	z := newZendesk(config.Subdomain)
 	s, err := openStore(dir, z.account())
 	if err != nil {
@@ -140,24 +120,9 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 	return flow, nil
 }
 
-func (f *Flow) Provider() string { return f.provider }
-func (f *Flow) Account() string { return f.source.account() }
-func (f *Flow) OAuthStatus() OAuthStatus {
-	if f.oauth == nil {
-		return OAuthStatus{}
-	}
-	return f.oauth.status()
-}
-func (f *Flow) BeginOAuth(host string) (string, string, error) {
-	if f.oauth == nil {
-		return "", "", ErrBlocked
-	}
-	return f.oauth.begin(host)
-}
+func (f *Flow) OAuthStatus() OAuthStatus                       { return f.oauth.status() }
+func (f *Flow) BeginOAuth(host string) (string, string, error) { return f.oauth.begin(host) }
 func (f *Flow) FinishOAuth(ctx context.Context, host, state, browser, code string, denied bool) error {
-	if f.oauth == nil {
-		return ErrBlocked
-	}
 	if err := f.begin(); err != nil {
 		return err
 	}
@@ -173,7 +138,7 @@ func (f *Flow) currentSecrets() []string {
 }
 
 func newFlow(config Config, source source, store *store, runtime investigation.Config, secrets []string) *Flow {
-	return &Flow{source: source, provider: config.provider(), store: store, runtime: runtime, secrets: secrets, settings: Settings{
+	return &Flow{source: source, store: store, runtime: runtime, secrets: secrets, settings: Settings{
 		Policy: config.Policy, PollSeconds: config.PollSeconds, MaxExperiments: runtime.MaxExperiments,
 		InternalNotes:  config.InternalNotes,
 		TimeoutSeconds: runtime.InvestigationTimeout, Template: runtime.Template,
@@ -229,9 +194,6 @@ func (f *Flow) Close() error {
 	if z, ok := f.source.(*zendesk); ok {
 		z.client.CloseIdleConnections()
 	}
-	if g, ok := f.source.(*githubSource); ok {
-		g.client.CloseIdleConnections()
-	}
 	return f.store.lock.Close()
 }
 
@@ -275,9 +237,6 @@ func (f *Flow) Refresh(ctx context.Context, id int64) (Case, error) {
 }
 
 func (f *Flow) Clarify(ctx context.Context, id int64, revision string) (Case, error) {
-	if f.provider != "zendesk" {
-		return Case{}, ErrBlocked
-	}
 	return f.checkTicket(ctx, id, clarifyTicket, revision)
 }
 
@@ -438,10 +397,6 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 	t := s.Ticket
 	c := previous
 	c.TicketID, c.Account, c.CheckedAt = id, f.source.account(), time.Now().UTC()
-	c.Source, c.URL = f.provider, t.URL
-	if c.URL == "" {
-		c.URL = c.Account + "/agent/tickets/" + strconv.FormatInt(id, 10)
-	}
 	secrets := f.currentSecrets()
 	c.Title = report.Redact(bounded(t.Subject, 500), secrets...).(string)
 	profile := t.RequesterProfile
@@ -484,7 +439,6 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 	facts := make(map[string]Fact)
 	var files, configFiles []attachment
 	var fileCommentID, configCommentID int64
-	var fileCommentURL, configCommentURL string
 	isConfig := func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".json") }
 	var latestPublic comment
 	var latestRequester comment
@@ -509,7 +463,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 						delete(facts, field.name)
 						break
 					}
-					facts[field.name] = Fact{Label: field.name, Value: value, CommentID: strconv.FormatInt(m.ID, 10), URL: m.URL}
+					facts[field.name] = Fact{Label: field.name, Value: value, CommentID: strconv.FormatInt(m.ID, 10)}
 					break
 				}
 			}
@@ -517,11 +471,9 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		// Prefer the latest script and any files sent alongside it.
 		if slices.ContainsFunc(m.Files, func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".py") }) {
 			files, fileCommentID = m.Files, m.ID
-			fileCommentURL = m.URL
 		} else if slices.ContainsFunc(m.Files, isConfig) {
 			configFiles = slices.DeleteFunc(slices.Clone(m.Files), func(a attachment) bool { return !isConfig(a) })
 			configCommentID = m.ID
-			configCommentURL = m.URL
 		}
 	}
 	// A separate config reply can fill a gap in the selected script's bundle.
@@ -542,7 +494,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		}
 	}
 	if fact, ok := facts["Python version"]; ok && !pythonVersion.MatchString(fact.Value) {
-		c.State, c.Reason = "review", "This procedure supports Python 3.12. Review the reported version at the source."
+		c.State, c.Reason = "review", "This procedure supports Python 3.12. Review the reported version in Zendesk."
 		return c, t, casefile.Case{}, nil
 	}
 	if len(files) == 0 {
@@ -588,24 +540,15 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		c.State, c.Reason = "review", err.Error()
 		return c, t, casefile.Case{}, nil
 	}
-	input.Source = map[string]any{"kind": f.provider, "ticket_id": strconv.FormatInt(id, 10),
-		"url": c.URL, "procedure": procedure}
-	if f.provider == "github" {
-		input.Source["repository"] = strings.TrimPrefix(c.Account, "https://github.com/")
-		input.Source["issue_number"] = strconv.FormatInt(id, 10)
-	}
+	input.Source = map[string]any{"kind": "zendesk", "ticket_id": strconv.FormatInt(id, 10),
+		"url": c.Account + "/agent/tickets/" + strconv.FormatInt(id, 10), "procedure": procedure}
 	input.Environment = map[string]any{"python_version": facts["Python version"].Value}
 	for _, fact := range c.Facts {
-		input.Evidence = append(input.Evidence, fact.Label+" from "+f.commentReference(fact.CommentID, fact.URL))
+		input.Evidence = append(input.Evidence, fact.Label+" from Zendesk public requester comment "+fact.CommentID)
 	}
-	input.Evidence = append(input.Evidence, "Reproduction files from "+f.commentReference(strconv.FormatInt(fileCommentID, 10), fileCommentURL))
+	input.Evidence = append(input.Evidence, "Reproduction files from Zendesk public requester comment "+strconv.FormatInt(fileCommentID, 10))
 	if configCommentID != 0 {
-		input.Evidence = append(input.Evidence, "Configuration files from "+f.commentReference(strconv.FormatInt(configCommentID, 10), configCommentURL))
-	}
-	if f.provider == "github" {
-		for _, a := range files {
-			input.Evidence = append(input.Evidence, reproductionName(a.Name)+" attached at "+a.URL)
-		}
+		input.Evidence = append(input.Evidence, "Configuration files from Zendesk public requester comment "+strconv.FormatInt(configCommentID, 10))
 	}
 	c.Files = slices.Clone(input.Attachments)
 	for i := range c.Files {
@@ -619,26 +562,14 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		Files                              []casefile.Attachment
 		ConfigCommentID                    int64 `json:",omitempty"`
 	}{procedure, c.Account, input.Description, id, t.Requester, fileCommentID, f.settings.Policy, f.runtime, c.Files, configCommentID})
-	if f.provider == "github" {
-		// Comment edits/deletions and changed attachment locations invalidate
-		// approval even when the selected file bytes remain identical.
-		c.Plan = digest([]string{c.Plan, c.Revision})
-	}
 	c.PlanExpires = c.CheckedAt.Add(approvalLifetime)
 	c.State, c.Reason = "approval", "Evidence is ready. Approve the proposed sandbox run."
 	return c, t, input, nil
 }
 
-func (f *Flow) commentReference(id, url string) string {
-	if f.provider == "github" {
-		return "GitHub issue author at " + url
-	}
-	return "Zendesk public requester comment " + id
-}
-
 func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) (casefile.Case, error) {
 	if len(files) > 4 {
-		return casefile.Case{}, errors.New("Select a reproduction with at most four supported files at the source.")
+		return casefile.Case{}, errors.New("Select a reproduction with at most four supported files in Zendesk.")
 	}
 	dir, err := os.MkdirTemp(f.store.dir, ".evidence-")
 	if err != nil {
@@ -648,16 +579,15 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 	seen := make(map[string]bool)
 	for _, a := range files {
 		name := reproductionName(a.Name)
-		unknownSize := f.provider == "github" && a.Size == -1
-		if !fileName.MatchString(name) || (!unknownSize && a.Size <= 0) || a.Size > casefile.MaxFileBytes || seen[name] {
+		if !fileName.MatchString(name) || a.Size <= 0 || a.Size > casefile.MaxFileBytes || seen[name] {
 			return casefile.Case{}, errors.New("Attachments must be unique .py, .json, .txt or .log files, each at most 1 MiB.")
 		}
 		seen[name] = true
 	}
 	for _, a := range files {
 		data, err := f.source.file(ctx, a)
-		if err != nil || len(data) == 0 || len(data) > casefile.MaxFileBytes || (f.provider == "github" && (!utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0)) {
-			return casefile.Case{}, errors.New("Could not verify the attached reproduction files. Review the attachments at the source.")
+		if err != nil {
+			return casefile.Case{}, errors.New("Could not verify the attached reproduction files. Review the attachments in Zendesk.")
 		}
 		if f.hasSecret(data) {
 			return casefile.Case{}, errors.New("An attachment contains a configured credential.")
@@ -666,11 +596,7 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 			return casefile.Case{}, errors.New("Could not prepare ticket evidence.")
 		}
 	}
-	provider := "Zendesk"
-	if f.provider == "github" {
-		provider = "GitHub"
-	}
-	desc := "Investigate a Python timeout reported in " + provider + ". Use the supplied reproduction files.\n" + strings.Join(lines, "\n")
+	desc := "Investigate a Python timeout reported in Zendesk. Use the supplied reproduction files.\n" + strings.Join(lines, "\n")
 	if f.hasSecret([]byte(desc)) {
 		return casefile.Case{}, errors.New("Ticket evidence contains a configured credential.")
 	}

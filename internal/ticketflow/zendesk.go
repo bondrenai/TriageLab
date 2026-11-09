@@ -35,7 +35,6 @@ type Requester struct {
 	ID    int64  `json:"id,string"`
 	Name  string `json:"name,omitempty"`
 	Email string `json:"email,omitempty"`
-	URL   string `json:"url,omitempty"`
 }
 
 type ticket struct {
@@ -49,8 +48,6 @@ type ticket struct {
 	Updated   string   `json:"updated_at"`
 
 	RequesterProfile Requester `json:"-"`
-	Kind             string    `json:"-"`
-	URL              string    `json:"-"`
 }
 
 type attachment struct {
@@ -66,7 +63,6 @@ type comment struct {
 	Public bool         `json:"public"`
 	Body   string       `json:"body"`
 	Files  []attachment `json:"attachments"`
-	URL    string       `json:"url,omitempty"`
 }
 
 type snapshot struct {

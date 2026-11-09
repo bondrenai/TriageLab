@@ -1,13 +1,11 @@
 export interface TicketCase {
   ticket_id: string;
   account: string;
-  source?: "zendesk" | "github";
-  url?: string;
   title: string;
-  requester?: { id: string; name?: string; email?: string; url?: string };
+  requester?: { id: string; name?: string; email?: string };
   state: "excluded" | "review" | "ask" | "waiting" | "approval" | "launched";
   reason: string;
-  facts?: { label: string; value: string; comment_id: string; url?: string }[];
+  facts?: { label: string; value: string; comment_id: string }[];
   files?: { path: string; sha256: string; size_bytes: number }[];
   draft?: string;
   questions?: { body: string; status: string; at: string }[];
@@ -36,16 +34,7 @@ export interface TicketSettings {
 
 export type TicketWorkspace =
   | { enabled: false }
-  | {
-      enabled: true;
-      source: "zendesk" | "github";
-      account: string;
-      connected: boolean;
-      repository?: string;
-      settings: TicketSettings;
-      cases: TicketCase[];
-      oauth?: { connected: boolean; account: string; workspace_url: string; scopes: string[] };
-    };
+  | { enabled: true; settings: TicketSettings; cases: TicketCase[]; oauth: { connected: boolean; account: string; workspace_url: string; scopes: string[] } };
 
 export interface TicketAction {
   id: string;

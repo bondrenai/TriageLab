@@ -83,7 +83,7 @@ func (s *store) load(account string) error {
 		}
 		f.Close()
 		if err != nil || c.TicketID != id || c.Account != account {
-			return errors.New("ticket state is invalid or belongs to another source account or repository")
+			return errors.New("ticket state is invalid or belongs to another Zendesk account")
 		}
 		s.cases[id] = c
 	}
