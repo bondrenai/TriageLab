@@ -11,6 +11,14 @@ and the upstream task-cancellation extension. It never executes host commands.
 `internal/report` persists private reports atomically. `internal/agent` embeds the
 trusted prompt, output schema, and declarative resources.
 
+`internal/webserver` adds a loopback-only HTTP interface to that same workflow.
+It admits one active run, ingests bounded multipart uploads, and reads persisted
+reports for history and downloads. Closing a browser does not cancel a run;
+the explicit cancel action or server shutdown cancels the investigation and
+waits for its cleanup. `web/` is a React/TypeScript client with API transport,
+domain types, query hooks, and presentation kept separate. There is no second
+agent implementation or browser-held model credential.
+
 KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, Go ADK tool loop, authorization integration, model gateway,
 and expiry. Sandbox is a database-backed API resource, **not** a Kubernetes CRD.

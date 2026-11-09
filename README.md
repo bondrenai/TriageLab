@@ -1,6 +1,7 @@
 # TriageLab
 
-TriageLab is an Apache 2.0 CLI for evidence-driven technical issue reproduction.
+TriageLab is a free, Apache 2.0 tool for evidence-driven technical issue reproduction,
+with a Go CLI and a browser workspace styled by Bondren.
 It submits a case to a real KAgent investigator, gives it a disposable Agent
 Substrate sandbox, records experiments independently, and saves JSON and Markdown
 reports. It is an early, single-user proof of concept—not a production support
@@ -14,17 +15,18 @@ or dependencies. There is no simulated agent or local command-execution backend.
 ## Architecture
 
 ```text
-Local issue + files → Go CLI → KAgent MCP API
-                        │       ├─ Go ADK investigator Session → model provider
-                        │       └─ standalone Sandbox → Agent Substrate → gVisor
-                        └─ captured tool events + direct process results → reports
+Local issue + files → UI / Go CLI → KAgent MCP API
+                          │          ├─ investigator Session → model provider
+                          │          └─ Sandbox → Agent Substrate → gVisor
+                          └─ tool events + process results → reports
 ```
 
 TriageLab owns case normalization, input limits, investigation budgets, evidence
 validation, cleanup, and reports. KAgent owns the agent loop, model access, tools,
 Sessions, SandboxTemplates, and standalone Sandbox lifecycle. Agent Substrate owns
 isolated execution, resource allocation, snapshots, identity, and egress enforcement.
-There is no custom operator, agent framework, database, or web UI.
+There is no custom operator, agent framework, or database. The browser workspace
+uses the same investigation workflow and local report files as the CLI.
 
 The CLI creates one sandbox, uploads the bounded case files, and starts one KAgent
 investigator. The investigator chooses and revises experiments through KAgent's
@@ -98,12 +100,42 @@ be discarded. Infrastructure failures are not reported as “not reproduced.”
 
 ## Development and verification
 
+### Browser workspace
+
+Build and run on your development VM (Node.js 24 is required for the UI):
+
+```sh
+make install-ui
+make build-ui
+make build
+./bin/triagelab serve --config triagelab.example.json
+```
+
+Open `http://127.0.0.1:8080` through an SSH local port forward. The UI can submit a
+description and files, follow a run, cancel it, inspect process evidence, and
+download JSON or Markdown. Existing reports in `reports/` appear in its history.
+The separately labelled example shows the included, previously recorded live
+investigation; it does not start a model or sandbox.
+
+Starting a new investigation requires the configured KAgent deployment and
+`TRIAGELAB_TOKEN` in the server environment, as in the CLI quickstart. Model and
+cloud usage can incur charges even though TriageLab is free. The server binds
+only to loopback and accepts one active run at a time. It has no accounts or
+multi-user access control; keep it behind your SSH tunnel.
+
+For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
+to the Go server; see [UI development](docs/ui.md) for the forwarding setup.
+
+### Checks
+
 Run these commands on the development VM:
 
 ```bash
 make fmt
 make check                    # gofmt check, go vet, unit and HTTP protocol tests
 make build
+make check-ui                 # TypeScript check (after make install-ui)
+make build-ui                 # production browser assets
 TRIAGELAB_CONFIG=triagelab.example.json make test-integration
 ```
 

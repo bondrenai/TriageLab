@@ -28,7 +28,10 @@ scoped and avoid adding a custom controller, agent framework, or job system.
 The repository follows conventional Go organization: `cmd/` entry
 points, `internal/` packages, typed startup validation, context cancellation,
 explicit connector registration, behavior-focused tests, and one Makefile entry
-point for each common task. The TriageLab MVP has no web frontend or database.
+point for each common task. The browser client uses React 19, TypeScript, Vite,
+and Tailwind with a small set of Bondren-style primitives. Read
+[UI development](docs/ui.md) and `web/AGENTS.md` before frontend changes.
+There is no database; the UI reads the same report files as the CLI.
 
 The project is licensed under Apache 2.0. By submitting a contribution, you agree
 to license it under the same terms. Report security issues privately as described

@@ -80,6 +80,17 @@ reports should be reviewed before sharing. Upstream logs, model-provider retenti
 snapshots, and backups have their own retention policies; deleting a session or
 sandbox does not prove all historical data has been erased.
 
+## Browser workspace
+
+The browser workspace is a local, single-user interface. Its server refuses
+non-loopback listeners, validates request hosts and origins, and requires a
+custom request header for mutations. These checks reduce cross-site requests;
+they are not user authentication. Anyone with access to the local port can read
+reports and start investigations. Use an SSH tunnel for a remote VM, never a
+public proxy. The browser receives redacted reports, not the configured API
+token. Selected uploads use the same ingestion limits and credential screening
+as CLI inputs.
+
 ## Cleanup and failure handling
 
 The workflow attempts to delete the session and sandbox after success, failure,

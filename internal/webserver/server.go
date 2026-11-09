@@ -1,0 +1,609 @@
+// Package webserver serves the private, single-user investigation workspace.
+package webserver
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"mime"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+	"unicode"
+
+	"github.com/bondrenai/TriageLab/internal/casefile"
+	"github.com/bondrenai/TriageLab/internal/investigation"
+	"github.com/bondrenai/TriageLab/internal/report"
+)
+
+const maxReportBytes = 64 << 20
+
+var runID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+
+type runningCase struct {
+	cancel   context.CancelFunc
+	done     chan struct{}
+	progress []string
+}
+
+// Server has one active investigation. Completed reports are read from disk.
+type Server struct {
+	ctx       context.Context
+	config    investigation.Config
+	backend   investigation.Backend
+	secrets   []string
+	directory string
+	reports   *os.Root
+	assets    *os.Root
+	mu        sync.Mutex
+	activeID  string
+	active    *runningCase
+	closed    bool
+}
+
+// New requires a built UI and a backend; it does not contact the model or cluster.
+func New(ctx context.Context, config investigation.Config, directory, assets string, backend investigation.Backend, secrets ...string) (*Server, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	if backend == nil {
+		return nil, fmt.Errorf("an investigation backend is required")
+	}
+	assetRoot, err := os.OpenRoot(assets)
+	if err != nil {
+		return nil, fmt.Errorf("built UI not found at %s; run make build-ui: %w", assets, err)
+	}
+	index, err := assetRoot.Stat("index.html")
+	if err != nil || !index.Mode().IsRegular() {
+		assetRoot.Close()
+		return nil, fmt.Errorf("built UI is missing index.html; run make build-ui")
+	}
+	directory, err = filepath.Abs(directory)
+	if err != nil {
+		assetRoot.Close()
+		return nil, err
+	}
+	if err = os.MkdirAll(directory, 0o700); err != nil {
+		assetRoot.Close()
+		return nil, fmt.Errorf("create report directory: %w", err)
+	}
+	// The operator chooses the parent path. Resolve it once; individual report
+	// entries below it must never be links.
+	directory, err = filepath.EvalSymlinks(directory)
+	if err != nil {
+		assetRoot.Close()
+		return nil, err
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		assetRoot.Close()
+		return nil, err
+	}
+	return &Server{ctx: ctx, config: config, backend: backend, secrets: append([]string(nil), secrets...), directory: directory, reports: root, assets: assetRoot}, nil
+}
+
+// Close rejects new work, cancels the active investigation, and waits for its
+// separate cleanup deadline before closing report handles.
+func (s *Server) Close(ctx context.Context) error {
+	s.mu.Lock()
+	s.closed = true
+	active := s.active
+	if active != nil {
+		active.cancel()
+	}
+	s.mu.Unlock()
+	if active != nil {
+		select {
+		case <-active.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return errors.Join(s.reports.Close(), s.assets.Close())
+}
+
+// Serve runs a loopback-only HTTP server and waits for investigation cleanup on shutdown.
+func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (resultErr error) {
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		resultErr = errors.Join(resultErr, s.Close(cleanup))
+	}()
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("listen address must include a loopback host and port")
+	}
+	ip := net.ParseIP(host)
+	if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return fmt.Errorf("the UI must listen on a loopback address; use an SSH tunnel for remote access")
+	}
+	listener, err := net.Listen("tcp", listen)
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	result := make(chan error, 1)
+	go func() { result <- server.Serve(listener) }()
+	fmt.Fprintf(out, "TriageLab UI: http://%s\n", listener.Addr())
+	select {
+	case err = <-result:
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = server.Shutdown(shutdown)
+		cancel()
+		err = <-result
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		err = nil
+	}
+	return err
+}
+
+func allowedHost(hostport string) bool {
+	host := hostport
+	if parsed, _, err := net.SplitHostPort(hostport); err == nil {
+		host = parsed
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func jsonResponse(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+func fail(w http.ResponseWriter, status int, message string) {
+	jsonResponse(w, status, map[string]string{"error": message})
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	if !allowedHost(r.Host) {
+		fail(w, http.StatusForbidden, "Only a loopback host is allowed")
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || u.Scheme != "http" || u.Host != r.Host || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
+			return
+		}
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-TriageLab-Request") != "1" {
+		fail(w, http.StatusForbidden, "Missing request header")
+		return
+	}
+	if r.URL.Path == "/api/settings" && r.Method == http.MethodGet {
+		jsonResponse(w, http.StatusOK, map[string]int{"max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
+		return
+	}
+	if r.URL.Path == "/api/runs" {
+		switch r.Method {
+		case http.MethodGet:
+			s.listRuns(w, r)
+		case http.MethodPost:
+			s.startRun(w, r)
+		default:
+			fail(w, http.StatusMethodNotAllowed, "Method not allowed")
+		}
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/runs/") {
+		s.runRoute(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		fail(w, http.StatusNotFound, "API route not found")
+		return
+	}
+	s.static(w, r)
+}
+
+func openRegular(root *os.Root, name string) (*os.File, error) {
+	before, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !before.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file")
+	}
+	file, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	after, err := file.Stat()
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		file.Close()
+		return nil, fmt.Errorf("file changed while opening")
+	}
+	return file, nil
+}
+
+func (s *Server) reportRoot(id string) (*os.Root, error) {
+	if !runID.MatchString(id) {
+		return nil, fs.ErrNotExist
+	}
+	before, err := s.reports.Lstat(id)
+	if err != nil {
+		return nil, err
+	}
+	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+		return nil, fs.ErrNotExist
+	}
+	root, err := s.reports.OpenRoot(id)
+	if err != nil {
+		return nil, err
+	}
+	after, err := root.Stat(".")
+	if err != nil || !os.SameFile(before, after) {
+		root.Close()
+		return nil, fs.ErrNotExist
+	}
+	return root, nil
+}
+
+func (s *Server) readReport(id string) (map[string]any, error) {
+	root, err := s.reportRoot(id)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	f, err := openRegular(root, "report.json")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(io.LimitReader(f, maxReportBytes+1))
+	if err != nil || len(content) > maxReportBytes {
+		return nil, fmt.Errorf("cannot read report")
+	}
+	return s.decodeReport(content, id)
+}
+
+func (s *Server) decodeReport(content []byte, id string) (map[string]any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.UseNumber()
+	var saved map[string]any
+	if err := decoder.Decode(&saved); err != nil || saved == nil || saved["run_id"] != id {
+		return nil, fmt.Errorf("invalid report")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, fmt.Errorf("invalid report")
+	}
+	return report.Redact(saved, s.secrets...).(map[string]any), nil
+}
+
+func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
+	directory, err := s.reports.Open(".")
+	if err != nil {
+		fail(w, 500, "Could not read report history")
+		return
+	}
+	defer directory.Close()
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		fail(w, 500, "Could not read report history")
+		return
+	}
+	s.mu.Lock()
+	activeID := s.activeID
+	s.mu.Unlock()
+	runs := []map[string]any{}
+	for _, entry := range entries {
+		if !entry.IsDir() || !runID.MatchString(entry.Name()) {
+			continue
+		}
+		saved, err := s.readReport(entry.Name())
+		if err != nil {
+			continue
+		}
+		c, _ := saved["case"].(map[string]any)
+		experiments, _ := saved["experiments"].([]any)
+		runs = append(runs, map[string]any{"id": entry.Name(), "description": c["description"], "status": saved["status"], "outcome": saved["outcome"], "started_at": saved["started_at"], "finished_at": saved["finished_at"], "experiment_count": len(experiments), "active": entry.Name() == activeID})
+	}
+	sort.Slice(runs, func(i, j int) bool { return fmt.Sprint(runs[i]["started_at"]) > fmt.Sprint(runs[j]["started_at"]) })
+	jsonResponse(w, 200, map[string]any{"runs": runs})
+}
+
+func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/runs/"), "/")
+	if len(parts) > 2 || !runID.MatchString(parts[0]) {
+		fail(w, 404, "Run not found")
+		return
+	}
+	id := parts[0]
+	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
+		s.mu.Lock()
+		if s.activeID != id || s.active == nil {
+			s.mu.Unlock()
+			fail(w, 409, "This investigation is not active")
+			return
+		}
+		s.active.cancel()
+		s.mu.Unlock()
+		jsonResponse(w, 202, map[string]string{"id": id})
+		return
+	}
+	if r.Method != http.MethodGet {
+		fail(w, 405, "Method not allowed")
+		return
+	}
+	if len(parts) == 2 {
+		if parts[1] != "report.json" && parts[1] != "report.md" {
+			fail(w, 404, "Report not found")
+			return
+		}
+		s.download(w, r, id, parts[1])
+		return
+	}
+	saved, err := s.readReport(id)
+	if err != nil {
+		fail(w, 404, "Report not found or unreadable")
+		return
+	}
+	s.mu.Lock()
+	saved["active"] = s.activeID == id
+	saved["progress"] = []string{}
+	if s.activeID == id && s.active != nil {
+		saved["progress"] = append([]string{}, s.active.progress...)
+	}
+	s.mu.Unlock()
+	jsonResponse(w, 200, saved)
+}
+
+func (s *Server) download(w http.ResponseWriter, r *http.Request, id, name string) {
+	root, err := s.reportRoot(id)
+	if err != nil {
+		fail(w, 404, "Report not found")
+		return
+	}
+	defer root.Close()
+	file, err := openRegular(root, name)
+	if err != nil {
+		fail(w, 404, "Report not found")
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() > maxReportBytes {
+		fail(w, 500, "Report is too large to download")
+		return
+	}
+	content, err := io.ReadAll(io.LimitReader(file, maxReportBytes+1))
+	if err != nil || len(content) > maxReportBytes {
+		fail(w, 500, "Could not read report for download")
+		return
+	}
+	// Reapply the current server's secret filter to historical files too. JSON
+	// is decoded with UseNumber so redaction does not round canonical values.
+	if name == "report.json" {
+		saved, decodeErr := s.decodeReport(content, id)
+		if decodeErr != nil {
+			fail(w, 404, "Report not found or unreadable")
+			return
+		}
+		content, err = json.MarshalIndent(saved, "", "  ")
+		if err != nil {
+			fail(w, 500, "Could not encode report for download")
+			return
+		}
+		content = append(content, '\n')
+		w.Header().Set("Content-Type", "application/json")
+	} else {
+		content = []byte(report.Redact(string(content), s.secrets...).(string))
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="triagelab-%s-%s"`, id, name))
+	// The response also depends on current secrets, not only the file's mtime.
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(content))
+}
+
+func safeUploadName(name string) bool {
+	return name != "." && fs.ValidPath(name) && !strings.Contains(name, `\`) && strings.IndexFunc(name, unicode.IsControl) < 0 && len(name) <= 512 && strings.Count(name, "/") < 16
+}
+
+func (s *Server) ingestUpload(w http.ResponseWriter, r *http.Request) (casefile.Case, error) {
+	// Multipart headers count towards this limit as well as bounded file bodies.
+	r.Body = http.MaxBytesReader(w, r.Body, casefile.MaxTotalBytes+casefile.MaxDescriptionBytes+(128<<10))
+	reader, err := r.MultipartReader()
+	if err != nil {
+		return casefile.Case{}, fmt.Errorf("Use a multipart form with a description and optional files")
+	}
+	temp, err := os.MkdirTemp(s.directory, ".upload-")
+	if err != nil {
+		return casefile.Case{}, fmt.Errorf("Cannot prepare attachments")
+	}
+	defer os.RemoveAll(temp)
+	seen := map[string]bool{}
+	description := ""
+	hasDescription := false
+	total := 0
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return casefile.Case{}, fmt.Errorf("Could not read upload or upload exceeds the size limit")
+		}
+		_, params, err := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
+		if err != nil {
+			part.Close()
+			return casefile.Case{}, fmt.Errorf("Invalid attachment header")
+		}
+		if params["name"] == "description" && params["filename"] == "" {
+			content, readErr := io.ReadAll(io.LimitReader(part, casefile.MaxDescriptionBytes+1))
+			part.Close()
+			if hasDescription || readErr != nil || len(content) > casefile.MaxDescriptionBytes {
+				return casefile.Case{}, fmt.Errorf("Description is duplicated or exceeds 64 KiB")
+			}
+			description = string(content)
+			hasDescription = true
+			continue
+		}
+		name := params["filename"]
+		if params["name"] != "files" || !safeUploadName(name) {
+			part.Close()
+			return casefile.Case{}, fmt.Errorf("Unsafe attachment path or unexpected form field")
+		}
+		if seen[name] || len(seen) >= casefile.MaxFiles {
+			part.Close()
+			return casefile.Case{}, fmt.Errorf("Duplicate attachment path or more than 64 files")
+		}
+		content, readErr := io.ReadAll(io.LimitReader(part, casefile.MaxFileBytes+1))
+		part.Close()
+		total += len(content)
+		if readErr != nil || len(content) > casefile.MaxFileBytes || total > casefile.MaxTotalBytes {
+			return casefile.Case{}, fmt.Errorf("Attachments exceed 1 MiB per file or 4 MiB total")
+		}
+		destination := filepath.Join(temp, filepath.FromSlash(name))
+		if err = os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			return casefile.Case{}, fmt.Errorf("Conflicting attachment paths")
+		}
+		if err = os.WriteFile(destination, content, 0o600); err != nil {
+			return casefile.Case{}, fmt.Errorf("Could not save attachment")
+		}
+		seen[name] = true
+	}
+	c, err := casefile.Ingest(description, temp, nil, nil)
+	if err != nil {
+		return casefile.Case{}, err
+	}
+	if len(c.Attachments) != len(seen) {
+		return casefile.Case{}, fmt.Errorf("Attachments inside ignored build or dependency directories are not accepted")
+	}
+	c.Source = map[string]any{"kind": "upload"}
+	c.Environment = map[string]any{}
+	return c, nil
+}
+
+func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	busy, closed := s.active != nil, s.closed
+	s.mu.Unlock()
+	if closed {
+		fail(w, 503, "The workspace is shutting down")
+		return
+	}
+	if busy {
+		fail(w, 409, "An investigation is already running")
+		return
+	}
+	c, err := s.ingestUpload(w, r)
+	if err != nil {
+		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
+		return
+	}
+	if r.Context().Err() != nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		fail(w, 503, "The workspace is shutting down")
+		return
+	}
+	if s.active != nil {
+		s.mu.Unlock()
+		fail(w, 409, "An investigation is already running")
+		return
+	}
+	dir := filepath.Join(s.directory, c.ID)
+	if err = s.reports.Mkdir(c.ID, 0o700); err != nil {
+		s.mu.Unlock()
+		fail(w, 500, "Could not create the report directory")
+		return
+	}
+	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
+	if err = report.Write(dir, initial, s.secrets...); err != nil {
+		s.mu.Unlock()
+		fail(w, 500, "Could not save the initial report")
+		return
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	active := &runningCase{cancel: cancel, done: make(chan struct{}), progress: []string{"Investigation queued"}}
+	s.activeID, s.active = c.ID, active
+	s.mu.Unlock()
+	go func() {
+		defer cancel()
+		runner := investigation.Investigator{Client: s.backend, Config: s.config, Secrets: s.secrets, Progress: func(message string) {
+			safe := fmt.Sprint(report.Redact(message, s.secrets...))
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if len(active.progress) >= 100 {
+				active.progress = active.progress[1:]
+			}
+			active.progress = append(active.progress, safe)
+		}}
+		_, runErr := runner.Run(ctx, c, dir)
+		if runErr != nil {
+			// The investigator normally persists errors itself. Keep an explicit
+			// diagnostic even if a final write failed, without reporting success.
+			s.mu.Lock()
+			active.progress = append(active.progress, "Investigation ended; inspect the report for errors")
+			s.mu.Unlock()
+		}
+		s.mu.Lock()
+		s.activeID = ""
+		s.active = nil
+		close(active.done)
+		s.mu.Unlock()
+	}()
+	jsonResponse(w, 202, map[string]string{"id": c.ID})
+}
+
+func (s *Server) static(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		fail(w, 405, "Method not allowed")
+		return
+	}
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if !fs.ValidPath(name) || strings.Contains(name, `\`) {
+		http.NotFound(w, r)
+		return
+	}
+	file, err := s.assets.Open(name)
+	if errors.Is(err, fs.ErrNotExist) && path.Ext(name) == "" {
+		name = "index.html"
+		file, err = s.assets.Open(name)
+	}
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeContent(w, r, name, info.ModTime(), file)
+}

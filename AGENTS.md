@@ -1,8 +1,9 @@
 # Working on TriageLab
 
-TriageLab is a Go 1.25.12 CLI for evidence-driven investigations. Keep it small:
-one investigator, one standalone sandbox per run, local JSON/Markdown reports.
-There is no web UI, database, operator, custom sandbox runtime, or agent framework.
+TriageLab is a Go 1.25.12 CLI and a React UI for evidence-driven investigations.
+Keep it small: one investigator, one standalone sandbox per run, local
+JSON/Markdown reports. There is no database, operator, custom sandbox runtime,
+or agent framework. The UI is a private, single-user client of the same workflow.
 
 ## Ownership boundaries
 
@@ -15,6 +16,10 @@ There is no web UI, database, operator, custom sandbox runtime, or agent framewo
   watchdog limits, evidence retrieval, reporting, and cleanup.
 - `internal/report` serializes independently collected process evidence separately from
   model hypotheses. Keep the JSON report canonical and Markdown readable.
+- `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
+  Keep credentials server-side and route new runs through the existing investigator.
+- `web/` uses React 19, TypeScript, Vite, and the Bondren design language.
+  Read `web/AGENTS.md` before changing the frontend.
 - `deploy/` configures KAgent and Agent Substrate. KAgent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
 

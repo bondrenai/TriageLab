@@ -64,7 +64,7 @@ report writes, redaction, input rejection, and protocol errors using test
 fixtures. These are not live controller outage or hostile escape tests.
 
 Not executed: microVM backend, multi-user deployment, production authorization,
-CI on GitHub-hosted runners, controller/VM crash during a run, or broad hostile
+controller/VM crash during a run, or broad hostile
 workload security testing. Exact binary artifact export and external issue
 connectors remain roadmap items. The development VM is ephemeral; saved evidence
 is retained in the repository, not dependent on its continued availability.
@@ -72,3 +72,32 @@ is retained in the repository, not dependent on its continued availability.
 After verification, the dedicated VM, its boot disk, and its IAP SSH firewall
 rule were deleted. Cloud inventory checks found none of those resources remaining.
 Shared infrastructure used by other work was retained.
+
+## Browser workspace verification
+
+The initial UI was checked separately on a smaller 2 vCPU / 8 GiB Ubuntu VM,
+using Node 24.18.1 and Go 1.25.12. Builds, browser execution, and tests ran on
+that VM, not on the resource-constrained development laptop.
+
+- TypeScript checking and the Vite production build passed.
+- `go test -race ./internal/webserver ./cmd/triagelab`, focused `go vet`, and
+  `make build` passed. The HTTP tests cover origin/host checks, upload limits,
+  unsafe paths, single-run admission, cancellation, shutdown, persisted history,
+  download redaction, and safe report reads.
+- Chromium exercised empty history, the saved real example, experiment
+  disclosures, required description validation, file add/remove, report
+  downloads, and navigation to a newly submitted run.
+- With KAgent absent, an actual UI submission saved an infrastructure-error
+  report and appeared in history. This checks error handling, not model access.
+- A browser response fixture verified that a partial report with missing process
+  state/output remains readable. No agent execution is claimed for this fixture.
+- Desktop (1440px) and mobile (390px) report/intake views had no detected
+  WCAG A/AA violations in the focused axe checks, no horizontal page overflow,
+  and no browser runtime errors. Automated checks are not a complete accessibility
+  audit.
+- The Vite development proxy served settings, accepted same-origin intake
+  validation, and rejected a foreign origin.
+
+No new live model investigation was run for the UI work. The bundled example
+is the preserved live run documented above; current new runs still require a
+configured private KAgent/Substrate deployment and model credential.

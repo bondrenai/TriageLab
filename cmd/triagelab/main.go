@@ -17,6 +17,7 @@ import (
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/webserver"
 )
 
 type stringsFlag []string
@@ -32,7 +33,7 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(errout, "Usage: triagelab <investigate|doctor|cleanup|manifest|version> [options]")
+		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|version> [options]")
 		return 2
 	}
 	if args[0] == "version" {
@@ -60,6 +61,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	repo := flags.String("repo", "", "small local repository or fixture directory")
 	output := flags.String("output", "reports", "parent directory for private reports")
 	reportPath := flags.String("report", "", "saved report.json for cleanup")
+	listen := flags.String("listen", "127.0.0.1:8080", "loopback address for the private web UI")
+	assets := flags.String("assets", "web/dist", "built frontend directory")
 	var files, logs stringsFlag
 	flags.Var(&files, "file", "attachment (repeatable)")
 	flags.Var(&logs, "log", "log file (repeatable)")
@@ -84,6 +87,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	defer client.Close()
 	runner := investigation.Investigator{Client: client, Config: config, Secrets: []string{token}, Progress: func(s string) { fmt.Fprintln(out, s) }}
 	switch args[0] {
+	case "serve":
+		workspace, err := webserver.New(ctx, config, *output, *assets, client, token)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if err = webserver.Serve(ctx, *listen, workspace, out); err != nil {
+			fmt.Fprintln(errout, report.Redact(err.Error(), token))
+			return 4
+		}
+		return 0
 	case "doctor":
 		probe, cancel := context.WithTimeout(ctx, time.Duration(config.RequestTimeout)*time.Second)
 		defer cancel()
