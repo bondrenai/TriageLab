@@ -12,8 +12,9 @@ TriageLab keeps preparation decisions and the linked investigation report.
    Create a [Public client](https://developer.zendesk.com/documentation/authentication/oauth-migration/#setting-up-an-oauth-client)
    named **TriageLab**. Use the identifier `triagelab-local` and redirect URL
    `http://127.0.0.1:8080/oauth/zendesk/callback`. Allow `tickets:read` for
-   preview, comments, and ticket evidence. Also allow `tickets:write` if you
-   plan to enable automatic public clarifications.
+   ticket details and comments, and `ticket_attachments:read` for downloading
+   evidence files. Also allow `tickets:write` if you plan to enable automatic
+   public clarifications.
 2. Build the Go binary and browser assets as described in [UI setup](ui.md).
    Copy `tickets.example.json` to `tickets.local.json`. Set the Zendesk
    subdomain, client identifier, and exact registered redirect URI. Existing
@@ -25,10 +26,9 @@ TriageLab keeps preparation decisions and the linked investigation report.
    the same hostname and port registered for OAuth.
 4. Choose **Connect Zendesk** and approve access as a Zendesk agent who can
    read the selected tickets and, when enabled, post public replies.
-   TriageLab uses an authorization code with PKCE and requests only
-   `tickets:read` unless the policy enables automatic questions. If enabled,
-   it requests both `tickets:read` and `tickets:write`. No client secret,
-   API token, or pasted OAuth token is needed.
+   TriageLab uses an authorization code with PKCE and requests
+   `tickets:read` and `ticket_attachments:read`. It adds `tickets:write`
+   when the policy enables automatic questions. The browser handles consent.
 5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
    procedure. Configure KAgent separately before approving a lab.

@@ -23,9 +23,11 @@ import (
 )
 
 const (
-	OAuthCallbackPath = "/oauth/zendesk/callback"
-	OAuthWindow       = 5 * time.Minute
-	oauthFile         = ".zendesk-oauth"
+	OAuthCallbackPath  = "/oauth/zendesk/callback"
+	OAuthWindow        = 5 * time.Minute
+	oauthFile          = ".zendesk-oauth"
+	zendeskReadScopes  = "ticket_attachments:read tickets:read"
+	zendeskWriteScopes = zendeskReadScopes + " tickets:write"
 )
 
 var (
@@ -76,9 +78,9 @@ type zendeskOAuth struct {
 
 func openOAuth(config Config, origin, dir string, client *http.Client) (*zendeskOAuth, error) {
 	u, _ := url.Parse(config.RedirectURI) // Validated at startup.
-	scope := "tickets:read"
+	scope := zendeskReadScopes
 	if config.Policy.AutoQuestions {
-		scope += " tickets:write"
+		scope = zendeskWriteScopes
 	}
 	o := &zendeskOAuth{account: origin, clientID: config.ClientID, redirect: config.RedirectURI, host: u.Host,
 		scope: scope, dir: dir, http: client, now: time.Now}

@@ -213,7 +213,7 @@ func (z *zendesk) file(ctx context.Context, f attachment) ([]byte, error) {
 }
 
 func (z *zendesk) ask(ctx context.Context, t ticket, message string) error {
-	if z.oauth.scope != "tickets:read tickets:write" {
+	if z.oauth.scope != zendeskWriteScopes {
 		return ErrOAuthRequired
 	}
 	body, err := json.Marshal(map[string]any{"ticket": map[string]any{

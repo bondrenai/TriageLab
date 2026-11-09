@@ -38,7 +38,7 @@ func TestOAuthConsentAndRefresh(t *testing.T) {
 		var form map[string]any
 		if r.Method != http.MethodPost || r.URL.Path != "/oauth/tokens" || r.Header.Get("Authorization") != "" ||
 			json.NewDecoder(r.Body).Decode(&form) != nil || form["client_id"] != config.ClientID ||
-			form["scope"] != "tickets:read tickets:write" || form["expires_in"] != float64(1800) || form["client_secret"] != nil {
+			form["scope"] != "ticket_attachments:read tickets:read tickets:write" || form["expires_in"] != float64(1800) || form["client_secret"] != nil {
 			t.Error("unexpected OAuth token request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -70,7 +70,7 @@ func TestOAuthConsentAndRefresh(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": access, "refresh_token": refresh,
-			"scope": "tickets:write tickets:read", "token_type": "bearer", "expires_in": 1800, "refresh_token_expires_in": 2592000})
+			"scope": "tickets:write tickets:read ticket_attachments:read", "token_type": "bearer", "expires_in": 1800, "refresh_token_expires_in": 2592000})
 	}))
 	defer provider.Close()
 	dir := t.TempDir()
@@ -95,7 +95,7 @@ func TestOAuthConsentAndRefresh(t *testing.T) {
 	mu.Lock()
 	challenge = query.Get("code_challenge")
 	mu.Unlock()
-	if u.Path != "/oauth/authorizations/new" || query.Get("scope") != "tickets:read tickets:write" ||
+	if u.Path != "/oauth/authorizations/new" || query.Get("scope") != "ticket_attachments:read tickets:read tickets:write" ||
 		query.Get("code_challenge_method") != "S256" || query.Get("redirect_uri") != config.RedirectURI ||
 		len(state) != 43 || browser == state {
 		t.Fatal("invalid consent parameters")
@@ -140,8 +140,8 @@ func TestOAuthConsentAndRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ = url.Parse(target)
-	if u.Query().Get("scope") != "tickets:read" {
-		t.Fatal("draft policy requested write scope")
+	if u.Query().Get("scope") != "ticket_attachments:read tickets:read" {
+		t.Fatal("draft policy did not request exactly the ticket and attachment read scopes")
 	}
 }
 

@@ -99,7 +99,7 @@ func (f *fixture) connector() *zendesk {
 	client := f.server.Client()
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &zendesk{origin: f.server.URL, client: client, oauth: &zendeskOAuth{
-		scope: "tickets:read tickets:write", now: time.Now, pair: &oauthPair{Access: "test-ticket-credential", Expires: time.Now().Add(time.Hour)},
+		scope: zendeskWriteScopes, now: time.Now, pair: &oauthPair{Access: "test-ticket-credential", Expires: time.Now().Add(time.Hour)},
 	}}
 }
 

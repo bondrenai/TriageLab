@@ -59,7 +59,7 @@ func TestZendeskOAuthRoutes(t *testing.T) {
 		t.Fatal("missing protected authorization cookie")
 	}
 	u, err := url.Parse(body["url"])
-	if err != nil || u.Host != "example.zendesk.com" || u.Query().Get("scope") != "tickets:read" {
+	if err != nil || u.Host != "example.zendesk.com" || u.Query().Get("scope") != "ticket_attachments:read tickets:read" {
 		t.Fatal("wrong OAuth destination or scope")
 	}
 	callback := ticketflow.OAuthCallbackPath + "?" + url.Values{"state": {u.Query().Get("state")}, "error": {"access_denied"}}.Encode()
