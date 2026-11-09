@@ -75,6 +75,11 @@ of the pinned KAgent chart showing the `microvm` class, SandboxConfig reference,
 and worker image on `kagent-default`. No KVM host ran them, so no microVM
 sandbox, asset staging, or investigation has been executed.
 
+The default investigator model changed on the same date from `gpt-4.1` to
+`gpt-6.1-sol` over OpenAI's Responses API. Every live run recorded above used
+`gpt-4.1` over Chat Completions, so the new default has no live verification
+yet.
+
 After verification, the dedicated VM, its boot disk, and its IAP SSH firewall
 rule were deleted. Cloud inventory checks found none of those resources remaining.
 Shared infrastructure used by other work was retained.

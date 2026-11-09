@@ -61,7 +61,7 @@ providers:
   default: openAI
   openAI:
     provider: OpenAI
-    # Helm default only; TriageLab uses its own triagelab-model (gpt-4.1).
-    model: gpt-4.1-mini
+    # Helm default only; TriageLab uses its own triagelab-model (gpt-6.1-sol).
+    model: gpt-6-luna
     apiKeySecretRef: kagent-openai
     apiKeySecretKey: OPENAI_API_KEY

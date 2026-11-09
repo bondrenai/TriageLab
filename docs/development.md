@@ -25,8 +25,9 @@ unchanged (loopback listener, `kubectl port-forward` only).
 - Go 1.27.3, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
 - KAgent CLI **1.0.0-rc3**, matching the charts and runtime images.
-- A provider account/key for the real agent. The example uses the upstream
-  `gpt-4.1` model, with bounded investigation limits. Model calls incur provider charges.
+- A provider account/key for the real agent. The example uses OpenAI's
+  `gpt-6.1-sol` model through the Responses API, with bounded investigation
+  limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
