@@ -1,1 +1,1 @@
-export type { Settings, RunSummary, Experiment, Hypothesis, InvestigationReport, ZendeskNote } from "./types/investigation";
+export type { Settings, RunSummary, Experiment, Hypothesis, InvestigationReport, TicketNote } from "./types/investigation";

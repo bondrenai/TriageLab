@@ -1,5 +1,5 @@
 import { request } from "./api-client";
-import type { Settings, RunSummary, InvestigationReport, ZendeskNote } from "./types";
+import type { Settings, RunSummary, InvestigationReport, TicketNote } from "./types";
 import exampleJSON from "../../../docs/verification/agent-demo.json";
 
 export const exampleReport: InvestigationReport = exampleJSON;
@@ -8,8 +8,8 @@ export const listRuns = () => request<{ runs: RunSummary[] }>("/api/runs");
 export const getRun = (id: string) => request<InvestigationReport>(`/api/runs/${encodeURIComponent(id)}`);
 export const cancelRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
 
-export const postZendeskNote = (id: string, plan: string) =>
-  request<ZendeskNote>(`/api/runs/${encodeURIComponent(id)}/zendesk-note`, { method: "POST", body: JSON.stringify({ plan }) });
+export const postTicketNote = (id: string, plan: string) =>
+  request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });
 
 export function createRun(input: { description: string; files: File[] }) {
   const body = new FormData();

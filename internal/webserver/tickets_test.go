@@ -44,17 +44,17 @@ func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 	path := "/api/runs/" + id
 	preview := request(s, http.MethodGet, path, nil)
 	var result struct {
-		Note *ticketflow.NotePreview `json:"zendesk_note"`
+		Note *ticketflow.NotePreview `json:"ticket_note"`
 	}
 	if err := json.Unmarshal(preview.Body.Bytes(), &result); err != nil || preview.Code != 200 || result.Note == nil ||
 		result.Note.TicketID != 42 || result.Note.CanPost || !strings.Contains(result.Note.Body, "Reproduced") {
 		t.Fatalf("report preview: HTTP %d %s", preview.Code, preview.Body)
 	}
 	down := request(s, http.MethodGet, path+"/report.json", nil)
-	if down.Code != 200 || strings.Contains(down.Body.String(), "zendesk_note") {
+	if down.Code != 200 || strings.Contains(down.Body.String(), "ticket_note") {
 		t.Fatalf("note state leaked into the report download: HTTP %d", down.Code)
 	}
-	path += "/zendesk-note"
+	path += "/ticket-note"
 	if w := request(s, http.MethodPost, path, strings.NewReader(`{"plan":"`+result.Note.Plan+`","body":"injected"}`)); w.Code != 400 {
 		t.Fatalf("caller-supplied body accepted: HTTP %d", w.Code)
 	}

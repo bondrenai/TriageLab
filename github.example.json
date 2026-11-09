@@ -1,0 +1,12 @@
+{
+  "source": "github",
+  "repository": "your-owner/your-repository",
+  "token_env": "TRIAGELAB_GITHUB_TOKEN",
+  "poll_seconds": 60,
+  "investigation_comments": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}

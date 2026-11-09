@@ -37,7 +37,9 @@ export interface Hypothesis {
   evidence_process_ids: string[];
 }
 
-export interface ZendeskNote {
+export interface TicketNote {
+  source: "zendesk" | "github";
+  visibility: "internal" | "repository";
   ticket_id: string;
   ticket_url: string;
   status: "ready" | "posted" | "unconfirmed";
@@ -55,7 +57,7 @@ export interface InvestigationReport {
   finished_at?: string;
   active?: boolean;
   progress?: string[];
-  zendesk_note?: ZendeskNote;
+  ticket_note?: TicketNote;
   case: {
     description: string;
     attachments?: { path: string; size_bytes: number; sha256: string }[];

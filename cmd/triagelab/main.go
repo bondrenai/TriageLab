@@ -64,7 +64,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	reportPath := flags.String("report", "", "saved report.json for cleanup")
 	listen := flags.String("listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	assets := flags.String("assets", "web/dist", "built frontend directory")
-	tickets := flags.String("tickets", "", "optional Zendesk ticket procedure configuration (serve only)")
+	tickets := flags.String("tickets", "", "optional Zendesk ticket or GitHub issue procedure configuration (serve only)")
 	var files, logs stringsFlag
 	flags.Var(&files, "file", "attachment (repeatable)")
 	flags.Var(&logs, "log", "log file (repeatable)")

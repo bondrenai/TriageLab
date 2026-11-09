@@ -29,11 +29,19 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, 200, map[string]bool{"enabled": false})
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"enabled": true, "settings": flow.Settings(), "cases": flow.Cases(), "oauth": flow.OAuthStatus()})
+		workspace := map[string]any{"enabled": true, "source": flow.Provider(), "account": flow.Account(),
+			"settings": flow.Settings(), "cases": flow.Cases(), "connected": true}
+		if flow.Provider() == "github" {
+			workspace["repository"] = strings.TrimPrefix(flow.Account(), "https://github.com/")
+		} else {
+			oauth := flow.OAuthStatus()
+			workspace["oauth"], workspace["connected"] = oauth, oauth.Connected
+		}
+		jsonResponse(w, 200, workspace)
 		return
 	}
 	if flow == nil {
-		fail(w, 404, "Zendesk is not configured")
+		fail(w, 404, "A ticket or issue source is not configured")
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -41,6 +49,10 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/tickets/oauth/start" {
+		if flow.Provider() != "zendesk" {
+			fail(w, 409, "The configured source does not use Zendesk OAuth")
+			return
+		}
 		s.zendeskAuthorize(w, r)
 		return
 	}
@@ -51,7 +63,7 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[0] {
-		fail(w, 400, "Use a numeric Zendesk ticket ID")
+		fail(w, 400, "Use a positive numeric ticket ID or issue number")
 		return
 	}
 
@@ -109,9 +121,9 @@ func writeTicketResult(w http.ResponseWriter, value any, err error) {
 	}
 }
 
-func (s *Server) postZendeskNote(w http.ResponseWriter, r *http.Request, id string) {
+func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id string) {
 	if s.tickets == nil {
-		fail(w, 404, "Zendesk is not configured")
+		fail(w, 404, "A ticket or issue source is not configured")
 		return
 	}
 	var input struct {
@@ -120,7 +132,7 @@ func (s *Server) postZendeskNote(w http.ResponseWriter, r *http.Request, id stri
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	d.DisallowUnknownFields()
 	if d.Decode(&input) != nil || d.Decode(new(any)) != io.EOF || input.Plan == "" {
-		fail(w, 400, "Invalid internal note approval")
+		fail(w, 400, "Invalid investigation comment approval")
 		return
 	}
 	s.mu.Lock()

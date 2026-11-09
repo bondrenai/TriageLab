@@ -115,3 +115,44 @@ run unit/error-path tests, then run the real demo on a fresh disposable cluster.
 Inspect failure and corrective outputs, network denial, timeouts and deletion;
 record precisely which versions and checks ran. Preserve reports before deleting
 the cluster. Do not infer compatibility from unchanged tool names.
+
+## GitHub issue integration
+
+Reviewed 2026-11-09 against GitHub's REST API version **2026-03-10**, sent in
+`X-GitHub-Api-Version`. The connector reads one issue and at most 100 comments
+from a configured GitHub.com repository, rejects pull requests, and rechecks
+issue and comment contents before admitting an approved run. Public issue text
+is available anonymously; private issue text needs **Issues: read** for the
+selected repository. Reviewed clarifications, authorized follow-ups, and
+reviewed investigation summaries use `POST /repos/{owner}/{repo}/issues/{issue_number}/comments`
+with **Issues: write** permission. Comment creation can notify repository
+participants; GitHub provides no private issue-comment visibility option.
+
+- [API version contract](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
+- [Get an issue](https://docs.github.com/en/rest/issues/issues?apiVersion=2026-03-10#get-an-issue)
+- [List issue comments](https://docs.github.com/en/rest/issues/comments?apiVersion=2026-03-10#list-issue-comments)
+- [Create an issue comment](https://docs.github.com/en/rest/issues/comments?apiVersion=2026-03-10#create-an-issue-comment)
+- [Conditional request limitations](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests)
+- [Attachment access rules](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files)
+
+GitHub does not document conditional writes for comment creation. A final
+freshness read checks the reviewed snapshot immediately before posting, but
+concurrent changes can still occur before GitHub accepts the comment. The flow
+persists a delivery reservation first and accepts only a `201` receipt with a
+positive exact comment ID, the submitted body, and matching issue/comment URLs.
+API redirects and automatic write retries are disabled. An uncertain response
+remains held across restarts for manual inspection. The POST body is capped
+at 16 KiB; provider responses are bounded. Investigation summaries use literal
+Markdown code blocks so imported content cannot create mentions or links.
+
+Only public text uploads linked with standard Markdown at
+`https://github.com/user-attachments/files/<id>/<filename>` are supported.
+A public attachment transport check observed a single HTTPS redirect to
+`objects.githubusercontent.com/github-production-repository-file-5c1aeb/<repository-id>/<file-id>`.
+The connector accepts that exact host and path shape with the same file ID and
+no further redirects. Neither attachment request receives the API token.
+This observed download shape is not a versioned REST contract; a changed host
+or path fails closed and requires review. Private attachment downloads,
+Enterprise hosts, and repository cloning are unsupported. HTTP fixtures and
+the transport check do not prove a live GitHub-to-KAgent run. No live GitHub
+clarification or investigation-summary sends were performed during implementation.

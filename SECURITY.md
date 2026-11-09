@@ -104,6 +104,30 @@ Public clarification or internal notes require `tickets:write`. Keep the
 case state private and persistent across restarts. Use one workspace per
 account for automatic replies and test on a disposable ticket first.
 
+The GitHub issue connector is scoped to one configured repository. A server
+environment token is sent only to `api.github.com`; API redirects are refused.
+Posting requires explicitly enabled clarification or investigation comments
+and a token with Issues write permission. The operator reviews the first
+clarification and author before approving bounded follow-ups. Investigation
+summaries require separate review of the exact body and repository audience.
+All GitHub comments are visible to everyone with repository access and public
+in public repositories; GitHub has no private internal notes. Summaries render
+imported content in literal Markdown code blocks to avoid accidental mentions,
+links, or images. Confirmed outgoing clarification IDs are excluded from author
+replies even when the token account is also the issue author.
+
+Delivery reservations and receipts persist in the private case state. Uncertain
+sends are never automatically retried, including after restart. A freshness read
+precedes each POST, but GitHub lacks an atomic conditional comment write, so a
+concurrent edit can still race the send. Public text uploads use a separate
+unauthenticated download path with a bounded body and one narrowly allowed
+GitHub attachment redirect. Private attachments and arbitrary linked downloads
+are unsupported. Facts and reproduction files come only from the issue author.
+Issue and comment contents, attachment references and bytes, policy, and run
+settings bind the investigation approval and are checked again before launch.
+Imported data remains untrusted, and approval does not establish that the
+reproduction is safe. See the [GitHub setup and limits](docs/github-issues.md).
+
 ## Cleanup and failure handling
 
 The workflow attempts to delete the session and sandbox after success, failure,

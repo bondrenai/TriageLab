@@ -30,7 +30,7 @@ func (s *Server) zendeskAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) zendeskCallback(w http.ResponseWriter, r *http.Request) {
-	if s.tickets == nil {
+	if s.tickets == nil || s.tickets.Provider() != "zendesk" {
 		fail(w, 404, "Zendesk is not configured")
 		return
 	}

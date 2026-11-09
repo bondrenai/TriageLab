@@ -121,3 +121,71 @@ browser binding, exact scopes, private persistence, refresh rotation, and
 recovery after a lost refresh response. Chromium verified the scoped
 authorization redirect and a simulated cross-site denial callback, including
 desktop and mobile accessibility checks. No live Zendesk grant was issued.
+
+## GitHub issue connector verification
+
+On 2026-11-09, the existing remote build VM passed `make check`, `make build`,
+`make check-ui`, and `make build-ui` using Go 1.25.12, `GOFLAGS=-trimpath`, and
+Node 24.18.1. Formatting also ran remotely with `make fmt` and was copied back
+to the source workspace. The isolated build copy included the saved demo JSON
+required by the UI. No build or test ran on the development laptop.
+
+GitHub HTTP fixtures cover the pinned API headers, issue versus pull request
+parsing, author identity, source links, comment limits and freshness, bounded
+responses, anonymous reads, credential-free attachments, restricted redirects,
+and errors that omit provider bodies. Workflow tests cover author-only evidence,
+filename normalization, file hashes and source URLs, edited/deleted comments,
+changed attachment bytes or locations, configured credentials in evidence and
+references, approval revalidation, one-run persistence, and repository-scoped
+state. Configuration and HTTP tests reject unconfigured GitHub writes and Zendesk OAuth
+actions in a GitHub workspace. Existing Zendesk tests also pass.
+
+Playwright 1.65.0 with Chromium 1254 exercised the built Go server and browser
+assets on the VM. The real workspace API identified the configured GitHub
+repository without exposing OAuth or credentials. Fixture preview and track
+responses exercised issue, author, comment and attachment links, the approval
+control, and manual clarification guidance. GitHub views exposed no Zendesk
+connection or send controls. At 1440px and 390px widths there was no horizontal
+overflow or browser runtime error. The test made no external request and did
+not click run approval. Its server and temporary fixture state were removed.
+
+These are fixture and build checks. No private GitHub account integration,
+GitHub-to-KAgent investigation, model call, or sandbox run was performed for
+this change. The public attachment transport observation is recorded separately
+in [upstream compatibility](upstream.md#github-issue-integration).
+
+## GitHub comment workflow verification
+
+The writable GitHub workflow subsequently passed `make check`, `make build`,
+`make check-ui`, and `make build-ui` on the same remote build VM with Go 1.25.12,
+`GOFLAGS=-trimpath`, and Node 24.18.1. `make check` ran again after adding the
+literal Markdown summary regression test. Formatting ran remotely and was
+copied back to the local source workspace.
+
+HTTP fixtures cover a single authenticated comment POST, final freshness
+confirmation, matching `201` receipts, bounded requests and responses, disabled
+private comments, missing write capability, refused redirects, uncertain
+responses, and no transport replay. Workflow tests cover exact clarification
+approval, authorized narrower follow-ups, no-progress and attempt limits,
+changed policy or requester, own-account author comments, receipt persistence,
+uncertain delivery across restarts, and completed-report summary approval.
+Summary tests bind the destination, body, source, and repository audience;
+reject mismatched report provenance; and verify imported Markdown remains
+literal and configured credentials are redacted. Both GitHub comments and
+Zendesk internal notes use the same `ticket_note` workspace response and
+`ticket-note` action. Existing Zendesk tests pass.
+
+Remote Playwright 1.65.0/Chromium 1254 exercised the built server and assets with
+fixture write responses. It checked initial clarification review and the exact
+revision submitted, waiting state, investigation comment review with repository
+audience, the exact summary plan submitted, and a confirmed receipt. An
+uncertain delivery removed posting controls and remained held after reload.
+A Zendesk report fixture retained internal-note wording. At 1440px and 390px
+there was no horizontal overflow or browser runtime error. All mutation
+requests were intercepted; the browser made no external request or run
+approval. Its temporary server and fixture state were removed.
+
+No live GitHub write or GitHub-to-KAgent investigation was performed. HTTP and
+workflow fixtures demonstrate the tested request and persistence behavior, not
+provider permissions, real notification delivery, or an atomic GitHub
+compare-and-send guarantee.

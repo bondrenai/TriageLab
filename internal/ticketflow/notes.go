@@ -19,13 +19,15 @@ type NoteDelivery struct {
 }
 
 type NotePreview struct {
-	TicketID  int64  `json:"ticket_id,string"`
-	TicketURL string `json:"ticket_url"`
-	Body      string `json:"body,omitempty"`
-	Plan      string `json:"plan,omitempty"`
-	Status    string `json:"status"`
-	CommentID int64  `json:"comment_id,string,omitempty"`
-	CanPost   bool   `json:"can_post"`
+	Source     string `json:"source"`
+	Visibility string `json:"visibility"`
+	TicketID   int64  `json:"ticket_id,string"`
+	TicketURL  string `json:"ticket_url"`
+	Body       string `json:"body,omitempty"`
+	Plan       string `json:"plan,omitempty"`
+	Status     string `json:"status"`
+	CommentID  int64  `json:"comment_id,string,omitempty"`
+	CanPost    bool   `json:"can_post"`
 }
 
 func (f *Flow) NotePreview(runID string, saved map[string]any) *NotePreview {
@@ -72,15 +74,15 @@ func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any,
 		return NotePreview{}, err
 	}
 	// Journal before writing. A crash, timeout, or missing receipt leaves a
-	// reservation that blocks another send. The operator can inspect Zendesk.
+	// reservation that blocks another send. The operator can inspect the source.
 	c.Note = &NoteDelivery{Status: "unconfirmed", At: time.Now().UTC()}
 	if err := f.save(c); err != nil {
 		return NotePreview{}, err
 	}
-	commentID, err := f.source.postComment(ctx, t, preview.Body, false)
+	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github")
 	switch {
 	case errors.Is(err, ErrChanged), errors.Is(err, ErrOAuthRequired):
-		// These responses confirm Zendesk did not apply the write.
+		// These responses confirm the connector did not apply the write.
 		c.Note = nil
 		if saveErr := f.save(c); saveErr != nil {
 			return NotePreview{}, saveErr
@@ -96,7 +98,8 @@ func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any,
 }
 
 func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
-	if !f.settings.InternalNotes || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
+	enabled := f.provider == "zendesk" && f.settings.InternalNotes || f.provider == "github" && f.settings.InvestigationComments
+	if !enabled || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
 		return Case{}, false
 	}
 	finished, _ := saved["finished_at"].(string)
@@ -107,26 +110,62 @@ func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
 	source, _ := input["source"].(map[string]any)
 	rawID, _ := source["ticket_id"].(string)
 	id, err := strconv.ParseInt(rawID, 10, 64)
-	if err != nil || id <= 0 || rawID != strconv.FormatInt(id, 10) || source["kind"] != "zendesk" {
+	if err != nil || id <= 0 || rawID != strconv.FormatInt(id, 10) || source["kind"] != f.provider {
 		return Case{}, false
 	}
 	c, found := f.store.get(id)
+	if f.provider == "github" && (c.Source != "github" || c.URL != f.ticketURL(id) ||
+		source["repository"] != strings.TrimPrefix(f.Account(), "https://github.com/") || source["issue_number"] != rawID) {
+		return Case{}, false
+	}
 	return c, found && c.RunID == runID && c.State == "launched" && c.Plan != "" &&
-		source["approval_plan"] == c.Plan && source["url"] == c.Account+"/agent/tickets/"+rawID
+		c.Account == f.Account() && source["approval_plan"] == c.Plan && source["url"] == f.ticketURL(id)
+}
+
+func (f *Flow) ticketURL(id int64) string {
+	path := "/agent/tickets/"
+	if f.provider == "github" {
+		path = "/issues/"
+	}
+	return f.Account() + path + strconv.FormatInt(id, 10)
 }
 
 func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
-	preview := NotePreview{TicketID: c.TicketID, TicketURL: c.Account + "/agent/tickets/" + strconv.FormatInt(c.TicketID, 10)}
+	preview := NotePreview{Source: f.provider, Visibility: "internal", TicketID: c.TicketID, TicketURL: f.ticketURL(c.TicketID)}
+	if f.provider == "github" {
+		preview.Visibility = "repository"
+	}
 	if c.Note != nil {
 		preview.Status, preview.CommentID = c.Note.Status, c.Note.CommentID
 		return preview
 	}
 	preview.Status = "ready"
 	preview.Body = investigationNote(c.RunID, saved, f.currentSecrets())
+	if f.provider == "github" {
+		// Render imported summaries and commands literally. In GitHub Markdown,
+		// prose could otherwise create mentions, links or embedded images.
+		width, run := 3, 0
+		for _, char := range preview.Body {
+			if char == '`' {
+				run++
+				if run >= width {
+					width = run + 1
+				}
+			} else {
+				run = 0
+			}
+		}
+		fence := strings.Repeat("`", width)
+		preview.Body = fence + "text\n" + preview.Body + "\n" + fence
+	}
 	preview.Plan = digest(struct {
-		RunID, TicketURL, Body string
-	}{c.RunID, preview.TicketURL, preview.Body})
-	preview.CanPost = f.oauth != nil && f.oauth.status().Connected
+		RunID, TicketURL, Body, Source, Visibility string
+	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
+	if f.provider == "github" {
+		preview.CanPost = f.settings.InvestigationComments
+	} else {
+		preview.CanPost = f.oauth != nil && f.oauth.status().Connected
+	}
 	return preview
 }
 

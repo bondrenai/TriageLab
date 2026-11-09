@@ -125,6 +125,12 @@ multi-user access control; keep it behind your SSH tunnel.
 
 The [Zendesk ticket pilot](docs/tickets.md) adds a case queue, configurable ticket
 selection and clarification, and approval before the existing investigation run.
+[GitHub issue support](docs/github-issues.md) brings issue and attachment imports,
+reviewed clarifications with bounded follow-ups, and reviewed investigation
+comments to one configured repository through the same workflow. GitHub comments
+are visible to everyone with repository access and public in public repositories.
+Both sources currently use the Python 3.12 timeout procedure; select the source
+with the configuration passed to `serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.

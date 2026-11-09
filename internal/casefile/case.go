@@ -33,6 +33,7 @@ type Attachment struct {
 	Content   []byte `json:"-"`
 	SHA256    string `json:"sha256"`
 	SizeBytes int    `json:"size_bytes"`
+	SourceURL string `json:"source_url,omitempty"`
 }
 
 type Case struct {
