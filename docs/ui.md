@@ -85,6 +85,24 @@ in again after a restart. Two methods can be configured, and they may coexist:
   `role_map`; accounts that match no mapping receive `default_role`
   (least-privilege `viewer` unless configured otherwise).
 
+Provider notes from end-to-end verification against Keycloak 26 and
+Zitadel v4.20 (2026-11-09):
+
+- **Keycloak** (confidential client, `client_secret_post` + PKCE): map
+  workspace roles from a `groups` claim via a client scope with the group
+  membership mapper — in Keycloak 26 the mapper provider id is
+  `oidc-group-membership-mapper`, and the scope must be attached to the
+  client's default scopes. Realm roles only reach the access token by
+  default, so a dedicated groups mapper is the reliable path.
+- **Zitadel** (public client, PKCE only): request the scope
+  `urn:zitadel:iam:org:projects:roles` (plural "projects"); the claim in the
+  ID token is `urn:zitadel:iam:org:project:roles` (singular) and is an
+  object keyed by role name, which the workspace accepts. Roles reach the ID
+  token only when the app sets the ID-token role/userinfo assertions and the
+  project sets `project_role_assertion`. Human users need an initial
+  password set through the API (`initial_password` at creation, or the
+  password endpoints afterwards).
+
 Three roles are enforced server-side on every API route:
 
 | Role | Can | Cannot |
