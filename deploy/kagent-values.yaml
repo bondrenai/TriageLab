@@ -1,0 +1,65 @@
+# Private, single-user development installation; see docs/development.md.
+# KAgent 1.0.0-rc3 chart values, checked against the release's protobuf config.
+global:
+  watchNamespaces: [kagent]
+rbac:
+  namespaces: [kagent]
+config:
+  server:
+    auth:
+      mode: insecure
+      serviceAccount:
+        authority: triagelab-development
+  logging:
+    level: warn
+  sessions:
+    idleTtl: 1800s
+  sandboxes:
+    guestImage: ghcr.io/kagent-dev/kagent/sandbox-guest@sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939
+    cpu: "1"
+    memory: 512Mi
+    defaultTtl: 900s
+    maxTtl: 1800s
+  runtimeDefaults:
+    cpu: "1"
+    memory: 1Gi
+    tokenPropagation:
+      enabled: true
+    builtinTools:
+      disableBash: true
+      disableFileSearch: true
+      disableAskUser: true
+    logging:
+      level: warn
+controller:
+  substrateClientCertificate:
+    enabled: true
+  service:
+    type: ClusterIP
+substrateWorkerPool:
+  create: true
+  name: kagent-default
+  replicas: 1
+  sandboxClass: gvisor
+  sandboxConfigRef: gvisor-default
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-gvisor:v1.0.0
+  template:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: "3"
+        memory: 3Gi
+ui:
+  replicas: 0
+kagent-tools:
+  enabled: false
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    # Helm default only; TriageLab uses its own triagelab-model (gpt-4.1).
+    model: gpt-4.1-mini
+    apiKeySecretRef: kagent-openai
+    apiKeySecretKey: OPENAI_API_KEY

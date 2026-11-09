@@ -1,0 +1,15 @@
+{
+  "endpoint": "http://127.0.0.1:8083/mcp",
+  "namespace": "kagent",
+  "agent": "triagelab-investigator",
+  "template": "triagelab-python",
+  "user_id": "triagelab@localhost",
+  "token_env": "TRIAGELAB_TOKEN",
+  "investigation_timeout": 600,
+  "process_timeout": 60,
+  "sandbox_ttl": 900,
+  "max_experiments": 8,
+  "poll_interval": 2,
+  "request_timeout": 20,
+  "max_output_bytes": 1048576
+}

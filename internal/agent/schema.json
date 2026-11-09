@@ -1,0 +1,108 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "reproduced",
+        "not_reproduced",
+        "inconclusive"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "statement": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "rejected",
+              "untested"
+            ]
+          },
+          "evidence_process_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "statement",
+          "status",
+          "evidence_process_ids"
+        ]
+      }
+    },
+    "reproduced_process_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "root_cause": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "statement": {
+          "type": "string"
+        },
+        "evidence_process_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "statement",
+        "evidence_process_ids"
+      ]
+    },
+    "reproduction_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing_information": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "outcome",
+    "summary",
+    "observations",
+    "hypotheses",
+    "reproduced_process_ids",
+    "root_cause",
+    "reproduction_steps",
+    "next_actions",
+    "missing_information"
+  ]
+}

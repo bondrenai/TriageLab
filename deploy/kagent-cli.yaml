@@ -1,0 +1,16 @@
+# valuesFiles are resolved relative to this configuration file.
+install:
+  defaultModelProvider: OpenAI
+  kagent:
+    repository: oci://ghcr.io/kagent-dev/kagent/helm/
+    version: 1.0.0-rc3
+    valuesFiles: [kagent-values.yaml]
+  substrate:
+    repository: oci://ghcr.io/kagent-dev/substrate/helm/
+    version: 1.0.0
+  atelet:
+    repository: oci://ghcr.io/kagent-dev/substrate/helm/
+    version: 1.0.0
+  podCertificate:
+    repository: oci://ghcr.io/kagent-dev/substrate/helm/
+    version: 1.0.0

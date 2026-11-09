@@ -1,0 +1,11 @@
+/bin/
+/reports/
+.env
+.env.*
+!.env.example
+*.local.json
+/deploy/rendered.json
+__pycache__/
+/.tools/
+.venv/
+.DS_Store

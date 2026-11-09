@@ -1,0 +1,85 @@
+{
+  "kind": "real-upstream-sandbox-smoke",
+  "agent_invoked": false,
+  "experiments": [
+    {
+      "label": "failure",
+      "command": [
+        "python3",
+        "app.py"
+      ],
+      "exit_code": 1,
+      "process_id": "proc-01fbb9b297ff784a04c415ca",
+      "state": "PROCESS_STATE_EXITED",
+      "stdout": "request: endpoint=/health timeout_ms=5\nsimulation: downstream_response_ms=120\n",
+      "stderr": "TimeoutError: deadline 5ms elapsed before response at 120ms\n"
+    },
+    {
+      "label": "corrective-verification",
+      "command": [
+        "python3",
+        "app.py",
+        "--timeout-ms",
+        "5000"
+      ],
+      "exit_code": 0,
+      "process_id": "proc-dfa400c794a303faa2dadfbc",
+      "state": "PROCESS_STATE_EXITED",
+      "stdout": "request: endpoint=/health timeout_ms=5000\nsimulation: downstream_response_ms=120\nHTTP 200: healthy\n",
+      "stderr": ""
+    },
+    {
+      "label": "default-deny-egress",
+      "command": [
+        "python3",
+        "-c",
+        "import socket; socket.getaddrinfo('example.com',443)"
+      ],
+      "exit_code": 1,
+      "process_id": "proc-3426ed0c842099936242bf1b",
+      "state": "PROCESS_STATE_EXITED",
+      "stdout": "",
+      "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/usr/local/lib/python3.12/socket.py\", line 978, in getaddrinfo\n    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsocket.gaierror: [Errno -2] Name or service not known\n"
+    },
+    {
+      "label": "direct-ip-http-denial",
+      "command": [
+        "python3",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://1.1.1.1',timeout=3)"
+      ],
+      "exit_code": 1,
+      "process_id": "proc-9ee42a9ea26815685be39ed0",
+      "state": "PROCESS_STATE_EXITED",
+      "stdout": "",
+      "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 215, in urlopen\n    return opener.open(url, data, timeout)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 521, in open\n    response = meth(req, response)\n               ^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 630, in http_response\n    response = self.parent.error(\n               ^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 559, in error\n    return self._call_chain(*args)\n           ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 492, in _call_chain\n    result = func(*args)\n             ^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/urllib/request.py\", line 639, in http_error_default\n    raise HTTPError(req.full_url, code, msg, hdrs, fp)\nurllib.error.HTTPError: HTTP Error 403: Forbidden\n"
+    }
+  ],
+  "sandbox": {
+    "expires_at": "2026-11-09T01:01:39.680283Z",
+    "id": "01a1bdce-a7fc-7c3f-b827-3b7b491e6716",
+    "name": "triagelab-real-smoke",
+    "operation": "RUNTIME_OPERATION_NONE",
+    "sandbox_template": {
+      "name": "triagelab-python",
+      "namespace": "kagent"
+    },
+    "state": "RUNTIME_STATE_READY"
+  },
+  "kill_verification": {
+    "exit_code": 137,
+    "process_id": "proc-d8156bb7448c15ad0090139e",
+    "state": "PROCESS_STATE_EXITED"
+  },
+  "cleanup": {
+    "expires_at": "2026-11-09T01:01:39.680283Z",
+    "id": "01a1bdce-a7fc-7c3f-b827-3b7b491e6716",
+    "name": "triagelab-real-smoke",
+    "operation": "RUNTIME_OPERATION_NONE",
+    "sandbox_template": {
+      "name": "triagelab-python",
+      "namespace": "kagent"
+    },
+    "state": "RUNTIME_STATE_DELETED"
+  }
+}

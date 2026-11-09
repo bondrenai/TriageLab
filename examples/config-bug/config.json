@@ -1,0 +1,5 @@
+{
+  "endpoint": "/health",
+  "request_timeout_ms": 5,
+  "simulated_response_ms": 120
+}
