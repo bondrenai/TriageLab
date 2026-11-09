@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -24,18 +25,17 @@ import (
 )
 
 const (
-	procedure         = "python-timeout-v1"
+	procedure         = "ticket-evidence-v1"
 	approvalLifetime  = 15 * time.Minute
 	clarificationWait = 7 * 24 * time.Hour
 )
 
 var (
-	ErrBusy       = errors.New("a ticket action is already in progress; try again shortly")
-	ErrNotFound   = errors.New("ticket case not found")
-	ErrBlocked    = errors.New("ticket is not ready for this action")
-	ErrStorage    = errors.New("ticket state could not be saved; restart the service before trying again")
-	fileName      = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}\.(py|json|log|txt)$`)
-	pythonVersion = regexp.MustCompile(`^3\.12(?:\.[0-9]{1,3})?$`)
+	ErrBusy     = errors.New("a ticket action is already in progress; try again shortly")
+	ErrNotFound = errors.New("ticket case not found")
+	ErrBlocked  = errors.New("ticket is not ready for this action")
+	ErrStorage  = errors.New("ticket state could not be saved; restart the service before trying again")
+	fileName    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}\.(py|json|log|txt)$`)
 )
 
 type Fact struct {
@@ -55,24 +55,33 @@ type Question struct {
 }
 
 type Case struct {
-	TicketID    int64                 `json:"ticket_id,string"`
-	Account     string                `json:"account"`
-	Source      string                `json:"source,omitempty"`
-	URL         string                `json:"url,omitempty"`
-	Title       string                `json:"title"`
-	State       string                `json:"state"`
-	Reason      string                `json:"reason"`
-	Facts       []Fact                `json:"facts,omitempty"`
-	Files       []casefile.Attachment `json:"files,omitempty"`
-	Draft       string                `json:"draft,omitempty"`
-	Questions   []Question            `json:"questions,omitempty"`
-	Plan        string                `json:"plan,omitempty"`
-	PlanExpires time.Time             `json:"plan_expires,omitempty"`
-	CheckedAt   time.Time             `json:"checked_at"`
-	RunID       string                `json:"run_id,omitempty"`
-	ApprovedAt  time.Time             `json:"approved_at,omitempty"`
-	Paused      bool                  `json:"paused"`
-	Revision    string                `json:"revision"`
+	TicketID          int64                 `json:"ticket_id,string"`
+	Account           string                `json:"account"`
+	Source            string                `json:"source,omitempty"`
+	URL               string                `json:"url,omitempty"`
+	Title             string                `json:"title"`
+	State             string                `json:"state"`
+	Reason            string                `json:"reason"`
+	Facts             []Fact                `json:"facts,omitempty"`
+	Files             []casefile.Attachment `json:"files,omitempty"`
+	Draft             string                `json:"draft,omitempty"`
+	Questions         []Question            `json:"questions,omitempty"`
+	Plan              string                `json:"plan,omitempty"`
+	PlanExpires       time.Time             `json:"plan_expires,omitempty"`
+	CheckedAt         time.Time             `json:"checked_at"`
+	RunID             string                `json:"run_id,omitempty"`
+	ApprovedAt        time.Time             `json:"approved_at,omitempty"`
+	Paused            bool                  `json:"paused"`
+	Revision          string                `json:"revision"`
+	Agent             string                `json:"agent,omitempty"`
+	Sandbox           string                `json:"sandbox,omitempty"`
+	Matches           []RouteRule           `json:"matches,omitempty"`
+	AgentChoices      []string              `json:"agent_choices,omitempty"`
+	MatchedTag        string                `json:"matched_tag,omitempty"`
+	Missing           []string              `json:"missing,omitempty"`
+	SelectedAgent     string                `json:"selected_agent,omitempty"`
+	SelectedFor       string                `json:"selected_for,omitempty"`
+	ProcedureRevision string                `json:"procedure_revision,omitempty"`
 
 	Requester             *Requester    `json:"requester,omitempty"`
 	ClarificationApproval string        `json:"clarification_approval,omitempty"`
@@ -80,6 +89,7 @@ type Case struct {
 
 	replyID                int64
 	clarificationRecipient string
+	target                 RunTarget
 }
 
 type Settings struct {
@@ -90,21 +100,26 @@ type Settings struct {
 	MaxExperiments        int    `json:"max_experiments"`
 	TimeoutSeconds        int    `json:"timeout_seconds"`
 	Template              string `json:"template"`
+	ClarificationLimit    int    `json:"clarification_limit"`
 }
 
 type Flow struct {
-	source   source
-	provider string
-	oauth    *zendeskOAuth
-	store    *store
-	settings Settings
-	runtime  investigation.Config
-	secrets  []string
-	op       sync.Mutex
-	broken   bool
-	closed   bool
-	cancel   context.CancelFunc
-	done     chan struct{}
+	source         source
+	provider       string
+	oauth          *zendeskOAuth
+	store          *store
+	settings       Settings
+	runtime        investigation.Config
+	secrets        []string
+	op             sync.Mutex
+	broken         bool
+	closed         bool
+	cancel         context.CancelFunc
+	done           chan struct{}
+	savedProcedure atomic.Pointer[ProcedureVersion]
+	// ResolveTarget is configured before Start and returns the exact run target
+	// to put under approval. It performs no investigation or model call.
+	ResolveTarget func(context.Context, string, string) (RunTarget, error)
 }
 
 func Open(config Config, dir string, runtime investigation.Config, secrets ...string) (*Flow, error) {
@@ -126,7 +141,8 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 			g.client.CloseIdleConnections()
 			return nil, err
 		}
-		return newFlow(config, g, s, runtime, append(slices.Clone(secrets), token)), nil
+		flow := newFlow(config, g, s, runtime, append(slices.Clone(secrets), token))
+		return flow, flow.checkSavedProcedure()
 	}
 	z := newZendesk(config.Subdomain)
 	s, err := openStore(dir, z.account())
@@ -140,7 +156,17 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 	}
 	flow := newFlow(config, z, s, runtime, secrets)
 	flow.oauth = z.oauth
-	return flow, nil
+	return flow, flow.checkSavedProcedure()
+}
+
+func (f *Flow) checkSavedProcedure() error {
+	if saved := f.savedProcedure.Load(); saved != nil {
+		if err := f.validateProcedureSet(*saved); err != nil {
+			_ = f.Close()
+			return err
+		}
+	}
+	return nil
 }
 
 func (f *Flow) Provider() string { return f.provider }
@@ -176,12 +202,17 @@ func (f *Flow) currentSecrets() []string {
 }
 
 func newFlow(config Config, source source, store *store, runtime investigation.Config, secrets []string) *Flow {
-	return &Flow{source: source, provider: config.provider(), store: store, runtime: runtime, secrets: secrets, settings: Settings{
+	f := &Flow{source: source, provider: config.provider(), store: store, runtime: runtime, secrets: secrets, settings: Settings{
 		Policy: config.Policy, PollSeconds: config.PollSeconds, MaxExperiments: runtime.MaxExperiments,
 		InternalNotes:         config.InternalNotes,
 		InvestigationComments: config.InvestigationComments,
 		TimeoutSeconds:        runtime.InvestigationTimeout, Template: runtime.Template,
 	}}
+	if config.Policy.AutoQuestions {
+		f.settings.ClarificationLimit = config.Policy.MaxQuestions
+	}
+	f.savedProcedure.Store(store.procedure)
+	return f
 }
 
 func (f *Flow) Settings() Settings { return f.settings }
@@ -279,9 +310,6 @@ func (f *Flow) Refresh(ctx context.Context, id int64) (Case, error) {
 }
 
 func (f *Flow) Clarify(ctx context.Context, id int64, revision string) (Case, error) {
-	if !f.settings.Policy.AutoQuestions {
-		return Case{}, ErrBlocked
-	}
 	return f.checkTicket(ctx, id, clarifyTicket, revision)
 }
 
@@ -298,6 +326,9 @@ func (f *Flow) checkTicket(ctx context.Context, id int64, action ticketAction, r
 		return Case{}, err
 	}
 	defer f.op.Unlock()
+	if action == clarifyTicket && !f.settings.Policy.AutoQuestions {
+		return Case{}, ErrBlocked
+	}
 	ctx, cancel := context.WithTimeout(ctx, 24*time.Second)
 	defer cancel()
 	previous, tracked := f.store.get(id)
@@ -384,7 +415,7 @@ func (f *Flow) Pause(id int64, paused bool) (Case, error) {
 
 // Launch reserves the shared workspace slot and calls reserve before any
 // external investigation starts. The reservation consumes this case's one run.
-type Launch func(casefile.Case, func() error) error
+type Launch func(casefile.Case, RunTarget, func() error) error
 
 func (f *Flow) Approve(ctx context.Context, id int64, plan string, launch Launch) (Case, error) {
 	if err := f.begin(); err != nil {
@@ -429,18 +460,27 @@ func (f *Flow) Approve(ctx context.Context, id int64, plan string, launch Launch
 	}
 	input.Source["approval_plan"] = plan
 	input.Source["approved_at"] = now.Format(time.RFC3339Nano)
+	input.Source["ticket_agent"] = c.Agent
+	if len(c.Matches) > 0 {
+		input.Source["routing_matches"] = c.Matches
+	}
 	c.RunID, c.ApprovedAt = input.ID, now
 	c.State, c.Reason = "launched", "The operator approved this evidence. Open the investigation to see its status."
-	err = launch(input, func() error { return f.save(c) })
+	err = launch(input, c.target, func() error { return f.save(c) })
 	return c, err
 }
 
 func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticket, casefile.Case, error) {
+	return f.assessProcedure(ctx, id, previous, f.Procedure())
+}
+
+func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, version ProcedureVersion) (Case, ticket, casefile.Case, error) {
 	s, err := f.source.read(ctx, id)
 	if err != nil {
 		return Case{}, ticket{}, casefile.Case{}, err
 	}
 	t := s.Ticket
+	p, exclusion := version.match(t)
 	c := previous
 	c.TicketID, c.Account, c.CheckedAt = id, f.source.account(), time.Now().UTC()
 	c.Source, c.URL = f.provider, t.URL
@@ -448,7 +488,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		c.URL = c.Account + "/agent/tickets/" + strconv.FormatInt(id, 10)
 	}
 	secrets := f.currentSecrets()
-	c.Title = report.Redact(bounded(t.Subject, 500), secrets...).(string)
+	c.Title, _ = report.Redacted(bounded(t.Subject, 500), secrets...)
 	profile := t.RequesterProfile
 	profile.Name = report.Redact(bounded(profile.Name, 200), secrets...).(string)
 	profile.Email = report.Redact(bounded(profile.Email, 320), secrets...).(string)
@@ -456,41 +496,49 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 	c.clarificationRecipient = digest(struct {
 		Requester Requester
 		Policy    Policy
-	}{t.RequesterProfile, f.settings.Policy})
-	if c.ClarificationApproval != c.clarificationRecipient {
+		Opening   string
+		Evidence  EvidenceRules
+	}{t.RequesterProfile, p.Policy, p.Clarification, p.Evidence})
+	if exclusion != "" || c.ClarificationApproval != c.clarificationRecipient {
 		c.ClarificationApproval = ""
 	}
-	c.State, c.Reason, c.Draft, c.Plan = "excluded", f.settings.Policy.exclusion(t), "", ""
+	c.State, c.Reason, c.Draft, c.Plan = "excluded", exclusion, "", ""
 	c.PlanExpires = time.Time{}
 	c.Facts, c.Files = nil, nil
+	c.Matches, c.AgentChoices, c.Missing = nil, nil, nil
+	c.Agent, c.Sandbox = "", ""
+	c.MatchedTag = ""
+	c.ProcedureRevision = version.Revision
 	c.Revision = digest(struct {
 		Account   string
 		Ticket    ticket
 		Requester Requester
-		Policy    Policy
+		Procedure Procedure
 		Comments  []comment
-	}{c.Account, t, t.RequesterProfile, f.settings.Policy, s.Comments})
+	}{c.Account, t, t.RequesterProfile, p, s.Comments})
 	if previous.Paused || previous.RunID != "" {
 		return previous, t, casefile.Case{}, nil
 	}
 	if c.Reason != "" {
+		c.SelectedAgent, c.SelectedFor = "", ""
 		return c, t, casefile.Case{}, nil
 	}
-	if f.runtime.Template != "triagelab-python" {
-		c.State, c.Reason = "review", "This procedure requires the triagelab-python sandbox."
-		return c, t, casefile.Case{}, nil
+	c.MatchedTag = p.Policy.Tag
+	c.route(p, t.Tags)
+	if c.SelectedAgent != "" {
+		c.Revision = digest([]string{c.Revision, c.SelectedAgent})
 	}
 
-	fields := []struct{ name, question string }{
-		{"Python version", "Python version: Which Python version runs the affected script?"},
-		{"Expected", "Expected: What timeout or behavior did you expect?"},
-		{"Actual", "Actual: What happened instead, including the exact error if available?"},
-	}
 	facts := make(map[string]Fact)
-	var files, configFiles []attachment
-	var fileCommentID, configCommentID int64
-	var fileCommentURL, configCommentURL string
-	isConfig := func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".json") }
+	var redactions []string
+	credentialInFacts := false
+	var replies []comment
+	fieldPatterns := make(map[string]*regexp.Regexp)
+	for _, rule := range p.Evidence {
+		if rule.Pattern != "" {
+			fieldPatterns[rule.Match] = regexp.MustCompile(rule.Pattern)
+		}
+	}
 	var latestPublic comment
 	var latestRequester comment
 	for _, m := range s.Comments {
@@ -510,59 +558,58 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 			continue
 		}
 		latestRequester = m
+		replies = append(replies, m)
 		for _, line := range strings.Split(m.Body, "\n") {
-			key, value, found := strings.Cut(strings.TrimSpace(line), ":")
+			key, value, found := strings.Cut(line, ":")
 			if !found {
 				continue
 			}
-			for _, field := range fields {
-				if strings.EqualFold(key, field.name) {
-					value = strings.TrimSpace(value)
-					if value == "" || len(value) > 1000 {
-						delete(facts, field.name)
-						break
-					}
-					facts[field.name] = Fact{Label: field.name, Value: value, CommentID: strconv.FormatInt(m.ID, 10), URL: m.URL}
+			key = strings.TrimSpace(key)
+			for _, rule := range p.Evidence {
+				if rule.Kind != "field" || !strings.EqualFold(key, rule.Match) {
+					continue
+				}
+				value = strings.TrimSpace(value)
+				// A configured credential in requester prose is an incident
+				// to review, not text to redact and run.
+				if f.hasSecret([]byte(value)) {
+					credentialInFacts = true
+				}
+				pattern := fieldPatterns[rule.Match]
+				if value == "" || len(value) > 1000 || (pattern != nil && !pattern.MatchString(value)) {
+					delete(facts, rule.Match)
 					break
 				}
+				value, applied := report.Redacted(value, secrets...)
+				redactions = append(redactions, applied...)
+				facts[rule.Match] = Fact{Label: rule.Match, Value: value, CommentID: strconv.FormatInt(m.ID, 10), URL: m.URL}
+				break
 			}
 		}
-		// Prefer the latest script and any files sent alongside it.
-		if slices.ContainsFunc(m.Files, func(a attachment) bool { return strings.HasSuffix(reproductionName(a.Name), ".py") }) {
-			files, fileCommentID = m.Files, m.ID
-			fileCommentURL = m.URL
-		} else if slices.ContainsFunc(m.Files, isConfig) {
-			configFiles = slices.DeleteFunc(slices.Clone(m.Files), func(a attachment) bool { return !isConfig(a) })
-			configCommentID = m.ID
-			configCommentURL = m.URL
+	}
+	selectedFiles := p.Evidence.selectFiles(replies)
+	var missing, lines []string
+	for _, rule := range p.Evidence {
+		switch rule.Kind {
+		case "field":
+			if fact, ok := facts[rule.Match]; ok {
+				lines = append(lines, fact.Label+": "+fact.Value+" (requester comment "+fact.CommentID+")")
+				c.Facts = append(c.Facts, fact)
+			} else if rule.Required {
+				missing = append(missing, rule.Question)
+			}
+		case "attachment":
+			if rule.Required && !slices.ContainsFunc(selectedFiles, func(f evidenceFile) bool { return rule.matchesFile(f.attachment) }) {
+				missing = append(missing, rule.Question)
+			}
 		}
 	}
-	// A separate config reply can fill a gap in the selected script's bundle.
-	if len(files) > 0 && configCommentID > 0 && !slices.ContainsFunc(files, isConfig) {
-		files = append(slices.Clone(files), configFiles...)
-	} else {
-		configCommentID = 0
-	}
-	var missing []string
-	var lines []string
-	for _, field := range fields {
-		if fact, ok := facts[field.name]; ok {
-			lines = append(lines, fact.Label+": "+fact.Value+" (requester comment "+fact.CommentID+")")
-			fact.Value = report.Redact(fact.Value, secrets...).(string)
-			c.Facts = append(c.Facts, fact)
-		} else {
-			missing = append(missing, field.question)
-		}
-	}
-	if fact, ok := facts["Python version"]; ok && !pythonVersion.MatchString(fact.Value) {
-		c.State, c.Reason = "review", "This procedure supports Python 3.12. Review the reported version at the source."
-		return c, t, casefile.Case{}, nil
-	}
-	if len(files) == 0 {
-		missing = append(missing, "Please attach the smallest Python script (.py) that shows the timeout, along with any required .json configuration. Remove secrets and customer data.")
-	}
+	c.Missing = missing
 	if len(missing) != 0 {
-		c.Draft = "To help us reproduce the timeout, please reply with the following:\n\n- " + strings.Join(missing, "\n- ")
+		c.Draft = "- " + strings.Join(missing, "\n- ")
+		if p.Clarification != "" {
+			c.Draft = p.Clarification + "\n\n" + c.Draft
+		}
 		c.Revision = digest(struct{ Snapshot, Draft string }{c.Revision, c.Draft})
 		c.State, c.Reason = "review", "More information is needed. Review the suggested clarification."
 		c.replyID = latestRequester.ID
@@ -587,8 +634,12 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 				return c, t, casefile.Case{}, nil
 			}
 		}
-		if f.settings.Policy.AutoQuestions && len(c.Questions) < f.settings.Policy.MaxQuestions &&
+		if p.Policy.AutoQuestions && len(c.Questions) < p.Policy.MaxQuestions &&
 			latestRequester.ID > 0 && latestPublic.ID == latestRequester.ID {
+			if findings := sanitizeOutput(c.Draft, secrets, outboundTerms(f.store.list(), id, s.Comments)); len(findings) > 0 {
+				c.State, c.Reason = "review", "The suggested clarification was held for review because "+strings.Join(findings, " and ")+"."
+				return c, t, casefile.Case{}, nil
+			}
 			c.State, c.Reason = "ask", "Review the requester and draft before approving clarifications."
 			if c.ClarificationApproval != "" {
 				c.Reason = "The approved policy allows this follow-up clarification."
@@ -596,42 +647,71 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 		}
 		return c, t, casefile.Case{}, nil
 	}
-	input, err := f.prepare(ctx, lines, files)
+	if credentialInFacts {
+		c.State, c.Reason = "review", "Ticket evidence contains a configured credential."
+		return c, t, casefile.Case{}, nil
+	}
+	var files []attachment
+	var fileEvidence []string
+	for _, fsrc := range selectedFiles {
+		files = append(files, fsrc.attachment)
+		name := reproductionName(fsrc.Name)
+		fileEvidence = append(fileEvidence, name+" from "+f.commentReference(strconv.FormatInt(fsrc.commentID, 10), fsrc.commentURL))
+		if f.provider == "github" {
+			fileEvidence = append(fileEvidence, name+" attached at "+fsrc.URL)
+		}
+	}
+	input, err := f.prepare(ctx, c.Title, lines, files)
 	if err != nil {
 		c.State, c.Reason = "review", err.Error()
 		return c, t, casefile.Case{}, nil
 	}
 	input.Source = map[string]any{"kind": f.provider, "ticket_id": strconv.FormatInt(id, 10),
-		"url": c.URL, "procedure": procedure}
+		"url": c.URL, "procedure": procedure, "ticket_procedure_tag": p.Policy.Tag}
 	if f.provider == "github" {
 		input.Source["repository"] = strings.TrimPrefix(c.Account, "https://github.com/")
 		input.Source["issue_number"] = strconv.FormatInt(id, 10)
 	}
-	input.Environment = map[string]any{"python_version": facts["Python version"].Value}
+	if len(redactions) > 0 {
+		slices.Sort(redactions)
+		input.Source["input_redactions"] = slices.Compact(redactions)
+	}
+	input.Environment = map[string]any{}
 	for _, fact := range c.Facts {
+		if strings.EqualFold(fact.Label, "Python version") {
+			input.Environment["python_version"] = fact.Value
+		}
 		input.Evidence = append(input.Evidence, fact.Label+" from "+f.commentReference(fact.CommentID, fact.URL))
 	}
-	input.Evidence = append(input.Evidence, "Reproduction files from "+f.commentReference(strconv.FormatInt(fileCommentID, 10), fileCommentURL))
-	if configCommentID != 0 {
-		input.Evidence = append(input.Evidence, "Configuration files from "+f.commentReference(strconv.FormatInt(configCommentID, 10), configCommentURL))
-	}
-	if f.provider == "github" {
-		for _, a := range files {
-			input.Evidence = append(input.Evidence, reproductionName(a.Name)+" attached at "+a.URL)
-		}
-	}
+	input.Evidence = append(input.Evidence, fileEvidence...)
 	c.Files = slices.Clone(input.Attachments)
 	for i := range c.Files {
 		c.Files[i].Content = nil
 	}
+	if c.Agent == "" {
+		c.State, c.Reason = "review", "More than one agent matches. Choose which agent should investigate."
+		return c, t, casefile.Case{}, nil
+	}
+	c.target = RunTarget{Agent: c.Agent, Sandbox: c.Sandbox}
+	if f.ResolveTarget != nil {
+		c.target, err = f.ResolveTarget(ctx, c.Agent, c.Sandbox)
+	} else if c.Agent != f.runtime.Agent || c.Sandbox != "triagelab-python" {
+		err = ErrBlocked
+	}
+	if err != nil {
+		c.State, c.Reason = "review", "The selected agent or sandbox is unavailable. Check deployment status and refresh the case."
+		return c, t, casefile.Case{}, nil
+	}
 	c.Plan = digest(struct {
-		Procedure, Account, Description    string
-		TicketID, Requester, FileCommentID int64
-		Policy                             Policy
-		Runtime                            investigation.Config
-		Files                              []casefile.Attachment
-		ConfigCommentID                    int64 `json:",omitempty"`
-	}{procedure, c.Account, input.Description, id, t.Requester, fileCommentID, f.settings.Policy, f.runtime, c.Files, configCommentID})
+		Procedure, Account, Description string
+		TicketID, Requester             int64
+		Settings                        Procedure
+		Runtime                         investigation.Config
+		Target                          RunTarget
+		Matches                         []RouteRule
+		Files                           []casefile.Attachment
+		FileEvidence                    []string
+	}{procedure, c.Account, input.Description, id, t.Requester, p, f.runtime, c.target, c.Matches, c.Files, fileEvidence})
 	if f.provider == "github" {
 		// Comment edits/deletions and changed attachment locations invalidate
 		// approval even when the selected file bytes remain identical.
@@ -649,7 +729,7 @@ func (f *Flow) commentReference(id, url string) string {
 	return "Zendesk public requester comment " + id
 }
 
-func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) (casefile.Case, error) {
+func (f *Flow) prepare(ctx context.Context, title string, lines []string, files []attachment) (casefile.Case, error) {
 	if len(files) > 4 {
 		return casefile.Case{}, errors.New("Select a reproduction with at most four supported files at the source.")
 	}
@@ -686,7 +766,13 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 	if f.provider == "github" {
 		provider = "GitHub"
 	}
-	desc := "Investigate a Python timeout reported in " + provider + ". Use the supplied reproduction files.\n" + strings.Join(lines, "\n")
+	desc := "Investigate this case reported in " + provider + "."
+	if title != "" {
+		desc += "\nIssue: " + title
+	}
+	if len(lines) != 0 {
+		desc += "\n" + strings.Join(lines, "\n")
+	}
 	if f.hasSecret([]byte(desc)) {
 		return casefile.Case{}, errors.New("Ticket evidence contains a configured credential.")
 	}

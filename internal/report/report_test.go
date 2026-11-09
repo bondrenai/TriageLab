@@ -47,6 +47,24 @@ func read(t *testing.T, name string) string {
 	return string(content)
 }
 
+func TestRedactedReportsAppliedClasses(t *testing.T) {
+	text, classes := Redacted("plain prose stays", "hunter2")
+	if text != "plain prose stays" || len(classes) != 0 {
+		t.Fatalf("clean text was changed: %q %v", text, classes)
+	}
+	text, classes = Redacted("send password=hunter2 as bearer abc123DEF456ghi789JKL", "hunter2")
+	want := []string{"configured credential", "credential assignment", "bearer credential"}
+	if strings.Join(classes, "|") != strings.Join(want, "|") {
+		t.Fatalf("classes = %v, want %v", classes, want)
+	}
+	if strings.Contains(text, "hunter2") || strings.Contains(text, "abc123DEF456ghi789JKL") {
+		t.Fatalf("credential text survived: %q", text)
+	}
+	if _, classes = Redacted("line\r\nbroken \x1b[31mred\x1b[0m and \x00nul", "hunter2"); strings.Join(classes, "|") != "terminal escape|control characters" {
+		t.Fatalf("unsafe character classes = %v", classes)
+	}
+}
+
 func TestPreservesFailureVerificationAndCleanup(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "run")
 	data := sample()

@@ -34,7 +34,7 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|version> [options]")
+		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|agent-manifest|version> [options]")
 		return 2
 	}
 	if args[0] == "version" {
@@ -56,6 +56,38 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		fmt.Fprintln(out, string(data))
 		return 0
 	}
+	if args[0] == "agent-manifest" {
+		definitionPath := flags.String("definition", "", "local agent definition JSON file")
+		namespace := flags.String("namespace", investigation.DefaultConfig().Namespace, "KAgent namespace")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *definitionPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(errout, "Use agent-manifest --definition FILE [--namespace NAMESPACE]")
+			return 2
+		}
+		f, err := os.Open(*definitionPath)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		defer f.Close()
+		definition, err := agent.DecodeDefinition[agent.Definition](f)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		data, err := agent.RenderDefinition(*namespace, definition)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if _, err := fmt.Fprintln(out, string(data)); err != nil {
+			fmt.Fprintln(errout, "Could not write agent manifest")
+			return 4
+		}
+		return 0
+	}
 	configPath := flags.String("config", "", "JSON configuration (default: built-in localhost settings)")
 	description := flags.String("description", "", "local issue description")
 	descriptionFile := flags.String("description-file", "", "UTF-8 issue description file")
@@ -65,6 +97,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	listen := flags.String("listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	assets := flags.String("assets", "web/dist", "built frontend directory")
 	tickets := flags.String("tickets", "", "optional Zendesk ticket or GitHub issue procedure configuration (serve only)")
+	var statusKubeconfig, statusContext string
+	var allowResourceWrites bool
+	if args[0] == "serve" {
+		flags.StringVar(&statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
+		flags.StringVar(&statusContext, "status-context", "", "Kubernetes context for live deployment status")
+		flags.BoolVar(&allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save KAgent definitions in the configured namespace")
+	}
+	var manualAgent string
+	if args[0] == "investigate" {
+		flags.StringVar(&manualAgent, "agent", "", "agent name configured under manual_agents")
+	}
 	var files, logs stringsFlag
 	flags.Var(&files, "file", "attachment (repeatable)")
 	flags.Var(&logs, "log", "log file (repeatable)")
@@ -81,7 +124,11 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		return 2
 	}
 	token := os.Getenv(config.TokenEnv)
-	client, err := kagent.New(config.Endpoint, config.UserID, token, time.Duration(config.RequestTimeout)*time.Second)
+	var clientOpts []kagent.Option
+	if config.AllowClusterHTTP {
+		clientOpts = append(clientOpts, kagent.AllowClusterHTTP())
+	}
+	client, err := kagent.New(config.Endpoint, config.UserID, token, time.Duration(config.RequestTimeout)*time.Second, clientOpts...)
 	if err != nil {
 		fmt.Fprintln(errout, err)
 		return 2
@@ -94,6 +141,20 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
+		}
+		if statusKubeconfig != "" || statusContext != "" {
+			if err := workspace.EnableDeploymentStatus(statusKubeconfig, statusContext); err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
+		}
+		if allowResourceWrites {
+			if err := workspace.EnableResourceWrites(); err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
 		}
 		if *tickets != "" {
 			ticketConfig, err := ticketflow.LoadConfig(*tickets)
@@ -122,6 +183,11 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		fmt.Fprintln(out, "KAgent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
 		return 0
 	case "investigate":
+		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(manualAgent)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
 		if *description != "" && *descriptionFile != "" {
 			fmt.Fprintln(errout, "Use either --description or --description-file")
 			return 2

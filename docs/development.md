@@ -14,6 +14,10 @@ service-account verifier enabled, the development authentication mode still has
 other identity paths. An authenticated gateway and a real application authorizer
 are prerequisites for shared or exposed use. See [SECURITY.md](../SECURITY.md).
 
+To run the same single-user workspace as one pod inside this dedicated cluster
+instead of on the VM, use the [public Helm chart](helm.md); its access model is
+unchanged (loopback listener, `kubectl port-forward` only).
+
 ## Prerequisites on the VM
 
 - Linux with Docker or a compatible kind provider. Docker is used to host kind;
@@ -105,8 +109,10 @@ bin/triagelab manifest \
 ```
 
 Replace the digest placeholder before running; the renderer rejects invalid or
-tag-only images. Adding `SandboxTemplate.spec.egressPolicyRefs` is a separate,
-explicit operator decision. No destination is inferred from issue content.
+tag-only images. Additional sandbox templates — including
+`SandboxTemplate.spec.egressPolicyRefs` — are a separate, explicit operator
+decision, made either by manifest or through the workspace's Sandboxes and
+Egress editors. No destination is inferred from issue content.
 
 ## Run the genuine demonstration
 
@@ -163,10 +169,12 @@ authentication failures require correcting the controller-side Secret, never
 putting the provider key into the sandbox.
 
 If the CLI uploads successfully but the investigator receives `Sandbox access
-denied`, verify `RemoteMCPServer/triagelab-sandbox-api` uses the
-`triagelab-tools` hostname with `tokenPassthrough: true`, and that runtime token
-propagation remains enabled. Using the default controller hostname changes the
-outgoing identity to an actor token. Do not fix this by disabling authorization.
+denied`, verify that `RemoteMCPServer/triagelab-sandbox-api` uses the
+`triagelab-tools` hostname with `tokenPassthrough: true` and that the CLI uses
+a verified service-account token for the `kagent-invocation` audience. Using the
+default controller hostname changes the outgoing identity to an actor token.
+Keep `config.runtimeDefaults.tokenPropagation.enabled` set to `false` so the Go
+ADK runtime forwards the token only to tools with explicit passthrough.
 
 KAgent's sandbox TTL expires even if the CLI disappears. Normal and interrupted
 runs also explicitly delete their sandbox. A process-kill acknowledgment is not

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FlaskConical, FolderOpen, FileCheck2, Github, Inbox } from "lucide-react";
+import { ArrowUpRight, FlaskConical, FolderOpen, Bot, Github, Inbox } from "lucide-react";
+import { AgentsPage } from "./pages/AgentsPage";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
 import { NewInvestigationPage } from "./pages/NewInvestigationPage";
 import { TicketsPage } from "./pages/TicketsPage";
@@ -21,8 +22,8 @@ export function App() {
       <div className="workspace-label engraved">Workbench</div>
       <nav className="main-nav" aria-label="Main navigation">
         <NavLink to="/" end><FolderOpen size={17} aria-hidden="true" />Investigations</NavLink>
+        <NavLink to="/agents"><Bot size={17} aria-hidden="true" />Agents</NavLink>
         <NavLink to="/tickets"><Inbox size={17} aria-hidden="true" />Ticket cases</NavLink>
-        <NavLink to="/example"><FileCheck2 size={17} aria-hidden="true" />Example report</NavLink>
       </nav>
       <div className="sidebar-footer">
         <a className="source-link" href="https://github.com/bondrenai/TriageLab" target="_blank" rel="noreferrer"><Github size={16} aria-hidden="true" />Source & documentation<ArrowUpRight size={13} aria-hidden="true" /></a>
@@ -36,6 +37,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<InvestigationsPage />} />
           <Route path="/new" element={<NewInvestigationPage />} />
+          <Route path="/agents/*" element={<AgentsPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/example" element={<ReportPage example />} />
           <Route path="/runs/:id" element={<ReportPage />} />

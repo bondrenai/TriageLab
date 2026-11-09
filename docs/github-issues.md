@@ -55,13 +55,20 @@ configuration or replacing its environment token.
 
 ## Prepare and approve evidence
 
+**Edit procedures** in Ticket cases lets you set up a procedure for each
+product label with its own evidence requirements, clarification, agent, and
+sandbox. The first matching procedure applies. Use **Preview draft on issue**
+to check an individual procedure before saving. See
+[procedure editing](tickets.md#clarify-and-approve).
+
 Enter the issue number from the configured repository and choose **Preview
 issue**. Preview reads the issue without enrolling it. Choose **Track issue**
 to keep its preparation state. An open issue must carry the configured label.
 
-The procedure takes facts and files from the issue author's original body and
-subsequent comments. Other participants' replies do not supply reproduction
-evidence. Provide these fields as individual lines, outside code fences:
+The procedure takes configured facts and files from the issue author's original
+body and subsequent comments. Other participants' replies do not supply
+evidence. For the starter Python timeout checklist, provide these fields as
+individual lines:
 
 ```text
 Python version: 3.12.4
@@ -69,7 +76,7 @@ Expected: The health check allows five seconds for a response.
 Actual: The deadline expires after five milliseconds.
 ```
 
-Upload a sanitized Python reproduction and any required configuration or logs
+Upload sanitized files that meet the procedure's attachment rules
 to GitHub, keeping the standard Markdown attachment links in the author's body
 or comment. Supported files are `.py`, `.json`, `.txt`, and `.log`. If GitHub
 rejects a script or configuration extension, append `.txt`, such as
@@ -77,10 +84,10 @@ rejects a script or configuration extension, append `.txt`, such as
 Names must be unique after this normalization. At most four files, each no
 larger than 1 MiB, can enter a run.
 
-The latest author message containing a Python attachment supplies the file set.
-If that set lacks JSON configuration, the procedure also uses JSON files from
-the latest author message containing configuration and no Python attachment.
-Review the selected source references and SHA-256 hashes before approval.
+The first matching required attachment rule, or the first matching optional
+rule, selects the latest author message with that attachment. Other attachment
+rules can fill gaps from separate messages. Review the source references and
+SHA-256 hashes before approval.
 
 ## Clarify and approve
 
@@ -146,8 +153,7 @@ The connector supports GitHub.com issues, including private issue text when the
 token has access. Attachments must be publicly downloadable GitHub uploads;
 private attachment authentication, arbitrary linked downloads, inline code
 blocks as files, and repository cloning are unsupported. Pull requests,
-GitHub Enterprise hosts, inbox synchronization, and procedures beyond the
-current Python timeout reproduction are also unsupported. More than 100 issue
+GitHub Enterprise hosts and inbox synchronization are also unsupported. More than 100 issue
 comments, oversized responses, unsupported files, or inaccessible evidence
 require manual review. GitHub API rate limits can temporarily prevent refresh.
 

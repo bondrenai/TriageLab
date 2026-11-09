@@ -112,6 +112,12 @@ func TestGitHubFlowPreservesAuthorEvidenceAndDurableRun(t *testing.T) {
 	})
 	dir := filepath.Join(t.TempDir(), "cases")
 	flow := openGitHubFlowFixture(t, s, dir)
+	version := flow.Procedure()
+	version.Procedure.Evidence = append(version.Procedure.Evidence,
+		EvidenceRule{Kind: "attachment", Match: ".json", Required: true, Question: "Attach a sanitized config file."})
+	if _, err := flow.SaveProcedure(version.Procedure, version.Revision); err != nil {
+		t.Fatal(err)
+	}
 	preview, err := flow.Preview(t.Context(), 42)
 	if err != nil || preview.State != "approval" || preview.Source != "github" || preview.URL != issueURL || len(flow.Cases()) != 0 {
 		t.Fatalf("preview identity or state: %+v, %v", preview, err)
@@ -133,7 +139,7 @@ func TestGitHubFlowPreservesAuthorEvidenceAndDurableRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	launches := 0
-	launch := func(input casefile.Case, reserve func() error) error {
+	launch := func(input casefile.Case, _ RunTarget, reserve func() error) error {
 		launches++
 		if input.Source["kind"] != "github" || input.Source["repository"] != "example/reproduction" ||
 			input.Source["issue_number"] != "42" || input.Source["url"] != issueURL || input.Source["approval_plan"] != tracked.Plan {
@@ -141,7 +147,7 @@ func TestGitHubFlowPreservesAuthorEvidenceAndDurableRun(t *testing.T) {
 		}
 		evidence := strings.Join(input.Evidence, "\n")
 		if !strings.Contains(evidence, issueURL+"#issuecomment-200") || !strings.Contains(evidence, configURL) ||
-			!strings.Contains(evidence, "Configuration files from GitHub issue author at "+issueURL) || strings.Contains(evidence, "issuecomment-300") {
+			!strings.Contains(evidence, "config.json from GitHub issue author at "+issueURL) || strings.Contains(evidence, "issuecomment-300") {
 			t.Fatalf("incorrect evidence provenance: %s", evidence)
 		}
 		if len(input.Attachments) != 2 || string(input.Attachments[0].Content) != "print('timeout')\n" ||
@@ -198,7 +204,7 @@ func TestGitHubFlowApprovalRejectsChangedEvidenceAndProvenance(t *testing.T) {
 			tracked := trackGitHubFlowFixture(t, flow)
 			tc.change(s)
 			launched := false
-			_, err := flow.Approve(t.Context(), 42, tracked.Plan, func(casefile.Case, func() error) error {
+			_, err := flow.Approve(t.Context(), 42, tracked.Plan, func(casefile.Case, RunTarget, func() error) error {
 				launched = true
 				return nil
 			})
@@ -214,7 +220,7 @@ func TestGitHubFlowFinalConfirmationBlocksLaunch(t *testing.T) {
 	flow := openGitHubFlowFixture(t, s, filepath.Join(t.TempDir(), "cases"))
 	tracked := trackGitHubFlowFixture(t, flow)
 	s.confirmErr = ErrChanged
-	_, err := flow.Approve(t.Context(), 42, tracked.Plan, func(casefile.Case, func() error) error {
+	_, err := flow.Approve(t.Context(), 42, tracked.Plan, func(casefile.Case, RunTarget, func() error) error {
 		t.Fatal("launched after final freshness check failed")
 		return nil
 	})

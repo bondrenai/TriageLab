@@ -33,6 +33,7 @@ type fixtureBackend struct {
 	noExperiments  bool
 	summaryReply   bool
 	readError      error
+	additionalTool string
 }
 
 func newFixture() *fixtureBackend {
@@ -135,6 +136,18 @@ func (f *fixtureBackend) TaskItems(_ context.Context, session, task string) ([]m
 				items = append(items, map[string]any{"index": len(items), "artifact": map[string]any{"parts": []any{part}}})
 			}
 		}
+	}
+	if f.additionalTool != "" {
+		items = append(items, map[string]any{"artifact": map[string]any{"parts": []any{
+			map[string]any{
+				"metadata": map[string]any{"kagent.dev/a2a/part-type": "function_call"},
+				"data":     map[string]any{"id": "docs", "name": f.additionalTool, "args": map[string]any{"topic": "timeout"}},
+			},
+			map[string]any{
+				"metadata": map[string]any{"kagent.dev/a2a/part-type": "function_response"},
+				"data":     map[string]any{"id": "docs", "name": f.additionalTool, "response": map[string]any{"output": "documentation"}},
+			},
+		}}})
 	}
 	if f.state == "TASK_STATE_COMPLETED" {
 		items = append(items, map[string]any{"index": len(items), "artifact": map[string]any{"parts": []any{map[string]any{"metadata": map[string]any{"kagent.dev/a2a/output-schema-sha256": strings.Repeat("a", 64)}, "mediaType": "application/json", "data": validAnalysis()}}}})
@@ -367,5 +380,31 @@ func TestCleanupExhaustionIsVisible(t *testing.T) {
 	cleanup := obj(r["cleanup"])
 	if cleanup["sandbox_deleted"] != false || cleanup["session_deleted"] != true || len(cleanup["errors"].([]string)) == 0 {
 		t.Fatalf("cleanup=%v", cleanup)
+	}
+}
+
+func TestAdditionalMCPToolRequiresManualRunAllowance(t *testing.T) {
+	for _, name := range []string{"permitted", "unlisted"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture()
+			f.additionalTool = "search_docs"
+			i := Investigator{Client: f, Config: fixtureConfig()}
+			if name == "permitted" {
+				i.AdditionalTools = []string{"search_docs"}
+			}
+			r, err := i.Run(context.Background(), casefile.Case{ID: "case", Description: "Timeout"}, t.TempDir())
+			if name == "unlisted" {
+				if err == nil || !strings.Contains(err.Error(), "outside the configured tool set") || r["status"] == "completed" {
+					t.Fatalf("unlisted call did not stop the run: %v", err)
+				}
+				return
+			}
+			if err != nil || r["status"] != "completed" {
+				t.Fatalf("configured call did not complete: %v", err)
+			}
+			if experiments := r["experiments"].([]map[string]any); len(experiments) != 2 || experiments[0]["exit_code"] != 1 {
+				t.Fatalf("MCP activity displaced sandbox evidence: %v", experiments)
+			}
+		})
 	}
 }

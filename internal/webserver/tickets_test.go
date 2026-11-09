@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,75 @@ import (
 	"github.com/bondrenai/TriageLab/internal/report"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
+
+func TestSaveTicketProcedureChecksRevisionAndSourceCapabilities(t *testing.T) {
+	s := newTestServer(t, nil)
+	if err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
+		t.Fatal(err)
+	}
+	var workspace struct {
+		Procedure ticketflow.ProcedureVersion `json:"procedure"`
+	}
+	w := request(s, http.MethodGet, "/api/tickets", nil)
+	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 || workspace.Procedure.Revision == "" {
+		t.Fatalf("get procedure: HTTP %d %s", w.Code, w.Body)
+	}
+	version := workspace.Procedure
+	version.Procedure.Policy.Tag = "timeout"
+	version.Procedure.Routes = []ticketflow.RouteRule{{Tag: "product:network", Agent: "network-investigator"}}
+	post := func(version ticketflow.ProcedureVersion) *httptest.ResponseRecorder {
+		data, err := json.Marshal(version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return request(s, http.MethodPost, "/api/tickets/procedure", bytes.NewReader(data))
+	}
+	w = post(version)
+	var saved ticketflow.ProcedureVersion
+	if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || w.Code != 200 || saved.Revision == version.Revision || saved.Procedure.Policy.Tag != "timeout" {
+		t.Fatalf("save procedure: HTTP %d %s", w.Code, w.Body)
+	}
+	if w := post(version); w.Code != 409 {
+		t.Fatalf("accepted stale save: HTTP %d %s", w.Code, w.Body)
+	}
+	saved.Procedure.Policy.AutoQuestions = true
+	saved.Procedure.Policy.MaxQuestions = 1
+	if w := post(saved); w.Code != 400 {
+		t.Fatalf("procedure granted new connector write access: HTTP %d %s", w.Code, w.Body)
+	}
+}
+
+func TestTicketWorkspaceSavesProductProcedures(t *testing.T) {
+	s := newTestServer(t, nil)
+	if err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
+		t.Fatal(err)
+	}
+	w := request(s, http.MethodGet, "/api/tickets", nil)
+	var workspace struct {
+		Procedure ticketflow.ProcedureVersion `json:"procedure"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 {
+		t.Fatalf("read workspace: %d %s", w.Code, w.Body)
+	}
+	product := workspace.Procedure.Procedure
+	product.Policy.Tag = "product:network"
+	product.Clarification = "Can you share the failing request?"
+	data, err := json.Marshal(map[string]any{
+		"revision": workspace.Procedure.Revision, "procedure": workspace.Procedure.Procedure,
+		"additional_procedures": []ticketflow.Procedure{product},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = request(s, http.MethodPost, "/api/tickets/procedure", bytes.NewReader(data))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"tag":"product:network"`) {
+		t.Fatalf("save product procedure: %d %s", w.Code, w.Body)
+	}
+	w = request(s, http.MethodGet, "/api/tickets", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"clarification":"Can you share the failing request?"`) {
+		t.Fatalf("product procedure missing on reload: %d %s", w.Code, w.Body)
+	}
+}
 
 func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 	s := newTestServer(t, nil)

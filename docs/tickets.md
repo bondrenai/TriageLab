@@ -34,11 +34,36 @@ TriageLab keeps preparation decisions and the linked investigation report.
    a message, or start a run. Track a matching ticket to start applying the
    procedure. Configure KAgent separately before approving a lab.
 
-Configure one procedure in the JSON file and restart the workspace to apply
-changes. Conditions are combined: an open ticket must have the configured
-`tag`, match one of `priorities` if provided, and match the optional string
+Configure the source and initial policy in the JSON file. Use **Ticket cases →
+Edit procedures** to add or edit procedures and save them while the workspace
+is running. Each procedure has its own match tag, evidence, clarification,
+agent, and sandbox. TriageLab uses the first procedure that fits, so place
+specific product tags before broader rules. The original procedure starts last
+when you add new ones and still has to match. An open ticket must have the
+procedure's `tag`, match one of its `priorities` if provided, and match the optional string
 `field_value` for Zendesk custom `field_id`. For dropdowns use the stored option
 value. This slice uses those typed conditions and a fixed sequence of actions.
+
+The editor starts with a removable Python timeout checklist. Add, edit, or
+remove text fields and attachment rules. Text fields match `Label: value`
+lines and can validate the value with a regular expression. Attachments match
+a filename or a supported extension. Set which items are required for approval,
+write the question for each required item, and optionally add an opening message.
+Only missing required items generate questions. An empty checklist lets a
+matching ticket reach approval without collecting fields or attachments.
+**Preview draft on ticket** checks the selected procedure on its own.
+The main ticket preview uses the saved order and shows the matched procedure.
+Preview does not track the ticket, send a question, or start a run.
+
+Set a default agent and a sandbox template. Add routing rules to
+select agents by exact tag. If matching tags select different agents, track the
+case and choose one of the matching agents. The proposed run displays the agent,
+sandbox, and matching tags. Changes to the procedure, route, or reviewed run
+target require fresh approval. An unavailable target holds the case for review.
+Saved agents and alternative sandbox templates use the workspace's KAgent
+deployment connection. Allow `get` and `list` on `sandboxtemplates` in its
+namespace Role. The source's startup policy sets the maximum clarification
+permission available to the editor.
 
 ## Clarify and approve
 
@@ -56,8 +81,19 @@ A change detected by Zendesk's safe update is shown as a conflict; a timeout or
 other uncertain result is held for manual inspection and never automatically
 resent. See [Zendesk safe updates](https://developer.zendesk.com/documentation/ticketing/managing-tickets/creating-and-updating-tickets/#protecting-against-ticket-update-collisions).
 
-The procedure uses facts from public requester messages. The requester can
-supply these lines across replies:
+Every clarification draft passes an output sanitizer before it can be sent. A
+draft that may disclose a configured credential, another tracked requester's
+identity, or text from this ticket's internal notes is held for review with the
+reason shown on the case; it is never sent or rewritten automatically. Matching
+is best effort and deliberately errs toward holding, so a harmless draft can be
+held when names read alike.
+
+The procedure uses facts from public requester messages. Fact text is sanitized
+into evidence: credential-looking assignments and token shapes are redacted —
+the applied redaction classes are recorded in the run's case source — while a
+fact containing one of the configured credentials holds the whole case for
+review at the source. With the starter
+checklist, the requester can supply these lines across replies:
 
 ```text
 Python version: 3.12.4
@@ -65,21 +101,21 @@ Expected: The health check allows five seconds for a response.
 Actual: The deadline expires after five milliseconds.
 ```
 
-Attach a sanitized `.py` reproduction and any required `.json`, `.txt`, or
-`.log` files in public requester replies. If Zendesk rejects a
+Attach only the sanitized files needed for the procedure in public requester
+replies. Supported types are `.py`, `.json`, `.txt`, and `.log`. If Zendesk rejects a
 script or config extension, append `.txt` to the filename, as in `app.py.txt`
 or `config.json.txt`. TriageLab removes that suffix for the sandbox and rejects
 files that resolve to the same name. For a disposable ticket,
 the files in [the timeout fixture](../examples/config-bug/) provide a small
-example. The latest requester reply with a Python attachment defines the
-file set. If it has no JSON config, TriageLab adds the JSON files from the
-latest public requester reply that has JSON files and no Python attachment.
-The report records both source comments. Only four files of up to 1 MiB each
+example. The first matching required attachment rule, or the first matching
+optional rule, selects the latest requester reply with that attachment. Other
+rules can pick up missing attachments from separate replies. The report
+records the source of each file. Only four files of up to 1 MiB each
 are accepted. Attachment requests
 start on the configured account. TriageLab accepts one temporary HTTPS redirect
 to a numbered Zendesk attachment host and fetches it without the OAuth token.
-A ticket with more than 100 comments, an unsupported Python version or
-attachment, or unsafe evidence requires review.
+A ticket with more than 100 comments, unsupported attachments, or unsafe
+evidence requires review.
 
 The server checks one waiting ticket each configured polling interval
 (60–3600 seconds, round robin). Set `poll_seconds: 0` to refresh manually.
@@ -101,7 +137,10 @@ Set `internal_notes: true` in the ticket configuration. If the workspace had
 read-only access, reconnect Zendesk to grant `tickets:write`. From a completed
 ticket investigation, choose **Review internal note**. The preview contains
 the run ID, outcome, a bounded agent summary, and selected process IDs,
-commands, and exit codes. Check the preview before choosing **Post internal
+commands, and exit codes. The same output sanitizer checks the previewed body:
+a note that may disclose a configured credential or another tracked requester's
+identity is shown as blocked with its findings and cannot be posted from
+TriageLab. Check the preview before choosing **Post internal
 note**. Zendesk receives a private comment on the linked ticket.
 
 TriageLab records the Zendesk comment ID on confirmation. A repeated approval

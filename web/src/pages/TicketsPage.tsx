@@ -2,7 +2,9 @@ import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, type StampHue } from "../components/ui";
 import { useTicketAction, useTicketWorkspace, useZendeskOAuth } from "../hooks/use-tickets";
+import { orderedProcedures } from "../lib/tickets";
 import type { TicketAction, TicketCase, TicketSettings } from "../lib/types/ticket";
+import { TicketProcedureEditor } from "./TicketProcedureEditor";
 
 const states: Record<TicketCase["state"], [string, StampHue]> = {
   excluded: ["Outside policy", "gray"],
@@ -18,10 +20,11 @@ function CaseStamp({ ticket }: { ticket: TicketCase }) {
   return <Stamp hue={hue}>{label}</Stamp>;
 }
 
-function TicketDetail({ ticket, settings, preview, busy, perform }: {
+function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform }: {
   ticket: TicketCase;
   settings: TicketSettings;
-  preview: boolean;
+  mode: "tracked" | "preview" | "draft";
+  procedureRevision?: string;
   busy: boolean;
   perform: (input: TicketAction) => void;
 }) {
@@ -33,13 +36,30 @@ function TicketDetail({ ticket, settings, preview, busy, perform }: {
   const requesterURL = ticket.requester?.url || (!github && ticket.requester ? `${ticket.account}/agent/users/${ticket.requester.id}` : undefined);
   const action = (kind: TicketAction["action"]) => perform({ id, action: kind, revision: ticket.revision, plan: ticket.plan });
   const planCurrent = ticket.plan && Date.parse(ticket.plan_expires) > Date.now();
-  return <Panel title={ticket.title || `${github ? "Issue" : "Ticket"} #${id}`}>
+  const stale = mode !== "draft" && Boolean(procedureRevision && ticket.procedure_revision !== procedureRevision);
+  return <Panel title={mode === "draft" ? `Draft preview for ${kind} #${id}` : ticket.title || `${github ? "Issue" : "Ticket"} #${id}`}>
     <div className="panel-body ticket-detail">
       <div className="button-row ticket-meta">
         <CaseStamp ticket={ticket} />
         <a className="ticket-source" href={sourceURL} target="_blank" rel="noreferrer">{provider} #{id} ↗</a>
       </div>
       <p aria-live="polite">{ticket.paused ? `Tracking is paused for this ${kind}.` : ticket.reason}</p>
+      {mode === "draft" && <p className="field-help">This preview checks the selected draft on its own. Published cases use the saved procedure order.</p>}
+      {stale && !ticket.run_id && <p role="status">The procedure changed. {mode === "preview" ? `Preview this ${kind} again.` : `Refresh this ${kind} before taking action.`}</p>}
+      {ticket.matched_tag && <dl className="ledger ticket-facts">
+        <div><dt>Matched procedure</dt><dd><code>{ticket.matched_tag}</code></dd></div>
+        <div><dt>Agent</dt><dd>{ticket.agent ? <code>{ticket.agent}</code> : "Reviewer selection required"}
+          {ticket.matches?.length ? <> · {ticket.matches.map(rule => `${rule.tag} → ${rule.agent}`).join(", ")}</> : " · Procedure default"}
+        </dd></div>
+        {ticket.sandbox && <div><dt>Sandbox</dt><dd><code>{ticket.sandbox}</code></dd></div>}
+      </dl>}
+      {!stale && mode === "tracked" && !ticket.paused && !ticket.run_id && (ticket.agent_choices?.length ?? 0) > 1 && <div className="button-row">
+        {ticket.agent_choices?.filter(agent => agent !== ticket.agent).map(agent => <Button key={agent} type="button" disabled={busy}
+          onClick={() => perform({ id, action: "route", revision: ticket.revision, agent })}>Use {agent}</Button>)}
+      </div>}
+      {!!ticket.missing?.length && <details><summary>Missing evidence ({ticket.missing.length})</summary>
+        <ul className="prose-list">{ticket.missing.map(item => <li key={item}>{item}</li>)}</ul>
+      </details>}
       {!!ticket.facts?.length && <dl className="ledger ticket-facts">
         {ticket.facts.map(fact => <div key={fact.label}>
           <dt>{fact.label}</dt><dd>{fact.value} {fact.url
@@ -47,8 +67,8 @@ function TicketDetail({ ticket, settings, preview, busy, perform }: {
             : <span className="quiet">(comment {fact.comment_id})</span>}</dd>
         </div>)}
       </dl>}
-      {ticket.state === "approval" && <div className="ticket-plan">
-        <p>Proposed run: <strong>{settings.template}</strong>, up to {settings.max_experiments} experiments and {settings.timeout_seconds} seconds. Approval applies to these inputs and expires after 15 minutes.</p>
+      {(ticket.state === "approval" || Boolean(ticket.files?.length)) && <div className="ticket-plan">
+        <p>Proposed run: <strong>{ticket.sandbox || settings.template}</strong>, up to {settings.max_experiments} experiments and {settings.timeout_seconds} seconds. Approval applies to these inputs and expires after 15 minutes.</p>
         <ul className="prose-list">
           {ticket.files?.map(file => <li key={file.path}>{file.path} ({file.size_bytes} bytes)
             {file.source_url && <> · <a className="ticket-source" href={file.source_url} target="_blank" rel="noreferrer">Source attachment ↗</a></>}
@@ -77,21 +97,21 @@ function TicketDetail({ ticket, settings, preview, busy, perform }: {
           </li>)}
         </ul>
       </div>}
-      <div className="button-row">
-        {preview ? ticket.state !== "excluded" &&
-          <Button variant="primary" disabled={busy} onClick={() => action("track")}>Track {kind}</Button>
+      {mode !== "draft" && <div className="button-row">
+        {mode === "preview" ? ticket.state !== "excluded" &&
+          <Button variant="primary" disabled={busy || stale} onClick={() => action("track")}>Track {kind}</Button>
         : ticket.run_id ? <ButtonLink variant="primary" to={`/runs/${ticket.run_id}`}>Open investigation</ButtonLink>
         : <>
-          {ticket.state === "approval" && planCurrent && !ticket.paused &&
+          {ticket.state === "approval" && planCurrent && !ticket.paused && !stale &&
             <Button variant="primary" disabled={busy} onClick={() => action("approve")}>Approve and start investigation</Button>}
-          {ticket.state === "ask" && !ticket.paused &&
+          {ticket.state === "ask" && !ticket.paused && !stale &&
             <Button variant="primary" disabled={busy} onClick={() => action("clarify")}>Approve and send clarification</Button>}
           {!ticket.paused && <Button disabled={busy} onClick={() => action("refresh")}>
             {settings.policy.auto_questions ? "Refresh and apply policy" : `Refresh ${kind}`}
           </Button>}
           <Button disabled={busy} onClick={() => action(ticket.paused ? "resume" : "pause")}>{ticket.paused ? "Resume tracking" : "Pause tracking"}</Button>
         </>}
-      </div>
+      </div>}
     </div>
   </Panel>;
 }
@@ -105,12 +125,17 @@ export function TicketsPage() {
   const [id, setID] = useState("");
   const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState<TicketCase>();
+  const [editProcedure, setEditProcedure] = useState(false);
   const data = workspace.data;
   const github = data?.enabled && data.source === "github";
   const kind = github ? "issue" : "ticket";
   const oauth = data?.enabled ? data.oauth : undefined;
   const atCallbackOrigin = oauth && new URL(oauth.workspace_url).origin === window.location.origin;
   const active = data?.enabled ? data.cases.find(ticket => ticket.ticket_id === selected) : undefined;
+  const procedures = data?.enabled ? orderedProcedures(data.procedure) : [];
+  const matched = procedures.find(p => p.policy.tag === (active ?? preview)?.matched_tag);
+  const caseSettings = data?.enabled && matched ? { ...data.settings, policy: matched.policy } : undefined;
+  const commentsEnabled = data?.enabled && (data.settings.investigation_comments || procedures.some(p => p.policy.auto_questions));
 
   function perform(input: TicketAction) {
     mutation.mutate(input, { onSuccess: (ticket) => {
@@ -143,11 +168,11 @@ export function TicketsPage() {
       </div>
     </Panel>}
     {data?.enabled && <div className="section-stack">
-      {github ? <Panel title="GitHub repository" aside={<Stamp hue="blue">{data.settings.policy.auto_questions || data.settings.investigation_comments ? "Comments enabled" : "Read-only"}</Stamp>}>
+      {github ? <Panel title="GitHub repository" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
         <div className="panel-body ticket-detail">
           <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.repository} ↗</a></p>
           <p>Import issue bodies, author comments and supported text attachments from this repository. Private repository access requires a token configured on the server.</p>
-          {(data.settings.policy.auto_questions || data.settings.investigation_comments) && <p>Posting requires a token with Issues write permission. Comments are visible to everyone with repository access and are public in public repositories.</p>}
+          {commentsEnabled && <p>Posting requires a token with Issues write permission. Comments are visible to everyone with repository access and are public in public repositories.</p>}
           {data.settings.investigation_comments && <p>Completed investigations offer a comment preview for you to review before posting to the issue.</p>}
         </div>
       </Panel> : oauth && <Panel title="Zendesk connection" aside={<Stamp hue={oauth.connected ? "green" : "gray"}>{oauth.connected ? "Connected" : "Not connected"}</Stamp>}>
@@ -163,10 +188,13 @@ export function TicketsPage() {
           </div>
         </div>
       </Panel>}
-      <Panel title="Python timeout procedure">
+      <Panel title="Ticket procedures" aside={data.procedure && <Button type="button"
+        onClick={() => setEditProcedure(editing => !editing)} aria-expanded={editProcedure}>
+        {editProcedure ? "Close editor" : "Edit procedures"}
+      </Button>}>
         <div className="panel-body ticket-detail">
-          <p>Matches open {github ? "issues labelled" : "tickets tagged"} <code>{data.settings.policy.tag}</code>{data.settings.policy.priorities?.length ? ` with priority ${data.settings.policy.priorities.join(" or ")}` : ""}{data.settings.policy.field_id ? ` and custom field ${data.settings.policy.field_id} set to ${data.settings.policy.field_value}` : ""}. Reproductions must use Python 3.12.</p>
-          <p>{data.settings.policy.auto_questions ? `Review the ${github ? "issue author" : "requester"} and first question before sending. The approved policy may send up to ${data.settings.policy.max_questions} total clarification attempts per ${kind}.` : github ? "Clarification questions are drafted for you to post manually on GitHub." : "Clarification questions are prepared for human review."} Every run requires approval.</p>
+          <p>Open {github ? "issues" : "tickets"} use the first procedure whose match rules fit. Every run requires approval.</p>
+          <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}><code>{p.policy.tag}</code></li>)}</ol>
           {data.connected && <form className="ticket-form" onSubmit={inspect}>
             <div><label className="field-label" htmlFor="ticket-id">{github ? "GitHub issue number" : "Zendesk ticket ID"}</label>
               <input className="field" id="ticket-id" inputMode="numeric" pattern="[1-9][0-9]{0,18}" maxLength={19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} /></div>
@@ -174,6 +202,10 @@ export function TicketsPage() {
           </form>}
         </div>
       </Panel>
+      {editProcedure && data.procedure && <TicketProcedureEditor key={data.account} version={data.procedure}
+        github={data.source === "github"} connected={data.connected} template={data.settings.template} clarificationLimit={data.settings.clarification_limit}
+        renderPreview={(ticket, draft) => <TicketDetail ticket={ticket} settings={{ ...data.settings, policy: draft.policy }}
+          mode="draft" busy={false} perform={perform} />} />}
       {mutation.isPending && <p role="status" className="quiet">Checking {kind}…</p>}
       {mutation.isError && <ErrorPlate title={`${github ? "Issue" : "Ticket"} action could not complete`} error={mutation.error} />}
       {data.cases.length > 0 && <Panel title={`Tracked ${kind}s`}>
@@ -186,7 +218,8 @@ export function TicketsPage() {
           </div>)}
         </div>
       </Panel>}
-      {data.connected && (active || preview) && <TicketDetail ticket={active || preview!} settings={data.settings} preview={!active}
+      {data.connected && (active || preview) && <TicketDetail ticket={active || preview!} settings={caseSettings ?? data.settings} mode={active ? "tracked" : "preview"}
+        procedureRevision={data.procedure?.revision}
         busy={mutation.isPending} perform={perform} />}
     </div>}
   </>;

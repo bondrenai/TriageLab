@@ -31,6 +31,7 @@ type fixture struct {
 	denyUserSideload bool
 	noteStatus       int
 	noteBody         string
+	questionPrefix   string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -44,6 +45,7 @@ func newFixture(t *testing.T) *fixture {
 		},
 		contents:       "print(1)\n",
 		requesterEmail: "requester@example.test",
+		questionPrefix: "To help us reproduce the timeout,",
 	}
 	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -115,7 +117,7 @@ func newFixture(t *testing.T) *fixture {
 				}})
 				return
 			}
-			if strings.Contains(body.Ticket.Comment.Body, "secret internal detail") || !strings.HasPrefix(body.Ticket.Comment.Body, "To help us reproduce the timeout,") {
+			if strings.Contains(body.Ticket.Comment.Body, "secret internal detail") || !strings.HasPrefix(body.Ticket.Comment.Body, f.questionPrefix) {
 				t.Error("unexpected clarification content")
 				w.WriteHeader(400)
 				return
@@ -177,6 +179,87 @@ func openTestFlow(t *testing.T, dir string, f *fixture, auto bool) *Flow {
 	return flow
 }
 
+func TestClarificationHeldWhenDraftMayDisclose(t *testing.T) {
+	f := newFixture(t)
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, true)
+	if err := flow.store.save(Case{TicketID: 43, Account: f.server.URL, State: "review",
+		Requester: &Requester{Name: "Rival Customer", Email: "rival@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	base := flow.Procedure().Procedure
+	for _, tc := range []struct {
+		name          string
+		clarification string
+		want          string
+	}{
+		{"another requester", "Rival Customer asked about this timeout:", "another tracked requester's identity"},
+		{"internal note text", "Details follow. Expected: secret internal detail", "internal note text"},
+		{"clean template", defaultClarification, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			procedure := base
+			procedure.Clarification = tc.clarification
+			c, err := flow.PreviewProcedure(t.Context(), 42, procedure)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" {
+				if c.State != "ask" || f.count() != 0 {
+					t.Fatalf("clean clarification was not offered for review: %+v %d", c, f.count())
+				}
+				return
+			}
+			if c.State != "review" || !strings.Contains(c.Reason, tc.want) || f.count() != 0 {
+				t.Fatalf("disclosing clarification was not held: %+v %d", c, f.count())
+			}
+		})
+	}
+}
+
+func TestInputSanitizerRedactsRequesterFactsIntoCase(t *testing.T) {
+	f := newFixture(t)
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, false)
+	ctx := t.Context()
+	f.reply()
+	f.mu.Lock()
+	last := &f.comments[len(f.comments)-1]
+	last.Body = "Python version: 3.12.4\nExpected: five seconds\nActual: timeout after password=hunter2"
+	f.mu.Unlock()
+	preview, err := flow.Preview(ctx, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flow.Track(ctx, 42, preview.Revision); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := flow.Refresh(ctx, 42)
+	if err != nil || ready.State != "approval" {
+		t.Fatalf("expected a ready plan: %+v %v", ready, err)
+	}
+	launch := func(c casefile.Case, _ RunTarget, reserve func() error) error {
+		if strings.Contains(c.Description, "hunter2") || !strings.Contains(c.Description, "password=[REDACTED]") {
+			t.Fatalf("case description was not sanitized: %q", c.Description)
+		}
+		classes, ok := c.Source["input_redactions"].([]string)
+		if !ok || len(classes) != 1 || classes[0] != "credential assignment" {
+			t.Fatalf("missing redaction provenance: %v", c.Source["input_redactions"])
+		}
+		if c.Environment["python_version"] != "3.12.4" {
+			t.Fatalf("sanitization changed the bounded version fact: %v", c.Environment)
+		}
+		return reserve()
+	}
+	if _, err := flow.Approve(ctx, 42, ready.Plan, launch); err != nil {
+		t.Fatal(err)
+	}
+	stored := flow.Cases()[0]
+	for _, fact := range stored.Facts {
+		if strings.Contains(fact.Value, "hunter2") {
+			t.Fatalf("stored fact kept a credential: %+v", fact)
+		}
+	}
+}
+
 func TestClarifyResumeAndApproveExactEvidence(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -230,7 +313,7 @@ func TestClarifyResumeAndApproveExactEvidence(t *testing.T) {
 	f.contents = "print(2)\n"
 	f.mu.Unlock()
 	var launchCount int
-	launch := func(c casefile.Case, reserve func() error) error {
+	launch := func(c casefile.Case, _ RunTarget, reserve func() error) error {
 		launchCount++
 		if string(c.Attachments[0].Content) != "print(2)\n" || c.Source["ticket_id"] != "42" || len(c.Evidence) != 4 {
 			t.Fatalf("wrong evidence handed to investigator: %+v", c)
@@ -245,7 +328,7 @@ func TestClarifyResumeAndApproveExactEvidence(t *testing.T) {
 		t.Fatal("updated evidence did not replace the old plan")
 	}
 	// A full workspace must not consume approval or the case's run allowance.
-	if _, err := flow.Approve(ctx, 42, latest.Plan, func(casefile.Case, func() error) error { return ErrBusy }); !errors.Is(err, ErrBusy) || flow.Cases()[0].RunID != "" {
+	if _, err := flow.Approve(ctx, 42, latest.Plan, func(casefile.Case, RunTarget, func() error) error { return ErrBusy }); !errors.Is(err, ErrBusy) || flow.Cases()[0].RunID != "" {
 		t.Fatalf("busy workspace consumed the run: %v", err)
 	}
 	launched, err := flow.Approve(ctx, 42, latest.Plan, launch)
@@ -463,7 +546,7 @@ func TestTextWrappedReproductionFiles(t *testing.T) {
 	}
 }
 
-func TestEarlierRequesterReplySuppliesMissingConfiguration(t *testing.T) {
+func TestEarlierRequesterReplySuppliesConfiguredAttachment(t *testing.T) {
 	f := newFixture(t)
 	f.reply()
 	f.mu.Lock()
@@ -474,6 +557,12 @@ func TestEarlierRequesterReplySuppliesMissingConfiguration(t *testing.T) {
 	f.comments = append(f.comments, script, comment{ID: 5, Author: 11, Public: true, Files: []attachment{{Name: "other.json", URL: f.server.URL + "/attachments/config.json.txt", Size: 3}}})
 	f.mu.Unlock()
 	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, false)
+	v := flow.Procedure()
+	v.Procedure.Evidence = append(v.Procedure.Evidence,
+		EvidenceRule{Kind: "attachment", Match: "config.json", Required: true, Question: "Attach config.json."})
+	if _, err := flow.SaveProcedure(v.Procedure, v.Revision); err != nil {
+		t.Fatal(err)
+	}
 	c, err := flow.Preview(t.Context(), 42)
 	if err != nil || c.State != "approval" || len(c.Files) != 2 || c.Files[0].Path != "app.py" || c.Files[1].Path != "config.json" {
 		t.Fatalf("expected both requester attachments in the approval plan: %+v %v", c, err)
@@ -482,8 +571,8 @@ func TestEarlierRequesterReplySuppliesMissingConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = flow.Approve(t.Context(), 42, c.Plan, func(input casefile.Case, reserve func() error) error {
-		if !strings.Contains(strings.Join(input.Evidence, "\n"), "Configuration files from Zendesk public requester comment 3") {
+	_, err = flow.Approve(t.Context(), 42, c.Plan, func(input casefile.Case, _ RunTarget, reserve func() error) error {
+		if !strings.Contains(strings.Join(input.Evidence, "\n"), "config.json from Zendesk public requester comment 3") {
 			t.Fatalf("configuration source missing from run evidence: %v", input.Evidence)
 		}
 		return reserve()

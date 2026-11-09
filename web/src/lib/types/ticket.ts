@@ -17,6 +17,41 @@ export interface TicketCase {
   run_id?: string;
   paused: boolean;
   revision: string;
+  procedure_revision?: string;
+  agent?: string;
+  sandbox?: string;
+  matches?: RouteRule[];
+  agent_choices?: string[];
+  matched_tag?: string;
+  missing?: string[];
+}
+
+export interface RouteRule {
+  tag: string;
+  agent: string;
+}
+
+export interface EvidenceRule {
+  kind: "field" | "attachment";
+  match: string;
+  required: boolean;
+  pattern?: string;
+  question?: string;
+}
+
+export interface TicketProcedure {
+  policy: TicketSettings["policy"];
+  evidence: EvidenceRule[];
+  clarification: string;
+  default_agent: string;
+  sandbox: string;
+  routes: RouteRule[];
+}
+
+export interface ProcedureVersion {
+  procedure: TicketProcedure;
+  additional_procedures?: TicketProcedure[];
+  revision: string;
 }
 
 export interface TicketSettings {
@@ -34,6 +69,7 @@ export interface TicketSettings {
   max_experiments: number;
   timeout_seconds: number;
   template: string;
+  clarification_limit: number;
 }
 
 export type TicketWorkspace =
@@ -45,13 +81,15 @@ export type TicketWorkspace =
       connected: boolean;
       repository?: string;
       settings: TicketSettings;
+      procedure: ProcedureVersion;
       cases: TicketCase[];
       oauth?: { connected: boolean; account: string; workspace_url: string; scopes: string[] };
     };
 
 export interface TicketAction {
   id: string;
-  action: "preview" | "track" | "refresh" | "clarify" | "approve" | "pause" | "resume";
+  action: "preview" | "track" | "refresh" | "clarify" | "approve" | "pause" | "resume" | "route";
   revision?: string;
   plan?: string;
+  agent?: string;
 }

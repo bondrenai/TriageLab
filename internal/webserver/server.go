@@ -24,8 +24,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
+	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
@@ -42,18 +44,20 @@ type runningCase struct {
 
 // Server has one active investigation. Completed reports are read from disk.
 type Server struct {
-	ctx       context.Context
-	config    investigation.Config
-	backend   investigation.Backend
-	secrets   []string
-	directory string
-	reports   *os.Root
-	assets    *os.Root
-	mu        sync.Mutex
-	activeID  string
-	active    *runningCase
-	closed    bool
-	tickets   *ticketflow.Flow
+	ctx            context.Context
+	config         investigation.Config
+	backend        investigation.Backend
+	secrets        []string
+	directory      string
+	reports        *os.Root
+	assets         *os.Root
+	mu             sync.Mutex
+	activeID       string
+	active         *runningCase
+	closed         bool
+	tickets        *ticketflow.Flow
+	deployments    *kagent.DeploymentReader
+	resourceWrites bool
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -216,8 +220,55 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "Missing request header")
 		return
 	}
+	switch r.URL.Path {
+	case "/api/agents/status":
+		s.deploymentStatus(w, r, "agents")
+		return
+	case "/api/sandboxes/status":
+		s.deploymentStatus(w, r, "sandboxtemplates")
+		return
+	case "/api/models/status":
+		s.deploymentStatus(w, r, "modelconfigs")
+		return
+	case "/api/mcp-servers/status":
+		s.deploymentStatus(w, r, "remotemcpservers")
+		return
+	case "/api/egress-policies/status":
+		s.deploymentStatus(w, r, "egresspolicies")
+		return
+	case "/api/agents/manifest":
+		renderManifest(w, r, s.config.Namespace, agent.RenderWorkspaceDefinition)
+		return
+	case "/api/models/manifest":
+		renderManifest(w, r, s.config.Namespace, agent.RenderModelDefinition)
+		return
+	case "/api/mcp-servers/manifest":
+		renderManifest(w, r, s.config.Namespace, agent.RenderWorkspaceMCPServer)
+		return
+	case "/api/sandboxes/manifest":
+		renderManifest(w, r, s.config.Namespace, agent.RenderSandboxTemplateDefinition)
+		return
+	case "/api/egress-policies/manifest":
+		renderManifest(w, r, s.config.Namespace, agent.RenderEgressPolicyDefinition)
+		return
+	case "/api/agents/definition":
+		resourceDefinition(s, w, r, "agents", agent.RenderWorkspaceDefinition, func(d agent.Definition) string { return d.Name })
+		return
+	case "/api/models/definition":
+		resourceDefinition(s, w, r, "modelconfigs", agent.RenderModelDefinition, func(d agent.ModelDefinition) string { return d.Name })
+		return
+	case "/api/mcp-servers/definition":
+		resourceDefinition(s, w, r, "remotemcpservers", agent.RenderWorkspaceMCPServer, func(d agent.WorkspaceMCPServer) string { return d.Name })
+		return
+	case "/api/sandboxes/definition":
+		resourceDefinition(s, w, r, "sandboxtemplates", agent.RenderSandboxTemplateDefinition, func(d agent.SandboxTemplateDefinition) string { return d.Name })
+		return
+	case "/api/egress-policies/definition":
+		resourceDefinition(s, w, r, "egresspolicies", agent.RenderEgressPolicyDefinition, func(d agent.EgressPolicyDefinition) string { return d.Name })
+		return
+	}
 	if r.URL.Path == "/api/settings" && r.Method == http.MethodGet {
-		jsonResponse(w, http.StatusOK, map[string]int{"max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
+		jsonResponse(w, http.StatusOK, map[string]any{"agent": s.config.Agent, "sandbox_template": s.config.Template, "namespace": s.config.Namespace, "resource_writes": s.resourceWrites, "manual_agents": s.manualAgentNames(), "max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
 		return
 	}
 	if r.URL.Path == "/api/runs" {
@@ -546,6 +597,47 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "An investigation is already running")
 		return
 	}
+	var name string
+	if names := r.Header.Values("X-TriageLab-Agent"); len(names) > 0 {
+		if len(names) != 1 || names[0] == "" {
+			fail(w, http.StatusBadRequest, "Choose exactly one configured agent")
+			return
+		}
+		name = names[0]
+	}
+	config, extraTools, err := s.selectInvestigator(r.Context(), name)
+	if err != nil {
+		switch {
+		case errors.Is(err, kagent.ErrAgentNotReady):
+			fail(w, http.StatusConflict, err.Error())
+		case errors.Is(err, kagent.ErrResourceNotFound):
+			fail(w, http.StatusBadRequest, "Choose a saved agent or an agent configured for manual investigations.")
+		default:
+			fail(w, http.StatusBadRequest, "Could not verify the selected agent. Check the agent picker or Deployment status.")
+		}
+		return
+	}
+	var sandbox string
+	if sandboxes := r.Header.Values("X-TriageLab-Sandbox"); len(sandboxes) > 0 {
+		if len(sandboxes) != 1 || sandboxes[0] == "" {
+			fail(w, http.StatusBadRequest, "Choose exactly one sandbox template")
+			return
+		}
+		sandbox = sandboxes[0]
+	}
+	template, err := s.selectSandbox(r.Context(), sandbox)
+	if err != nil {
+		switch {
+		case errors.Is(err, errSandboxForbidden):
+			fail(w, http.StatusForbidden, err.Error())
+		case errors.Is(err, kagent.ErrResourceNotFound):
+			fail(w, http.StatusBadRequest, "Choose a saved sandbox template or the workspace default.")
+		default:
+			fail(w, http.StatusBadRequest, "Could not verify the selected sandbox template. Check the sandbox picker or Deployment status.")
+		}
+		return
+	}
+	config.Template = template
 	c, err := s.ingestUpload(w, r)
 	if err != nil {
 		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
@@ -554,7 +646,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	if r.Context().Err() != nil {
 		return
 	}
-	if err := s.launch(c, nil); err != nil {
+	if err := s.launchRun(c, nil, config, extraTools); err != nil {
 		writeLaunchError(w, err)
 		return
 	}
@@ -575,7 +667,13 @@ func writeLaunchError(w http.ResponseWriter, err error) {
 	}
 }
 
-func (s *Server) launch(c casefile.Case, reserve func() error) error {
+func (s *Server) launchTicket(c casefile.Case, target ticketflow.RunTarget, reserve func() error) error {
+	config := s.config
+	config.Agent, config.Template = target.Agent, target.Sandbox
+	return s.launchRun(c, reserve, config, target.Tools)
+}
+
+func (s *Server) launchRun(c casefile.Case, reserve func() error, config investigation.Config, extraTools []string) error {
 	s.mu.Lock()
 	if s.closed || s.ctx.Err() != nil {
 		s.mu.Unlock()
@@ -590,7 +688,7 @@ func (s *Server) launch(c casefile.Case, reserve func() error) error {
 		s.mu.Unlock()
 		return errRunStore
 	}
-	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
+	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "agent": map[string]string{"namespace": config.Namespace, "name": config.Agent}, "sandbox_template": config.Template, "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
 	if err := report.Write(dir, initial, s.secrets...); err != nil {
 		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
@@ -609,7 +707,7 @@ func (s *Server) launch(c casefile.Case, reserve func() error) error {
 	s.mu.Unlock()
 	go func() {
 		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: s.config, Secrets: s.secrets, Progress: func(message string) {
+		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: extraTools, Secrets: s.secrets, Progress: func(message string) {
 			safe := fmt.Sprint(report.Redact(message, s.secrets...))
 			s.mu.Lock()
 			defer s.mu.Unlock()

@@ -24,18 +24,46 @@ var (
 )
 
 func redactText(text string, secrets []string) string {
+	text, _ = Redacted(text, secrets...)
+	return text
+}
+
+// Redacted delouses untrusted text and reports the classes of removals it
+// applied, in application order, so sanitized input can carry provenance.
+// Detection stays best effort; the classes are not exhaustive guarantees.
+func Redacted(text string, secrets ...string) (string, []string) {
+	var applied []string
 	for _, secret := range secrets {
-		if secret != "" {
+		if secret != "" && strings.Contains(text, secret) {
 			text = strings.ReplaceAll(text, secret, "[REDACTED]")
+			applied = append(applied, "configured credential")
 		}
 	}
-	text = privateKey.ReplaceAllString(text, "[REDACTED PRIVATE KEY]")
-	text = knownToken.ReplaceAllString(text, "[REDACTED]")
-	text = credentialAssignment.ReplaceAllString(text, "${1}[REDACTED]")
-	text = bearer.ReplaceAllString(text, "Bearer [REDACTED]")
-	text = ansi.ReplaceAllString(text, "")
+	if privateKey.MatchString(text) {
+		text = privateKey.ReplaceAllString(text, "[REDACTED PRIVATE KEY]")
+		applied = append(applied, "private key")
+	}
+	if knownToken.MatchString(text) {
+		text = knownToken.ReplaceAllString(text, "[REDACTED]")
+		applied = append(applied, "known credential token")
+	}
+	if credentialAssignment.MatchString(text) {
+		text = credentialAssignment.ReplaceAllString(text, "${1}[REDACTED]")
+		applied = append(applied, "credential assignment")
+	}
+	if bearer.MatchString(text) {
+		text = bearer.ReplaceAllString(text, "Bearer [REDACTED]")
+		applied = append(applied, "bearer credential")
+	}
+	if ansi.MatchString(text) {
+		text = ansi.ReplaceAllString(text, "")
+		applied = append(applied, "terminal escape")
+	}
+	if strings.Contains(text, "\r") || controls.MatchString(text) {
+		applied = append(applied, "control characters")
+	}
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", `\r`)
-	return controls.ReplaceAllString(text, "")
+	return controls.ReplaceAllString(text, ""), applied
 }
 
 func redactValue(value any, secrets []string) any {
@@ -142,7 +170,7 @@ func render(data map[string]any) string {
 	output.WriteString("Secret redaction is best effort; review this report before sharing.\n")
 	section("Run result", selectFields(data, "run_id", "status", "outcome", "started_at", "finished_at"))
 	section("Original case and input inventory", data["case"])
-	section("Runtime references", selectFields(data, "sandbox", "session"))
+	section("Runtime references", selectFields(data, "agent", "sandbox_template", "sandbox", "session"))
 	output.WriteString("\n## Experiments and independently collected evidence\n\n")
 	experiments, _ := data["experiments"].([]any)
 	if len(experiments) == 0 {

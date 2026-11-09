@@ -114,6 +114,20 @@ func TestUnsafeEndpointsRejected(t *testing.T) {
 			t.Errorf("accepted %s", endpoint)
 		}
 	}
+	for _, endpoint := range []string{"http://remote.example", "http://triagelab-tools.kagent.svc.example.net", "http://10.0.0.7:8083"} {
+		if _, err := New(endpoint, "user", "", time.Second, AllowClusterHTTP()); err == nil {
+			t.Errorf("cluster opt-in accepted %s", endpoint)
+		}
+	}
+	if _, err := New("http://triagelab-tools.kagent.svc.cluster.local:8083/mcp", "user", "", time.Second); err == nil {
+		t.Error("cluster service endpoint accepted without the opt-in")
+	}
+	if _, err := New("http://triagelab-tools.kagent.svc.cluster.local:8083/mcp", "user", "", time.Second, AllowClusterHTTP()); err != nil {
+		t.Errorf("cluster service endpoint rejected with the opt-in: %v", err)
+	}
+	if _, err := New("http://triagelab-tools.kagent.svc:8083/mcp", "user", "", time.Second, AllowClusterHTTP()); err != nil {
+		t.Errorf("short cluster service name rejected with the opt-in: %v", err)
+	}
 }
 
 func TestUncertainRequestNotRetried(t *testing.T) {

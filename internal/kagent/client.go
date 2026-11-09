@@ -39,8 +39,10 @@ func (e *Error) Error() string { return e.Message }
 func protocolError(message string) error { return &Error{Kind: "protocol", Message: message} }
 
 // Client uses KAgent's stateless MCP 2026-07-28 API, including metadata on every
-// request. Plain HTTP is restricted to loopback port forwards. user is only an
-// identity hint for development authentication, never an authentication token.
+// request. Plain HTTP is restricted to loopback port forwards unless the
+// explicit AllowClusterHTTP option covers an in-cluster service endpoint. user
+// is only an identity hint for development authentication, never an
+// authentication token.
 type Client struct {
 	endpoint string
 	user     string
@@ -48,16 +50,40 @@ type Client struct {
 	http     *http.Client
 }
 
+// Option adjusts a development-deployment policy check of New.
+type Option func(*policy)
+
+type policy struct{ allowClusterHTTP bool }
+
+// AllowClusterHTTP permits plain HTTP to in-cluster Kubernetes service
+// endpoints (*.svc, *.svc.cluster.local). It exists for a dedicated
+// single-user deployment whose pod network is the trust boundary.
+func AllowClusterHTTP() Option {
+	return func(p *policy) { p.allowClusterHTTP = true }
+}
+
 // New creates a bounded, TLS-verifying client. endpoint may be a controller base
 // URL or its complete /mcp URL. Redirects and ambient HTTP proxies are disabled.
-func New(endpoint, user, token string, timeout time.Duration) (*Client, error) {
+func New(endpoint, user, token string, timeout time.Duration, opts ...Option) (*Client, error) {
+	p := policy{}
+	for _, opt := range opts {
+		opt(&p)
+	}
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
 		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("KAgent endpoint must be HTTP(S) without credentials, query, or fragment")
 	}
-	if u.Scheme == "http" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
-		return nil, fmt.Errorf("remote KAgent endpoints require HTTPS; use a loopback port-forward")
+	if u.Scheme == "http" {
+		host := strings.ToLower(u.Hostname())
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			if !p.allowClusterHTTP {
+				return nil, fmt.Errorf("remote KAgent endpoints require HTTPS; use a loopback port-forward")
+			}
+			if !strings.HasSuffix(host, ".svc") && !strings.HasSuffix(host, ".svc.cluster.local") {
+				return nil, fmt.Errorf("cluster HTTP is limited to *.svc and *.svc.cluster.local service endpoints")
+			}
+		}
 	}
 	if timeout <= 0 {
 		return nil, fmt.Errorf("HTTP timeout must be positive")

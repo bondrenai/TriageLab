@@ -17,10 +17,11 @@ import (
 const maxCases = 100
 
 type store struct {
-	dir   string
-	lock  *os.File
-	mu    sync.RWMutex
-	cases map[int64]Case
+	dir       string
+	lock      *os.File
+	mu        sync.RWMutex
+	cases     map[int64]Case
+	procedure *ProcedureVersion
 }
 
 func openStore(dir, account string) (*store, error) {
@@ -41,6 +42,10 @@ func openStore(dir, account string) (*store, error) {
 	}
 	s := &store{dir: dir, lock: lock, cases: make(map[int64]Case)}
 	if err := s.load(account); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	if err := s.loadProcedure(account); err != nil {
 		lock.Close()
 		return nil, err
 	}

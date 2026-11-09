@@ -11,11 +11,14 @@ export const cancelRun = (id: string) => request<{ id?: string }>(`/api/runs/${e
 export const postTicketNote = (id: string, plan: string) =>
   request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });
 
-export function createRun(input: { description: string; files: File[] }) {
+export function createRun(input: { description: string; files: File[]; agent?: string; sandbox?: string }) {
   const body = new FormData();
   body.append("description", input.description);
   for (const file of input.files) body.append("files", file, file.webkitRelativePath || file.name);
-  return request<{ id: string }>("/api/runs", { method: "POST", body });
+  const headers: Record<string, string> = {};
+  if (input.agent) headers["X-TriageLab-Agent"] = input.agent;
+  if (input.sandbox) headers["X-TriageLab-Sandbox"] = input.sandbox;
+  return request<{ id: string }>("/api/runs", { method: "POST", body, headers });
 }
 
 export function reportURL(id: string, format: "json" | "md") {

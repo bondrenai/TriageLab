@@ -89,21 +89,49 @@ Authoritative references:
   this backend. microVM uses Cloud Hypervisor/Kata with KVM and at least 128 MiB
   guest RAM. Substrate's trusted infrastructure needs node-level permissions;
   these are not permissions granted to the untrusted fixture.
-- Provider credentials are injected by Substrate outside the guest. Caller
-  credential propagation to the trusted KAgent MCP endpoint is separately
-  enabled to preserve sandbox ownership. Do not add untrusted MCP servers to
-  this harness while propagation is enabled.
+- Substrate injects provider credentials outside the guest. Global runtime token
+  propagation forwards the caller credential and identity to every MCP server
+  in Go ADK rc3. Keep it disabled. The trusted sandbox server uses its own
+  `tokenPassthrough: true` binding and KAgent re-verifies the Kubernetes
+  service-account token to recover the caller identity.
 - The `triagelab-tools` ClusterIP Service is an alias for the controller with a
   distinct HTTP origin. rc3's [actor egress policy](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/substrate/policy.go#L47)
   always replaces `Authorization` at the control-plane origin with an actor JWT.
   Actor credentials cannot access owner-scoped sandboxes. The separate tools
-  origin, `tokenPassthrough: true`, and runtime token propagation preserve the
-  verified invocation service-account credential. No authorizer or ownership
+  origin and `tokenPassthrough: true` preserve the verified invocation
+  service-account credential. No authorizer or ownership
   checks are weakened. This alias is not an externally exposed service.
 - KAgent's shipped authorizer is not a production tenant policy. See its
   [authentication documentation](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/oidc-proxy-authentication.md).
   TriageLab's private development setup does not claim a multi-tenant perimeter.
   Prompt-injection instructions reduce risk but are not a security boundary.
+
+## Custom investigators
+
+TriageLab renders native `Agent.spec.template.inline` and
+`Agent.spec.harnessRef`. Declarative agents reuse the installed Go ADK Harness.
+Custom images use `Harness.spec.byo` with a SHA-256-pinned image and explicit
+command. The BYO compiler passes the prompt, optional model, and MCP settings
+as ADK-shaped configuration. rc3 rejects native `outputSchema` on BYO Harnesses,
+so the image must implement the report contract itself.
+
+`ModelConfig` sets the invocation provider, model ID, optional endpoint, and
+Secret references. `ModelProviderConfig` is a separate OpenAI-compatible model
+discovery controller. Tool allowlists are native
+`AgentTemplateSpec.tools[].mcp.tools` entries against `RemoteMCPServer` references.
+An empty upstream list exposes the whole server, so TriageLab requires explicit
+selections. KAgent compiles and deploys the configuration after the resource
+is saved to Kubernetes. The workspace can write these resources when started with
+an explicit kubeconfig, context, and write access. For BYO images it stages a new
+Harness before changing the Agent's `harnessRef`.
+The optional workspace status reader uses namespace-scoped Kubernetes list
+permissions. It projects current-generation conditions and the controller's
+`RemoteMCPServer.status.discoveredTools` for the editor.
+
+- [Agent and Harness configuration](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/configuration-and-compilation.md)
+- [ModelConfig provider schema](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/v1alpha3/modelconfig_types.go)
+- [MCP binding schema](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/v1alpha3/agenttemplate_types.go)
+- [Credential injection and caller-token propagation](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/credential-injection.md)
 
 ## Upgrade procedure
 

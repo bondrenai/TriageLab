@@ -24,6 +24,30 @@ func TestDefaultConfigAndBounds(t *testing.T) {
 	}
 }
 
+func TestConfigClusterHTTPOptIn(t *testing.T) {
+	clusterService := func(c *Config) { c.Endpoint = "http://triagelab-tools.kagent.svc.cluster.local:8083/mcp" }
+	c := DefaultConfig()
+	clusterService(&c)
+	if err := c.Validate(); err == nil {
+		t.Fatal("cluster service HTTP endpoint accepted without the opt-in")
+	}
+	c.AllowClusterHTTP = true
+	if err := c.Validate(); err != nil {
+		t.Fatalf("cluster service HTTP endpoint rejected with the opt-in: %v", err)
+	}
+	for _, endpoint := range []string{
+		"http://triagelab-tools.kagent.svc.example.net/mcp", "http://10.0.0.1:8083/mcp",
+		"http://kagent.example.com/mcp", "http://triagelab-tools.kagent/mcp",
+	} {
+		c := DefaultConfig()
+		c.AllowClusterHTTP = true
+		c.Endpoint = endpoint
+		if err := c.Validate(); err == nil {
+			t.Fatalf("non-service HTTP endpoint accepted with the opt-in: %s", endpoint)
+		}
+	}
+}
+
 func TestConfigRejectsUnknownFieldsAndTrailingObjects(t *testing.T) {
 	for _, data := range []string{`{"surprise":true}`, `{} {}`, `{"poll_interval":1.5}`, `{"process_timeout":false}`} {
 		path := filepath.Join(t.TempDir(), "config.json")
