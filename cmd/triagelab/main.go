@@ -17,6 +17,7 @@ import (
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/ticketflow"
 	"github.com/bondrenai/TriageLab/internal/webserver"
 )
 
@@ -63,6 +64,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 	reportPath := flags.String("report", "", "saved report.json for cleanup")
 	listen := flags.String("listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	assets := flags.String("assets", "web/dist", "built frontend directory")
+	tickets := flags.String("tickets", "", "optional Zendesk ticket procedure configuration (serve only)")
 	var files, logs stringsFlag
 	flags.Var(&files, "file", "attachment (repeatable)")
 	flags.Var(&logs, "log", "log file (repeatable)")
@@ -92,6 +94,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
+		}
+		if *tickets != "" {
+			ticketConfig, err := ticketflow.LoadConfig(*tickets)
+			if err == nil {
+				err = workspace.EnableTickets(ticketConfig, os.Getenv(ticketConfig.TokenEnv))
+			}
+			if err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
 		}
 		if err = webserver.Serve(ctx, *listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))

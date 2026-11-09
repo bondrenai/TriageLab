@@ -16,6 +16,9 @@ or agent framework. The UI is a private, single-user client of the same workflow
   watchdog limits, evidence retrieval, reporting, and cleanup.
 - `internal/report` serializes independently collected process evidence separately from
   model hypotheses. Keep the JSON report canonical and Markdown readable.
+- `internal/ticketflow` prepares helpdesk cases. Keep policy checks and durable
+  clarification reservations outside the investigator. Bind human approval to
+  the exact evidence and run settings before admitting a ticket run.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Keep credentials server-side and route new runs through the existing investigator.
 - `web/` uses React 19, TypeScript, Vite, and the Bondren design language.

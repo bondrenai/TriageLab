@@ -123,6 +123,9 @@ cloud usage can incur charges even though TriageLab is free. The server binds
 only to loopback and accepts one active run at a time. It has no accounts or
 multi-user access control; keep it behind your SSH tunnel.
 
+The [Zendesk ticket pilot](docs/tickets.md) adds a case queue, configurable ticket
+selection and clarification, and approval before the existing investigation run.
+
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.
 

@@ -392,3 +392,14 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
   :root { --motion-micro: 0ms; --motion-element: 0ms; }
   html { scroll-behavior: auto; }
 }
+
+.ticket-detail { display: grid; gap: 12px; overflow-wrap: anywhere; }
+.ticket-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.ticket-form .field { padding: 7px 10px; }
+.ticket-source { color: var(--color-blue-700); text-decoration: underline; text-underline-offset: 3px; }
+.ticket-meta { align-items: center; gap: 12px; }
+.ticket-facts dd { max-width: 75%; }
+.ticket-plan { background: var(--color-gray-50); border-radius: var(--radius-sm); padding: 12px 14px; }
+.ticket-draft { white-space: pre-wrap; }
+.ticket-queue > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 8px; border-bottom: 1px solid var(--color-gray-100); }
+.ticket-queue .button { text-align: left; white-space: normal; overflow-wrap: anywhere; min-width: 0; }

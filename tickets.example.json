@@ -1,0 +1,12 @@
+{
+  "subdomain": "your-zendesk-subdomain",
+  "email": "support-agent@example.invalid",
+  "token_env": "TRIAGELAB_ZENDESK_TOKEN",
+  "poll_seconds": 60,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "priorities": [],
+    "auto_questions": false,
+    "max_questions": 2
+  }
+}

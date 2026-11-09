@@ -19,6 +19,15 @@ waits for its cleanup. `web/` is a React/TypeScript client with API transport,
 domain types, query hooks, and presentation kept separate. There is no second
 agent implementation or browser-held model credential.
 
+The optional ticket procedure is implemented in `internal/ticketflow`. It
+stores one private record per enrolled Zendesk ticket under the report
+directory, with a process lock and atomic updates. It selects cases using
+configured ticket properties and extracts readiness facts from public
+requester comments. A durable clarification reservation precedes a policy
+authorized Zendesk write. Waiting cases consume no sandbox. An operator
+approves the plan's evidence and limits before the same workspace run slot
+dispatches the existing investigation workflow. See [ticket setup](tickets.md).
+
 KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, Go ADK tool loop, authorization integration, model gateway,
 and expiry. Sandbox is a database-backed API resource, **not** a Kubernetes CRD.

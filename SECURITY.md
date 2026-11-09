@@ -91,6 +91,14 @@ public proxy. The browser receives redacted reports, not the configured API
 token. Selected uploads use the same ingestion limits and credential screening
 as CLI inputs.
 
+With the optional [Zendesk procedure](docs/tickets.md), the server can add
+public clarification comments to explicitly tracked tickets when enabled by
+policy. Questions use fixed templates; private comments, model output, and
+raw ticket text do not enter those replies. Ticket reads and attachment
+downloads are restricted to the configured Zendesk account. Keep the case
+state private and persistent across restarts. Use one workspace per account
+for automatic replies, and test the policy on a disposable ticket first.
+
 ## Cleanup and failure handling
 
 The workflow attempts to delete the session and sandbox after success, failure,

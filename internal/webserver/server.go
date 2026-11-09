@@ -27,6 +27,7 @@ import (
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
 const maxReportBytes = 64 << 20
@@ -52,6 +53,7 @@ type Server struct {
 	activeID  string
 	active    *runningCase
 	closed    bool
+	tickets   *ticketflow.Flow
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -112,7 +114,11 @@ func (s *Server) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	return errors.Join(s.reports.Close(), s.assets.Close())
+	var ticketErr error
+	if s.tickets != nil {
+		ticketErr = s.tickets.Close()
+	}
+	return errors.Join(ticketErr, s.reports.Close(), s.assets.Close())
 }
 
 // Serve runs a loopback-only HTTP server and waits for investigation cleanup on shutdown.
@@ -133,6 +139,9 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return err
+	}
+	if s.tickets != nil {
+		s.tickets.Start(ctx)
 	}
 	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	result := make(chan error, 1)
@@ -214,6 +223,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/runs/") {
 		s.runRoute(w, r)
+		return
+	}
+	if r.URL.Path == "/api/tickets" || strings.HasPrefix(r.URL.Path, "/api/tickets/") {
+		s.ticketRoute(w, r)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -522,28 +535,54 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	if r.Context().Err() != nil {
 		return
 	}
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		fail(w, 503, "The workspace is shutting down")
+	if err := s.launch(c, nil); err != nil {
+		writeLaunchError(w, err)
 		return
+	}
+	jsonResponse(w, 202, map[string]string{"id": c.ID})
+}
+
+var errWorkspaceClosed = errors.New("the workspace is shutting down")
+var errRunStore = errors.New("could not save the initial report")
+
+func writeLaunchError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ticketflow.ErrBusy):
+		fail(w, 409, "An investigation is already running")
+	case errors.Is(err, errWorkspaceClosed):
+		fail(w, 503, err.Error())
+	default:
+		fail(w, 500, "Could not save the initial report")
+	}
+}
+
+func (s *Server) launch(c casefile.Case, reserve func() error) error {
+	s.mu.Lock()
+	if s.closed || s.ctx.Err() != nil {
+		s.mu.Unlock()
+		return errWorkspaceClosed
 	}
 	if s.active != nil {
 		s.mu.Unlock()
-		fail(w, 409, "An investigation is already running")
-		return
+		return ticketflow.ErrBusy
 	}
 	dir := filepath.Join(s.directory, c.ID)
-	if err = s.reports.Mkdir(c.ID, 0o700); err != nil {
+	if err := s.reports.Mkdir(c.ID, 0o700); err != nil {
 		s.mu.Unlock()
-		fail(w, 500, "Could not create the report directory")
-		return
+		return errRunStore
 	}
 	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
-	if err = report.Write(dir, initial, s.secrets...); err != nil {
+	if err := report.Write(dir, initial, s.secrets...); err != nil {
+		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
-		fail(w, 500, "Could not save the initial report")
-		return
+		return errRunStore
+	}
+	if reserve != nil {
+		if err := reserve(); err != nil {
+			// Keep the report if the durable ticket reservation was uncertain.
+			s.mu.Unlock()
+			return err
+		}
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	active := &runningCase{cancel: cancel, done: make(chan struct{}), progress: []string{"Investigation queued"}}
@@ -574,7 +613,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		close(active.done)
 		s.mu.Unlock()
 	}()
-	jsonResponse(w, 202, map[string]string{"id": c.ID})
+	return nil
 }
 
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {

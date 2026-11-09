@@ -1,5 +1,9 @@
 # Roadmap
 
+- [ ] Pilot the Zendesk ticket procedure against a disposable account, then add
+      Bondren as a second source with shared ticket identity and one owner for
+      automated replies. Use pilot evidence to guide procedure authoring and CEL.
+
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.

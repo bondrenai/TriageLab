@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FlaskConical, FolderOpen, FileCheck2, Github } from "lucide-react";
+import { ArrowUpRight, FlaskConical, FolderOpen, FileCheck2, Github, Inbox } from "lucide-react";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
 import { NewInvestigationPage } from "./pages/NewInvestigationPage";
+import { TicketsPage } from "./pages/TicketsPage";
 import { ReportPage } from "./pages/ReportPage";
 import { PageTitle, ButtonLink } from "./components/ui";
 
@@ -20,6 +21,7 @@ export function App() {
       <div className="workspace-label engraved">Workbench</div>
       <nav className="main-nav" aria-label="Main navigation">
         <NavLink to="/" end><FolderOpen size={17} aria-hidden="true" />Investigations</NavLink>
+        <NavLink to="/tickets"><Inbox size={17} aria-hidden="true" />Ticket cases</NavLink>
         <NavLink to="/example"><FileCheck2 size={17} aria-hidden="true" />Example report</NavLink>
       </nav>
       <div className="sidebar-footer">
@@ -34,6 +36,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<InvestigationsPage />} />
           <Route path="/new" element={<NewInvestigationPage />} />
+          <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/example" element={<ReportPage example />} />
           <Route path="/runs/:id" element={<ReportPage />} />
           <Route path="*" element={<><PageTitle title="Page not found" description="This workspace page does not exist." /><ButtonLink to="/">Back to investigations</ButtonLink></>} />

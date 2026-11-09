@@ -101,3 +101,14 @@ that VM, not on the resource-constrained development laptop.
 No new live model investigation was run for the UI work. The bundled example
 is the preserved live run documented above; current new runs still require a
 configured private KAgent/Substrate deployment and model credential.
+
+## Zendesk ticket procedure verification
+
+On the remote development VM, `make check`, `make build`, and `make build-ui`
+passed. The ticket tests use a local TLS HTTP fixture with Zendesk response
+shapes. They cover read-only preview, policy-authorized clarification,
+recovery across a restart, unconfirmed writes, requester replies, changed
+attachments, stale approval, and a busy run slot. A Chromium walkthrough
+using fixture API responses checked the queue, approval, run link, and
+desktop/mobile accessibility. These checks did not call a Zendesk account,
+send customer messages, or start a live KAgent investigation.
