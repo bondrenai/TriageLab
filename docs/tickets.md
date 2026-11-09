@@ -8,19 +8,30 @@ TriageLab keeps preparation decisions and the linked investigation report.
 
 ## Connect a test account
 
-1. Build the Go binary and browser assets as described in [UI setup](ui.md).
-2. Copy `tickets.example.json` to `tickets.local.json`, then set the Zendesk
-   subdomain and agent email. Supply the Zendesk API token through
-   `TRIAGELAB_ZENDESK_TOKEN` in the server environment. This uses Zendesk's
-   API token authentication; the configured agent must be able to read the
-   selected tickets and, if sending is enabled, add public replies.
-3. Start the workspace with
-   `bin/triagelab serve --tickets tickets.local.json`. Keep its listener on
-   loopback and use the usual SSH tunnel for a remote VM. Configure KAgent
-   separately before approving a lab.
-4. Open **Ticket cases** and preview a ticket by numeric ID. Preview does not
-   enroll the ticket, send a message, or start a run. Track a matching ticket
-   to start applying the procedure.
+1. In Zendesk Admin Center, open **Apps and integrations → APIs → OAuth clients**.
+   Create a [Public client](https://developer.zendesk.com/documentation/authentication/oauth-migration/#setting-up-an-oauth-client)
+   named **TriageLab**. Use the identifier `triagelab-local` and redirect URL
+   `http://127.0.0.1:8080/oauth/zendesk/callback`. Allow `tickets:read` for
+   preview, comments, and ticket evidence. Also allow `tickets:write` if you
+   plan to enable automatic public clarifications.
+2. Build the Go binary and browser assets as described in [UI setup](ui.md).
+   Copy `tickets.example.json` to `tickets.local.json`. Set the Zendesk
+   subdomain, client identifier, and exact registered redirect URI. Existing
+   pilot configurations should replace the old `email` and `token_env`
+   settings with `client_id` and `redirect_uri`.
+3. Start `bin/triagelab serve --tickets tickets.local.json`. Keep its listener
+   on loopback. For a remote VM, forward local port 8080 to VM loopback port
+   8080 over SSH. Open `http://127.0.0.1:8080/tickets` in the browser, using
+   the same hostname and port registered for OAuth.
+4. Choose **Connect Zendesk** and approve access as a Zendesk agent who can
+   read the selected tickets and, when enabled, post public replies.
+   TriageLab uses an authorization code with PKCE and requests only
+   `tickets:read` unless the policy enables automatic questions. If enabled,
+   it requests both `tickets:read` and `tickets:write`. No client secret,
+   API token, or pasted OAuth token is needed.
+5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
+   a message, or start a run. Track a matching ticket to start applying the
+   procedure. Configure KAgent separately before approving a lab.
 
 Configure one procedure in the JSON file and restart the workspace to apply
 changes. Conditions are combined: an open ticket must have the configured
@@ -76,17 +87,21 @@ inspect and share findings through the normal helpdesk process.
 
 ## Deployment boundary
 
-This is a private, single operator pilot. Zendesk plans to retire API token
-authentication, so wider rollout needs OAuth. See [Zendesk authentication
-requirements](https://developer.zendesk.com/api-reference/introduction/security-and-auth/).
+This is a private, single operator pilot with an OAuth client registered in
+the connected account. A managed integration distributed across Zendesk accounts
+needs [Zendesk global OAuth](https://developer.zendesk.com/api-reference/introduction/security-and-auth/).
 A ticket is enrolled explicitly;
 no general Zendesk inbox sync or public webhook listener is needed. Use one
 workspace per account for automatic replies. Its `reports/.tickets` directory
 stores up to 100 tracked cases, including redacted facts, approval state,
 clarification reservations and run references. Keep it private and preserve it
 across restarts: deleting it loses the duplicate-send and run limits. Account
-changes require a separate report directory. The API token is held server-side,
-and the investigator receives only the selected evidence. Review the
+changes require a separate report directory. The OAuth grant is stored
+server-side in `reports/.tickets/.zendesk-oauth` (mode 0600). TriageLab
+[renews expired access](https://developer.zendesk.com/documentation/authentication/refresh-token/)
+by replacing both tokens. Changing the client, redirect URI, or scope requires
+reconnecting. If renewal fails, reconnect through Ticket cases. Revoke unwanted
+grants in Zendesk. The investigator receives only selected evidence; review the
 [security model](../SECURITY.md) before sending customer data to a model.
 
 The connector boundary supports adding Bondren next. For imported tickets,

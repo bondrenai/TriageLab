@@ -112,3 +112,12 @@ attachments, stale approval, and a busy run slot. A Chromium walkthrough
 using fixture API responses checked the queue, approval, run link, and
 desktop/mobile accessibility. These checks did not call a Zendesk account,
 send customer messages, or start a live KAgent investigation.
+
+## Zendesk OAuth verification
+
+The remote VM passed `make check`, `make build`, and `make build-ui`.
+The OAuth tests use a TLS fixture to verify PKCE, one-time callback state,
+browser binding, exact scopes, private persistence, refresh rotation, and
+recovery after a lost refresh response. Chromium verified the scoped
+authorization redirect and a simulated cross-site denial callback, including
+desktop and mobile accessibility checks. No live Zendesk grant was issued.

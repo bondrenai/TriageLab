@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, type StampHue } from "../components/ui";
-import { useTicketAction, useTicketWorkspace } from "../hooks/use-tickets";
+import { useTicketAction, useTicketWorkspace, useZendeskOAuth } from "../hooks/use-tickets";
 import type { TicketAction, TicketCase, TicketSettings } from "../lib/types/ticket";
 
 const states: Record<TicketCase["state"], [string, StampHue]> = {
@@ -78,10 +79,14 @@ function TicketDetail({ ticket, settings, preview, busy, perform }: {
 export function TicketsPage() {
   const workspace = useTicketWorkspace();
   const mutation = useTicketAction();
+  const connect = useZendeskOAuth();
+  const [params] = useSearchParams();
+  const oauthResult = params.get("zendesk");
   const [id, setID] = useState("");
   const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState<TicketCase>();
   const data = workspace.data;
+  const atCallbackOrigin = data?.enabled && new URL(data.oauth.workspace_url).origin === window.location.origin;
   const active = data?.enabled ? data.cases.find(ticket => ticket.ticket_id === selected) : undefined;
 
   function perform(input: TicketAction) {
@@ -107,20 +112,33 @@ export function TicketsPage() {
     {workspace.isError && <ErrorPlate title="Could not load ticket cases" error={workspace.error} action={<Button onClick={() => void workspace.refetch()}>Try again</Button>} />}
     {data && !data.enabled && <Panel title="Connect Zendesk">
       <div className="panel-body ticket-detail">
-        <p>Start the workspace with a Zendesk connection and a ticket procedure to prepare cases here.</p>
+        <p>Configure a Zendesk OAuth client and a ticket procedure to prepare cases here.</p>
         <p><a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/tickets.md" target="_blank" rel="noreferrer">Read the setup guide ↗</a></p>
       </div>
     </Panel>}
     {data?.enabled && <div className="section-stack">
+      <Panel title="Zendesk connection" aside={<Stamp hue={data.oauth.connected ? "green" : "gray"}>{data.oauth.connected ? "Connected" : "Not connected"}</Stamp>}>
+        <div className="panel-body ticket-detail">
+          <p>{new URL(data.oauth.account).hostname} · {data.oauth.scopes.join(", ")}</p>
+          {oauthResult === "denied" && <p role="status">Zendesk access was declined.</p>}
+          {oauthResult === "failed" && <ErrorPlate title="Zendesk authorization failed" error="Check the client identifier, redirect URL and allowed scopes, then connect again." />}
+          {connect.isError && <ErrorPlate title="Could not start Zendesk authorization" error={connect.error} />}
+          <div className="button-row">
+            {atCallbackOrigin ? <Button variant={data.oauth.connected ? "secondary" : "primary"} disabled={connect.isPending || mutation.isPending} onClick={() => connect.mutate()}>
+              {connect.isPending ? "Opening Zendesk…" : data.oauth.connected ? "Reconnect Zendesk" : "Connect Zendesk"}
+            </Button> : <a className="button button-secondary" href={data.oauth.workspace_url}>Open the workspace at the OAuth origin</a>}
+          </div>
+        </div>
+      </Panel>
       <Panel title="Python timeout procedure">
         <div className="panel-body ticket-detail">
           <p>Matches open tickets tagged <code>{data.settings.policy.tag}</code>{data.settings.policy.priorities?.length ? ` with priority ${data.settings.policy.priorities.join(" or ")}` : ""}{data.settings.policy.field_id ? ` and custom field ${data.settings.policy.field_id} set to ${data.settings.policy.field_value}` : ""}.</p>
           <p>{data.settings.policy.auto_questions ? `The policy may send up to ${data.settings.policy.max_questions} public clarification attempts per ticket.` : "Clarification questions are prepared for human review."} Every run requires approval.</p>
-          <form className="ticket-form" onSubmit={inspect}>
+          {data.oauth.connected && <form className="ticket-form" onSubmit={inspect}>
             <div><label className="field-label" htmlFor="ticket-id">Zendesk ticket ID</label>
               <input className="field" id="ticket-id" inputMode="numeric" pattern="[1-9][0-9]{0,18}" maxLength={19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} /></div>
             <Button type="submit" variant="primary" disabled={mutation.isPending}>Preview ticket</Button>
-          </form>
+          </form>}
         </div>
       </Panel>
       {mutation.isPending && <p role="status" className="quiet">Checking ticket…</p>}
@@ -128,14 +146,14 @@ export function TicketsPage() {
       {data.cases.length > 0 && <Panel title="Tracked tickets">
         <div className="panel-body ticket-queue">
           {data.cases.map(ticket => <div key={ticket.ticket_id}>
-            <Button disabled={mutation.isPending} aria-pressed={ticket.ticket_id === selected && !preview} onClick={() => {
+            <Button disabled={!data.oauth.connected || mutation.isPending} aria-pressed={ticket.ticket_id === selected && !preview} onClick={() => {
               mutation.reset(); setSelected(ticket.ticket_id); setPreview(undefined);
             }}>#{ticket.ticket_id} {ticket.title}</Button>
             <CaseStamp ticket={ticket} />
           </div>)}
         </div>
       </Panel>}
-      {(active || preview) && <TicketDetail ticket={active || preview!} settings={data.settings} preview={!active}
+      {data.oauth.connected && (active || preview) && <TicketDetail ticket={active || preview!} settings={data.settings} preview={!active}
         busy={mutation.isPending} perform={perform} />}
     </div>}
   </>;

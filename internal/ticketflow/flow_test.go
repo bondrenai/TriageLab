@@ -42,9 +42,8 @@ func newFixture(t *testing.T) *fixture {
 	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		email, token, ok := r.BasicAuth()
-		if !ok || email != "test@example.invalid/token" || token != "test-ticket-credential" {
-			t.Error("expected Zendesk API token authorization")
+		if r.Header.Get("Authorization") != "Bearer test-ticket-credential" {
+			t.Error("expected Zendesk OAuth bearer authorization")
 			w.WriteHeader(401)
 			return
 		}
@@ -99,7 +98,9 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) connector() *zendesk {
 	client := f.server.Client()
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &zendesk{origin: f.server.URL, email: "test@example.invalid", token: "test-ticket-credential", client: client}
+	return &zendesk{origin: f.server.URL, client: client, oauth: &zendeskOAuth{
+		scope: "tickets:read tickets:write", now: time.Now, pair: &oauthPair{Access: "test-ticket-credential", Expires: time.Now().Add(time.Hour)},
+	}}
 }
 
 func (f *fixture) reply() {

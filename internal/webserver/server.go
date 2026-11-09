@@ -191,6 +191,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "Only a loopback host is allowed")
 		return
 	}
+	// OAuth is a top-level navigation from Zendesk. The callback has its
+	// own exact host, one-time state and browser cookie checks.
+	if r.URL.Path == ticketflow.OAuthCallbackPath {
+		s.zendeskCallback(w, r)
+		return
+	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
 		if err != nil || u.Scheme != "http" || u.Host != r.Host || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {

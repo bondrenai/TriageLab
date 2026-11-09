@@ -13,12 +13,11 @@ import (
 )
 
 // EnableTickets is startup configuration; credentials remain server-side.
-func (s *Server) EnableTickets(config ticketflow.Config, token string) error {
-	flow, err := ticketflow.Open(config, token, filepath.Join(s.directory, ".tickets"), s.config, s.secrets...)
+func (s *Server) EnableTickets(config ticketflow.Config) error {
+	flow, err := ticketflow.Open(config, filepath.Join(s.directory, ".tickets"), s.config, s.secrets...)
 	if err != nil {
 		return err
 	}
-	s.secrets = append(s.secrets, token)
 	s.tickets = flow
 	return nil
 }
@@ -30,7 +29,7 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, 200, map[string]bool{"enabled": false})
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"enabled": true, "settings": flow.Settings(), "cases": flow.Cases()})
+		jsonResponse(w, 200, map[string]any{"enabled": true, "settings": flow.Settings(), "cases": flow.Cases(), "oauth": flow.OAuthStatus()})
 		return
 	}
 	if flow == nil {
@@ -39,6 +38,10 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		fail(w, 405, "Method not allowed")
+		return
+	}
+	if r.URL.Path == "/api/tickets/oauth/start" {
+		s.zendeskAuthorize(w, r)
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
@@ -87,6 +90,8 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, 200, c)
 	case errors.Is(err, ticketflow.ErrChanged), errors.Is(err, ticketflow.ErrBusy), errors.Is(err, ticketflow.ErrBlocked):
 		fail(w, 409, err.Error())
+	case errors.Is(err, ticketflow.ErrOAuthRequired):
+		fail(w, 401, err.Error())
 	case errors.Is(err, ticketflow.ErrNotFound):
 		fail(w, 404, err.Error())
 	case errors.Is(err, ticketflow.ErrStorage), errors.Is(err, errRunStore):

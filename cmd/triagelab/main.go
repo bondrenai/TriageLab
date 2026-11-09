@@ -98,7 +98,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		if *tickets != "" {
 			ticketConfig, err := ticketflow.LoadConfig(*tickets)
 			if err == nil {
-				err = workspace.EnableTickets(ticketConfig, os.Getenv(ticketConfig.TokenEnv))
+				err = workspace.EnableTickets(ticketConfig)
 			}
 			if err != nil {
 				_ = workspace.Close(ctx)

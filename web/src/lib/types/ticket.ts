@@ -33,7 +33,7 @@ export interface TicketSettings {
 
 export type TicketWorkspace =
   | { enabled: false }
-  | { enabled: true; settings: TicketSettings; cases: TicketCase[] };
+  | { enabled: true; settings: TicketSettings; cases: TicketCase[]; oauth: { connected: boolean; account: string; workspace_url: string; scopes: string[] } };
 
 export interface TicketAction {
   id: string;

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -21,14 +23,14 @@ type Policy struct {
 
 type Config struct {
 	Subdomain   string `json:"subdomain"`
-	Email       string `json:"email"`
-	TokenEnv    string `json:"token_env"`
+	ClientID    string `json:"client_id"`
+	RedirectURI string `json:"redirect_uri"`
 	PollSeconds int    `json:"poll_seconds"`
 	Policy      Policy `json:"policy"`
 }
 
 func LoadConfig(path string) (Config, error) {
-	var config Config
+	config := Config{RedirectURI: "http://127.0.0.1:8080" + OAuthCallbackPath}
 	f, err := os.Open(path)
 	if err != nil {
 		return config, err
@@ -43,19 +45,32 @@ func LoadConfig(path string) (Config, error) {
 	if d.Decode(&config) != nil || d.Decode(new(any)) != io.EOF {
 		return config, errors.New("invalid ticket configuration JSON")
 	}
+	return config, config.validate()
+}
+
+func (config Config) validate() error {
 	p := config.Policy
-	if !subdomain.MatchString(config.Subdomain) || strings.TrimSpace(config.Email) == "" || config.TokenEnv == "" ||
+	if !subdomain.MatchString(config.Subdomain) || !oauthIdentifier.MatchString(config.ClientID) ||
 		(config.PollSeconds != 0 && (config.PollSeconds < 60 || config.PollSeconds > 3600)) ||
 		p.Tag == "" || len(p.Tag) > 100 || p.MaxQuestions < 0 || p.MaxQuestions > 3 || (p.AutoQuestions && p.MaxQuestions == 0) ||
 		p.FieldID < 0 || (p.FieldID > 0) != (p.FieldValue != "") {
-		return config, errors.New("invalid Zendesk connection, polling interval, or ticket policy")
+		return errors.New("invalid Zendesk OAuth connection, polling interval, or ticket policy")
 	}
 	for _, priority := range p.Priorities {
 		if !slices.Contains([]string{"low", "normal", "high", "urgent"}, priority) {
-			return config, errors.New("unknown Zendesk priority in policy")
+			return errors.New("unknown Zendesk priority in policy")
 		}
 	}
-	return config, nil
+	u, err := url.Parse(config.RedirectURI)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+		u.Path != OAuthCallbackPath || u.RawPath != "" || !slices.Contains([]string{"127.0.0.1", "[::1]", "localhost"}, strings.TrimSuffix(u.Host, ":"+u.Port())) {
+		return errors.New("Zendesk redirect_uri must use an HTTP loopback origin and " + OAuthCallbackPath)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil || port < 1 || port > 65535 || config.RedirectURI != "http://"+u.Host+OAuthCallbackPath {
+		return errors.New("Zendesk redirect_uri must include an explicit loopback port")
+	}
+	return nil
 }
 
 func (p Policy) exclusion(t ticket) string {

@@ -81,6 +81,7 @@ type Settings struct {
 
 type Flow struct {
 	source   source
+	oauth    *zendeskOAuth
 	store    *store
 	settings Settings
 	runtime  investigation.Config
@@ -92,16 +93,40 @@ type Flow struct {
 	done     chan struct{}
 }
 
-func Open(config Config, token, dir string, runtime investigation.Config, secrets ...string) (*Flow, error) {
-	z, err := newZendesk(config.Subdomain, config.Email, token)
-	if err != nil {
+func Open(config Config, dir string, runtime investigation.Config, secrets ...string) (*Flow, error) {
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
+	z := newZendesk(config.Subdomain)
 	s, err := openStore(dir, z.account())
 	if err != nil {
 		return nil, err
 	}
-	return newFlow(config, z, s, runtime, append(secrets, token)), nil
+	z.oauth, err = openOAuth(config, z.origin, dir, z.client)
+	if err != nil {
+		s.lock.Close()
+		return nil, err
+	}
+	flow := newFlow(config, z, s, runtime, secrets)
+	flow.oauth = z.oauth
+	return flow, nil
+}
+
+func (f *Flow) OAuthStatus() OAuthStatus                       { return f.oauth.status() }
+func (f *Flow) BeginOAuth(host string) (string, string, error) { return f.oauth.begin(host) }
+func (f *Flow) FinishOAuth(ctx context.Context, host, state, browser, code string, denied bool) error {
+	if err := f.begin(); err != nil {
+		return err
+	}
+	defer f.op.Unlock()
+	return f.oauth.finish(ctx, host, state, browser, code, denied)
+}
+
+func (f *Flow) currentSecrets() []string {
+	if f.oauth == nil {
+		return f.secrets
+	}
+	return append(slices.Clone(f.secrets), f.oauth.secrets()...)
 }
 
 func newFlow(config Config, source source, store *store, runtime investigation.Config, secrets []string) *Flow {
@@ -130,6 +155,9 @@ func (f *Flow) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if f.oauth != nil && !f.oauth.status().Connected {
+					continue
+				}
 				cases := f.Cases()
 				waiting := slices.DeleteFunc(cases, func(c Case) bool { return c.Paused || c.State != "waiting" })
 				if len(waiting) == 0 {
@@ -335,7 +363,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 	t := s.Ticket
 	c := previous
 	c.TicketID, c.Account, c.CheckedAt = id, f.source.account(), time.Now().UTC()
-	c.Title = report.Redact(bounded(t.Subject, 500), f.secrets...).(string)
+	c.Title = report.Redact(bounded(t.Subject, 500), f.currentSecrets()...).(string)
 	c.State, c.Reason, c.Draft, c.Plan = "excluded", f.settings.Policy.exclusion(t), "", ""
 	c.PlanExpires = time.Time{}
 	c.Facts, c.Files = nil, nil
@@ -403,7 +431,7 @@ func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticke
 	for _, field := range fields {
 		if fact, ok := facts[field.name]; ok {
 			lines = append(lines, fact.Label+": "+fact.Value+" (requester comment "+fact.CommentID+")")
-			fact.Value = report.Redact(fact.Value, f.secrets...).(string)
+			fact.Value = report.Redact(fact.Value, f.currentSecrets()...).(string)
 			c.Facts = append(c.Facts, fact)
 		} else {
 			missing = append(missing, field.question)
@@ -512,7 +540,7 @@ func (f *Flow) prepare(ctx context.Context, lines []string, files []attachment) 
 }
 
 func (f *Flow) hasSecret(data []byte) bool {
-	for _, secret := range f.secrets {
+	for _, secret := range f.currentSecrets() {
 		if secret != "" && bytes.Contains(data, []byte(secret)) {
 			return true
 		}

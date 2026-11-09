@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../lib/query-keys";
-import { readTicketWorkspace, takeTicketAction } from "../lib/tickets";
+import { beginZendeskOAuth, readTicketWorkspace, takeTicketAction } from "../lib/tickets";
 
 export function useTicketWorkspace() {
   return useQuery({ queryKey: queryKeys.tickets, queryFn: readTicketWorkspace, refetchInterval: 10000 });
@@ -15,5 +15,12 @@ export function useTicketAction() {
         void client.invalidateQueries({ queryKey: queryKeys.tickets });
       }
     },
+  });
+}
+
+export function useZendeskOAuth() {
+  return useMutation({
+    mutationFn: beginZendeskOAuth,
+    onSuccess: ({ url }) => window.location.assign(url),
   });
 }

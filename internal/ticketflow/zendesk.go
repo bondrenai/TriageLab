@@ -72,22 +72,20 @@ type source interface {
 }
 
 type zendesk struct {
-	origin, email, token string
-	client               *http.Client
+	origin string
+	client *http.Client
+	oauth  *zendeskOAuth
 }
 
-func newZendesk(account, email, token string) (*zendesk, error) {
-	if !subdomain.MatchString(account) || strings.TrimSpace(email) == "" || strings.TrimSpace(token) == "" {
-		return nil, errors.New("Zendesk requires a subdomain, agent email and API token")
-	}
+func newZendesk(account string) *zendesk {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	return &zendesk{
-		origin: "https://" + account + ".zendesk.com", email: email, token: token,
+		origin: "https://" + account + ".zendesk.com",
 		client: &http.Client{Transport: transport, Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
-	}, nil
+	}
 }
 
 func (z *zendesk) account() string { return z.origin }
@@ -97,11 +95,30 @@ func (z *zendesk) request(ctx context.Context, method, target string, body []byt
 	if err != nil || u.User != nil || u.Fragment != "" || u.Scheme+"://"+u.Host != z.origin {
 		return nil, errors.New("Zendesk resource is outside the configured account")
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
+	// Retry one read after a rejected access token. A clarification is never
+	// retried here; the case owns the delivery reservation and outcome.
+	data, err := z.requestAuthorized(ctx, method, u.String(), body, limit)
+	if method == http.MethodGet && errors.Is(err, errRejectedAccess) {
+		data, err = z.requestAuthorized(ctx, method, u.String(), body, limit)
+	}
+	if errors.Is(err, errRejectedAccess) {
+		return nil, ErrOAuthRequired
+	}
+	return data, err
+}
+
+var errRejectedAccess = errors.New("Zendesk rejected the OAuth access token")
+
+func (z *zendesk) requestAuthorized(ctx context.Context, method, target string, body []byte, limit int64) ([]byte, error) {
+	token, err := z.oauth.access(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
 	if err != nil {
 		return nil, errors.New("invalid Zendesk request")
 	}
-	req.SetBasicAuth(z.email+"/token", z.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -110,6 +127,10 @@ func (z *zendesk) request(ctx context.Context, method, target string, body []byt
 		return nil, errors.New("Zendesk request could not be completed")
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusUnauthorized {
+		z.oauth.rejected(token)
+		return nil, errRejectedAccess
+	}
 	if res.StatusCode == http.StatusConflict {
 		return nil, ErrChanged
 	}
@@ -192,6 +213,9 @@ func (z *zendesk) file(ctx context.Context, f attachment) ([]byte, error) {
 }
 
 func (z *zendesk) ask(ctx context.Context, t ticket, message string) error {
+	if z.oauth.scope != "tickets:read tickets:write" {
+		return ErrOAuthRequired
+	}
 	body, err := json.Marshal(map[string]any{"ticket": map[string]any{
 		"safe_update": true, "updated_stamp": t.Updated,
 		"comment": map[string]any{"body": message, "public": true},

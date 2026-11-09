@@ -8,3 +8,5 @@ export const takeTicketAction = ({ id, action, revision, plan }: TicketAction) =
     method: "POST",
     body: JSON.stringify({ revision, plan }),
   });
+
+export const beginZendeskOAuth = () => request<{ url: string }>("/api/tickets/oauth/start", { method: "POST" });

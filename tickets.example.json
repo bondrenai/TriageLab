@@ -1,7 +1,7 @@
 {
   "subdomain": "your-zendesk-subdomain",
-  "email": "support-agent@example.invalid",
-  "token_env": "TRIAGELAB_ZENDESK_TOKEN",
+  "client_id": "triagelab-local",
+  "redirect_uri": "http://127.0.0.1:8080/oauth/zendesk/callback",
   "poll_seconds": 60,
   "policy": {
     "tag": "triagelab_python_timeout",

@@ -120,9 +120,19 @@ func (s *store) save(c Case) error {
 	if err != nil || len(data) >= 64<<10 {
 		return errors.New("ticket state exceeds storage limit")
 	}
-	f, err := os.CreateTemp(s.dir, ".case-")
+	committed, err := writePrivate(s.dir, filename(c.TicketID), data)
+	if committed {
+		s.cases[c.TicketID] = c
+	}
+	return err
+}
+
+// writePrivate reports whether the rename became visible, including when
+// directory sync failed. Callers must stop effects after an uncertain commit.
+func writePrivate(directory, name string, data []byte) (bool, error) {
+	f, err := os.CreateTemp(directory, ".case-")
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer os.Remove(f.Name())
 	_, err = f.Write(data)
@@ -131,18 +141,15 @@ func (s *store) save(c Case) error {
 	}
 	err = errors.Join(err, f.Close())
 	if err != nil {
-		return err
+		return false, err
 	}
-	if err = os.Rename(f.Name(), filepath.Join(s.dir, filename(c.TicketID))); err != nil {
-		return err
+	if err = os.Rename(f.Name(), filepath.Join(directory, name)); err != nil {
+		return false, err
 	}
-	// The rename is already visible even if directory sync fails. Disable
-	// further effects until restart so an uncertain commit cannot be retried.
-	s.cases[c.TicketID] = c
-	dir, err := os.Open(s.dir)
+	dir, err := os.Open(directory)
 	if err != nil {
-		return fmt.Errorf("sync ticket state: %w", err)
+		return true, fmt.Errorf("sync ticket state: %w", err)
 	}
 	defer dir.Close()
-	return dir.Sync()
+	return true, dir.Sync()
 }
