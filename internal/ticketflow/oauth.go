@@ -79,7 +79,7 @@ type zendeskOAuth struct {
 func openOAuth(config Config, origin, dir string, client *http.Client) (*zendeskOAuth, error) {
 	u, _ := url.Parse(config.RedirectURI) // Validated at startup.
 	scope := zendeskReadScopes
-	if config.Policy.AutoQuestions {
+	if config.Policy.AutoQuestions || config.InternalNotes {
 		scope = zendeskWriteScopes
 	}
 	o := &zendeskOAuth{account: origin, clientID: config.ClientID, redirect: config.RedirectURI, host: u.Host,

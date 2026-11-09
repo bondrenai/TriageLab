@@ -18,15 +18,19 @@ import (
 )
 
 type fixture struct {
-	mu              sync.Mutex
-	server          *httptest.Server
-	ticket          ticket
-	comments        []comment
-	contents        string
-	attempts        int
-	unknownDelivery bool
-	more            bool
-	redirect        string
+	mu               sync.Mutex
+	server           *httptest.Server
+	ticket           ticket
+	comments         []comment
+	contents         string
+	attempts         int
+	unknownDelivery  bool
+	more             bool
+	redirect         string
+	requesterEmail   string
+	denyUserSideload bool
+	noteStatus       int
+	noteBody         string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -38,7 +42,8 @@ func newFixture(t *testing.T) *fixture {
 			{ID: 1, Author: 10, Public: true, Body: "My script times out."},
 			{ID: 2, Author: 10, Public: false, Body: "Python version: 3.12\nExpected: secret internal detail\nActual: error"},
 		},
-		contents: "print(1)\n",
+		contents:       "print(1)\n",
+		requesterEmail: "requester@example.test",
 	}
 	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -55,7 +60,18 @@ func newFixture(t *testing.T) *fixture {
 		}
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/v2/tickets/42.json":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ticket": f.ticket})
+			result := map[string]any{"ticket": f.ticket}
+			if r.URL.Query().Get("include") == "users" {
+				if f.denyUserSideload {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				result["users"] = []any{
+					map[string]any{"id": 99, "name": "Other", "email": "other@example.test"},
+					map[string]any{"id": f.ticket.Requester, "name": "Test requester", "email": f.requesterEmail},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(result)
 		case "GET /api/v2/tickets/42/comments":
 			if r.URL.Query().Get("page[size]") != "100" || r.URL.Query().Get("sort") != "created_at" {
 				t.Error("wrong bounded comment query")
@@ -73,15 +89,34 @@ func newFixture(t *testing.T) *fixture {
 			f.attempts++
 			var body struct {
 				Ticket struct {
-					Safe    bool    `json:"safe_update"`
-					Updated string  `json:"updated_stamp"`
-					Comment comment `json:"comment"`
+					Safe    bool   `json:"safe_update"`
+					Updated string `json:"updated_stamp"`
+					Comment struct {
+						Body   string `json:"body"`
+						Public *bool  `json:"public"`
+					} `json:"comment"`
 				} `json:"ticket"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Ticket.Safe ||
-				body.Ticket.Updated != f.ticket.Updated || !body.Ticket.Comment.Public ||
-				strings.Contains(body.Ticket.Comment.Body, "secret internal detail") || !strings.Contains(body.Ticket.Comment.Body, "Python version:") {
-				t.Error("unexpected or unsafe clarification request")
+				body.Ticket.Updated != f.ticket.Updated || body.Ticket.Comment.Public == nil {
+				t.Error("unexpected or unsafe ticket update")
+				w.WriteHeader(400)
+				return
+			}
+			if !*body.Ticket.Comment.Public {
+				f.noteBody = body.Ticket.Comment.Body
+				if f.noteStatus != 0 {
+					w.WriteHeader(f.noteStatus)
+					return
+				}
+				f.ticket.Updated = "2026-11-08T12:02:00Z"
+				_ = json.NewEncoder(w).Encode(map[string]any{"ticket": f.ticket, "audit": map[string]any{
+					"ticket_id": 42, "events": []any{map[string]any{"type": "Comment", "id": 123, "public": false}},
+				}})
+				return
+			}
+			if strings.Contains(body.Ticket.Comment.Body, "secret internal detail") || !strings.HasPrefix(body.Ticket.Comment.Body, "To help us reproduce the timeout,") {
+				t.Error("unexpected clarification content")
 				w.WriteHeader(400)
 				return
 			}
@@ -89,8 +124,7 @@ func newFixture(t *testing.T) *fixture {
 				w.WriteHeader(503)
 				return
 			}
-			message := body.Ticket.Comment
-			message.ID, message.Author = 3, 11
+			message := comment{ID: 3, Author: 11, Public: true, Body: body.Ticket.Comment.Body}
 			f.comments = append(f.comments, message)
 			f.ticket.Updated = "2026-11-08T12:00:01Z"
 			_ = json.NewEncoder(w).Encode(map[string]any{"ticket": f.ticket})
@@ -156,8 +190,24 @@ func TestClarifyResumeAndApproveExactEvidence(t *testing.T) {
 		t.Fatalf("stale preview had an effect: %v", err)
 	}
 	tracked, err := flow.Track(ctx, 42, preview.Revision)
+	if err != nil || tracked.State != "ask" || f.count() != 0 {
+		t.Fatalf("tracking bypassed the first clarification review: %+v %v", tracked, err)
+	}
+	if tracked.Requester == nil || tracked.Requester.Email != "requester@example.test" {
+		t.Fatalf("the clarification review lost the requester: %+v", tracked.Requester)
+	}
+	if _, err := flow.Refresh(ctx, 42); err != nil || f.count() != 0 {
+		t.Fatalf("refresh bypassed the first clarification review: %v", err)
+	}
+	f.mu.Lock()
+	f.requesterEmail = "updated@example.test"
+	f.mu.Unlock()
+	if _, err := flow.Clarify(ctx, 42, tracked.Revision); !errors.Is(err, ErrChanged) || f.count() != 0 {
+		t.Fatalf("stale requester approval sent a question: %v", err)
+	}
+	tracked, err = flow.Clarify(ctx, 42, flow.Cases()[0].Revision)
 	if err != nil || tracked.State != "waiting" || f.count() != 1 {
-		t.Fatalf("clarify: %+v %v", tracked, err)
+		t.Fatalf("clarification was not sent after review: %+v %v", tracked, err)
 	}
 	if _, err := openStore(dir, f.server.URL); err == nil {
 		t.Fatal("second process acquired the case store")
@@ -207,6 +257,55 @@ func TestClarifyResumeAndApproveExactEvidence(t *testing.T) {
 	}
 }
 
+func TestClarificationApprovalIsLimitedToReviewedRequester(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		requester int64
+		state     string
+		attempts  int
+	}{
+		{"same requester", 10, "waiting", 2},
+		{"new requester", 12, "ask", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, true)
+			ctx := t.Context()
+			preview, err := flow.Preview(ctx, 42)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tracked, err := flow.Track(ctx, 42, preview.Revision)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := flow.Clarify(ctx, 42, tracked.Revision); err != nil {
+				t.Fatal(err)
+			}
+			f.mu.Lock()
+			f.ticket.Requester = tc.requester
+			f.comments = append(f.comments, comment{ID: 5, Author: tc.requester, Public: true, Body: "Python version: 3.12.4"})
+			f.mu.Unlock()
+			c, err := flow.Refresh(ctx, 42)
+			if err != nil || c.State != tc.state || f.count() != tc.attempts {
+				t.Fatalf("follow-up for requester %d: state %s, writes %d, error %v", tc.requester, c.State, f.count(), err)
+			}
+		})
+	}
+}
+
+func TestClarificationReviewUsesRequesterIDWithoutUserSideload(t *testing.T) {
+	f := newFixture(t)
+	f.mu.Lock()
+	f.denyUserSideload = true
+	f.mu.Unlock()
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "cases"), f, true)
+	c, err := flow.Preview(t.Context(), 42)
+	if err != nil || c.State != "ask" || c.Requester == nil || c.Requester.ID != 10 || c.Requester.Email != "" || f.count() != 0 {
+		t.Fatalf("preview could not show the requester identity: %+v %v", c, err)
+	}
+}
+
 func TestUncertainClarificationAndPausedCaseDoNotSend(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -220,6 +319,10 @@ func TestUncertainClarificationAndPausedCaseDoNotSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err = flow.Track(ctx, 42, c.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err = flow.Clarify(ctx, 42, c.Revision)
 	if err != nil || c.State != "review" || f.count() != 1 || len(c.Questions) != 1 || c.Questions[0].Status != "unconfirmed" {
 		t.Fatalf("uncertain delivery not preserved: %+v %v", c, err)
 	}

@@ -3,6 +3,7 @@
   "client_id": "triagelab-local",
   "redirect_uri": "http://127.0.0.1:8080/oauth/zendesk/callback",
   "poll_seconds": 60,
+  "internal_notes": false,
   "policy": {
     "tag": "triagelab_python_timeout",
     "priorities": [],

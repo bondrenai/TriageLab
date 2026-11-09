@@ -360,6 +360,10 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if len(parts) == 2 && parts[1] == "zendesk-note" && r.Method == http.MethodPost {
+		s.postZendeskNote(w, r, id)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
 		s.mu.Lock()
 		if s.activeID != id || s.active == nil {
@@ -396,6 +400,11 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		saved["progress"] = append([]string{}, s.active.progress...)
 	}
 	s.mu.Unlock()
+	if s.tickets != nil && saved["active"] == false {
+		if note := s.tickets.NotePreview(id, saved); note != nil {
+			saved["zendesk_note"] = note
+		}
+	}
 	jsonResponse(w, 200, saved)
 }
 

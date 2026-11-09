@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ArrowDownToLine, Check, ChevronDown, File, FlaskConical, Square, Terminal } from "lucide-react";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, StatusStamp } from "../components/ui";
-import { useCancelRun, useRun } from "../hooks/use-investigations";
+import { useCancelRun, usePostZendeskNote, useRun } from "../hooks/use-investigations";
 import { caseTitle, elapsed, exampleReport, fileSize, formatDate, reportURL } from "../lib/investigations";
-import type { Experiment, InvestigationReport } from "../lib/types";
+import type { Experiment, InvestigationReport, ZendeskNote } from "../lib/types";
 
 export function ReportPage({ example = false }: { example?: boolean }) {
   const { id = "" } = useParams();
@@ -53,6 +53,7 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
           {experiments.length ? <div className="experiment-list">{experiments.map((experiment, index) => <ExperimentRow key={experiment.process_id} experiment={experiment} index={index} open={expanded.includes(experiment.process_id)} toggle={() => setExpanded(previous => previous.includes(experiment.process_id) ? previous.filter(id => id !== experiment.process_id) : [...previous, experiment.process_id])} />)}</div> : <div className="inline-empty"><Terminal size={23} aria-hidden="true" /><p>{active ? "Waiting for the first experiment." : "No process evidence was recorded."}</p></div>}
         </Panel>
         {(analysis?.hypotheses?.length ?? 0) > 0 && <Panel title="Hypotheses tested"><div className="hypotheses-list">{analysis?.hypotheses?.map((hypothesis, index) => <div className="hypothesis-row" key={index}><div className="hypothesis-heading"><span className="annotation">H{index + 1}</span><Stamp hue={hypothesis.status === "supported" ? "green" : hypothesis.status === "rejected" ? "gray" : "amber"}>{hypothesis.status}</Stamp></div><p>{hypothesis.statement}</p>{evidenceRefs(hypothesis.evidence_process_ids)}</div>)}</div></Panel>}
+        {!example && report.zendesk_note && <ZendeskNotePanel runID={report.run_id} note={report.zendesk_note} />}
         {(analysis?.reproduction_steps?.length ?? 0) > 0 && <Panel title="Reproduction steps"><div className="panel-body"><ol className="prose-list numbered">{analysis?.reproduction_steps?.map((step, index) => <li key={index}>{step}</li>)}</ol></div></Panel>}
         {((analysis?.next_actions?.length ?? 0) > 0 || (analysis?.missing_information?.length ?? 0) > 0) && <Panel title="What comes next"><div className="panel-body">{(analysis?.next_actions?.length ?? 0) > 0 && <ul className="prose-list">{analysis?.next_actions?.map((action, index) => <li key={index}>{action}</li>)}</ul>}{(analysis?.missing_information?.length ?? 0) > 0 && <div className="unknowns"><h3>Still unknown</h3><ul className="prose-list">{analysis?.missing_information?.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}</div></Panel>}
       </div>
@@ -63,6 +64,31 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
       </aside>
     </div>
   </>;
+}
+
+function ZendeskNotePanel({ runID, note }: { runID: string; note: ZendeskNote }) {
+  const [reviewedPlan, setReviewedPlan] = useState<string>();
+  const review = !!reviewedPlan && reviewedPlan === note.plan;
+  const post = usePostZendeskNote(runID);
+  return <Panel title="Zendesk internal note">
+    <div className="panel-body ticket-detail">
+      <p><a className="ticket-source" href={note.ticket_url} target="_blank" rel="noreferrer">Zendesk #{note.ticket_id} ↗</a></p>
+      {note.status === "posted" && <p role="status">Posted as internal note {note.comment_id}.</p>}
+      {note.status === "unconfirmed" && <p role="status">Delivery is unconfirmed. Check the Zendesk conversation for run <code>{runID}</code>.</p>}
+      {note.status === "ready" && <>
+        <p>Share the outcome and selected experiment evidence with agents on this ticket.</p>
+        {!review ? <div className="button-row"><Button disabled={!note.plan} onClick={() => setReviewedPlan(note.plan)}>Review internal note</Button></div> : <>
+          <p className="ticket-draft">{note.body}</p>
+          <div className="button-row">
+            <Button disabled={!note.can_post || !note.plan || post.isPending} onClick={() => note.plan && post.mutate(note.plan)}>{post.isPending ? "Posting…" : "Post internal note"}</Button>
+            <Button variant="ghost" disabled={post.isPending} onClick={() => { post.reset(); setReviewedPlan(undefined); }}>Cancel</Button>
+          </div>
+          {!note.can_post && <p>Connect Zendesk from <Link className="ticket-source" to="/tickets">Ticket cases</Link> to post.</p>}
+        </>}
+      </>}
+      {post.isError && <ErrorPlate title="Internal note could not be posted" error={post.error} />}
+    </div>
+  </Panel>;
 }
 
 function ExperimentRow({ experiment, index, open, toggle }: { experiment: Experiment; index: number; open: boolean; toggle: () => void }) {

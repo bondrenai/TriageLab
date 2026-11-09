@@ -37,6 +37,16 @@ export interface Hypothesis {
   evidence_process_ids: string[];
 }
 
+export interface ZendeskNote {
+  ticket_id: string;
+  ticket_url: string;
+  status: "ready" | "posted" | "unconfirmed";
+  body?: string;
+  plan?: string;
+  comment_id?: string;
+  can_post: boolean;
+}
+
 export interface InvestigationReport {
   run_id: string;
   status: string;
@@ -45,6 +55,7 @@ export interface InvestigationReport {
   finished_at?: string;
   active?: boolean;
   progress?: string[];
+  zendesk_note?: ZendeskNote;
   case: {
     description: string;
     attachments?: { path: string; size_bytes: number; sha256: string }[];

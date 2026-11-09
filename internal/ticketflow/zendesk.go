@@ -31,6 +31,13 @@ type field struct {
 	Value any   `json:"value"`
 }
 
+type Requester struct {
+	ID    int64  `json:"id,string"`
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
 type ticket struct {
 	ID        int64    `json:"id"`
 	Requester int64    `json:"requester_id"`
@@ -40,6 +47,10 @@ type ticket struct {
 	Tags      []string `json:"tags"`
 	Fields    []field  `json:"custom_fields"`
 	Updated   string   `json:"updated_at"`
+
+	RequesterProfile Requester `json:"-"`
+	Kind             string    `json:"-"`
+	URL              string    `json:"-"`
 }
 
 type attachment struct {
@@ -55,6 +66,7 @@ type comment struct {
 	Public bool         `json:"public"`
 	Body   string       `json:"body"`
 	Files  []attachment `json:"attachments"`
+	URL    string       `json:"url,omitempty"`
 }
 
 type snapshot struct {
@@ -62,14 +74,14 @@ type snapshot struct {
 	Comments []comment
 }
 
-// Reading a ticket does not grant authority to write back. The flow invokes
-// clarification separately, only after policy and a durable send reservation.
+// The flow authorizes and journals each comment before the connector sends it.
 type source interface {
 	account() string
+	ticket(context.Context, int64) (ticket, error)
 	read(context.Context, int64) (snapshot, error)
 	confirm(context.Context, ticket) error
 	file(context.Context, attachment) ([]byte, error)
-	ask(context.Context, ticket, string) error
+	postComment(context.Context, ticket, string, bool) (int64, error)
 }
 
 type zendesk struct {
@@ -146,7 +158,7 @@ func (z *zendesk) requestAuthorized(ctx context.Context, method, target string, 
 
 func readZendeskResponse(res *http.Response, limit int64) ([]byte, error) {
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Zendesk returned HTTP %d", res.StatusCode)
+		return nil, zendeskStatus(res.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil || int64(len(data)) > limit {
@@ -154,6 +166,10 @@ func readZendeskResponse(res *http.Response, limit int64) ([]byte, error) {
 	}
 	return data, nil
 }
+
+type zendeskStatus int
+
+func (status zendeskStatus) Error() string { return fmt.Sprintf("Zendesk returned HTTP %d", status) }
 
 func (z *zendesk) downloadAttachment(ctx context.Context, target string, limit int64) ([]byte, error) {
 	u, err := url.Parse(target)
@@ -177,8 +193,17 @@ func (z *zendesk) downloadAttachment(ctx context.Context, target string, limit i
 func (z *zendesk) ticket(ctx context.Context, id int64) (ticket, error) {
 	var response struct {
 		Ticket ticket `json:"ticket"`
+		Users  []struct {
+			ID    int64  `json:"id"`
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"users"`
 	}
-	data, err := z.request(ctx, http.MethodGet, z.origin+"/api/v2/tickets/"+strconv.FormatInt(id, 10)+".json", nil, maxProviderBytes)
+	target := z.origin + "/api/v2/tickets/" + strconv.FormatInt(id, 10) + ".json"
+	data, err := z.request(ctx, http.MethodGet, target+"?include=users", nil, maxProviderBytes)
+	if errors.Is(err, zendeskStatus(http.StatusForbidden)) {
+		data, err = z.request(ctx, http.MethodGet, target, nil, maxProviderBytes)
+	}
 	if err != nil {
 		return ticket{}, err
 	}
@@ -187,6 +212,14 @@ func (z *zendesk) ticket(ctx context.Context, id int64) (ticket, error) {
 	}
 	if _, err := time.Parse(time.RFC3339Nano, response.Ticket.Updated); err != nil {
 		return ticket{}, errors.New("Zendesk ticket has no valid update time")
+	}
+	response.Ticket.RequesterProfile.ID = response.Ticket.Requester
+	for _, user := range response.Users {
+		if user.ID == response.Ticket.Requester {
+			response.Ticket.RequesterProfile.Name = user.Name
+			response.Ticket.RequesterProfile.Email = user.Email
+			break
+		}
 	}
 	return response.Ticket, nil
 }
@@ -246,26 +279,52 @@ func attachmentPath(path string) bool {
 		!strings.Contains(path, "..") && !strings.Contains(path, "\\")
 }
 
-func (z *zendesk) ask(ctx context.Context, t ticket, message string) error {
+func (z *zendesk) postComment(ctx context.Context, t ticket, message string, public bool) (int64, error) {
 	if z.oauth.scope != zendeskWriteScopes {
-		return ErrOAuthRequired
+		return 0, ErrOAuthRequired
 	}
 	body, err := json.Marshal(map[string]any{"ticket": map[string]any{
 		"safe_update": true, "updated_stamp": t.Updated,
-		"comment": map[string]any{"body": message, "public": true},
+		"comment": map[string]any{"body": message, "public": public},
 	}})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	data, err := z.request(ctx, http.MethodPut, z.origin+"/api/v2/tickets/"+strconv.FormatInt(t.ID, 10)+".json", body, maxProviderBytes)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var result struct {
 		Ticket ticket `json:"ticket"`
+		Audit  struct {
+			TicketID int64 `json:"ticket_id"`
+			Events   []struct {
+				ID     int64  `json:"id"`
+				Type   string `json:"type"`
+				Public *bool  `json:"public"`
+			} `json:"events"`
+		} `json:"audit"`
 	}
 	if json.Unmarshal(data, &result) != nil || result.Ticket.ID != t.ID {
-		return errors.New("Zendesk did not confirm the ticket update")
+		return 0, errors.New("Zendesk did not confirm the ticket update")
 	}
-	return nil
+	if public {
+		return 0, nil
+	}
+	var id int64
+	if result.Audit.TicketID == t.ID {
+		for _, event := range result.Audit.Events {
+			if event.Type != "Comment" {
+				continue
+			}
+			if id != 0 || event.ID <= 0 || event.Public == nil || *event.Public {
+				return 0, errors.New("Zendesk returned an ambiguous internal note receipt")
+			}
+			id = event.ID
+		}
+	}
+	if id == 0 {
+		return 0, errors.New("Zendesk did not return an internal note receipt")
+	}
+	return id, nil
 }

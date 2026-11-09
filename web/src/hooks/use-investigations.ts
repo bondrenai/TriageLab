@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cancelRun, createRun, getRun, getSettings, listRuns } from "../lib/investigations";
+import { cancelRun, createRun, getRun, getSettings, listRuns, postZendeskNote } from "../lib/investigations";
+import type { InvestigationReport } from "../lib/types";
 import { queryKeys } from "../lib/query-keys";
 
 export const useSettings = () => useQuery({ queryKey: queryKeys.settings, queryFn: getSettings, staleTime: 60_000 });
@@ -12,4 +13,14 @@ export function useCreateRun() {
 export function useCancelRun(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: () => cancelRun(id), onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.runs }) });
+}
+
+export function usePostZendeskNote(id: string) {
+  const client = useQueryClient();
+  const queryKey = queryKeys.run(id);
+  return useMutation({
+    mutationFn: (plan: string) => postZendeskNote(id, plan),
+    onSuccess: note => client.setQueryData<InvestigationReport>(queryKey, report => report && { ...report, zendesk_note: note }),
+    onError: () => client.invalidateQueries({ queryKey }),
+  });
 }

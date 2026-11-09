@@ -13,8 +13,8 @@ TriageLab keeps preparation decisions and the linked investigation report.
    named **TriageLab**. Use the identifier `triagelab-local` and redirect URL
    `http://127.0.0.1:8080/oauth/zendesk/callback`. Allow `tickets:read` for
    ticket details and comments, and `ticket_attachments:read` for downloading
-   evidence files. Also allow `tickets:write` if you plan to enable automatic
-   public clarifications.
+   evidence files. Also allow `tickets:write` for public clarifications or
+   internal notes.
 2. Build the Go binary and browser assets as described in [UI setup](ui.md).
    Copy `tickets.example.json` to `tickets.local.json`. Set the Zendesk
    subdomain, client identifier, and exact registered redirect URI. Existing
@@ -25,10 +25,11 @@ TriageLab keeps preparation decisions and the linked investigation report.
    8080 over SSH. Open `http://127.0.0.1:8080/tickets` in the browser, using
    the same hostname and port registered for OAuth.
 4. Choose **Connect Zendesk** and approve access as a Zendesk agent who can
-   read the selected tickets and, when enabled, post public replies.
+   read the selected tickets and, when enabled, post replies or internal notes.
    TriageLab uses an authorization code with PKCE and requests
    `tickets:read` and `ticket_attachments:read`. It adds `tickets:write`
-   when the policy enables automatic questions. The browser handles consent.
+   when `auto_questions` or `internal_notes` is enabled. The browser handles
+   consent.
 5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
    procedure. Configure KAgent separately before approving a lab.
@@ -42,10 +43,13 @@ value. This slice uses those typed conditions and a fixed sequence of actions.
 ## Clarify and approve
 
 With `auto_questions: false`, review the draft and reply in Zendesk. With
-`auto_questions: true`, **Track and send question** can post the previewed
-public clarification if the ticket is still current. Subsequent refreshes
-can send narrower questions under the same policy. Automatic sending requires
-the newest public message to be from the requester. The configured
+`auto_questions: true`, track the ticket and review the requester, matching
+rule, and exact draft. If Zendesk omits the email address, open the requester
+link to verify it. **Approve and send clarification** sends the public reply
+and authorizes follow-ups to the reviewed requester under that policy.
+A change to the requester or policy requires fresh approval. Subsequent
+refreshes can send narrower questions if the newest public message is from
+the requester. Zendesk applies the account's notification rules. The configured
 `max_questions` (1–3 when enabled) limits send attempts per ticket. An identical
 question is not repeated, and a reply with no progress is routed for review.
 A change detected by Zendesk's safe update is shown as a conflict; a timeout or
@@ -89,8 +93,21 @@ limits, then choose **Approve and start investigation**. Approval expires after
 15 minutes. It is checked against current ticket access, evidence, procedure,
 and run settings. A stale plan cannot launch work. Each tracked case can
 consume one investigation attempt, and the workspace shares its single run
-slot between ticket cases and manual investigations. Open the linked report to
-inspect and share findings through the normal helpdesk process.
+slot between ticket cases and manual investigations.
+
+## Share the investigation in Zendesk
+
+Set `internal_notes: true` in the ticket configuration. If the workspace had
+read-only access, reconnect Zendesk to grant `tickets:write`. From a completed
+ticket investigation, choose **Review internal note**. The preview contains
+the run ID, outcome, a bounded agent summary, and selected process IDs,
+commands, and exit codes. Check the preview before choosing **Post internal
+note**. Zendesk receives a private comment on the linked ticket.
+
+TriageLab records the Zendesk comment ID on confirmation. A repeated approval
+returns the existing receipt. If delivery is uncertain, use the run ID to
+inspect the Zendesk conversation. The workspace keeps that reservation across
+restarts and blocks another send for the same investigation.
 
 ## Deployment boundary
 
@@ -101,8 +118,9 @@ A ticket is enrolled explicitly;
 no general Zendesk inbox sync or public webhook listener is needed. Use one
 workspace per account for automatic replies. Its `reports/.tickets` directory
 stores up to 100 tracked cases, including redacted facts, approval state,
-clarification reservations and run references. Keep it private and preserve it
-across restarts: deleting it loses the duplicate-send and run limits. Account
+clarification and note reservations, delivery receipts, and run references.
+Preserve that private directory across restarts to retain the duplicate-send
+and run limits. Account
 changes require a separate report directory. The OAuth grant is stored
 server-side in `reports/.tickets/.zendesk-oauth` (mode 0600). TriageLab
 [renews expired access](https://developer.zendesk.com/documentation/authentication/refresh-token/)

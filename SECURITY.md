@@ -92,15 +92,17 @@ token. Selected uploads use the same ingestion limits and credential screening
 as CLI inputs.
 
 With the optional [Zendesk procedure](docs/tickets.md), the server can add
-public clarification comments to explicitly tracked tickets when enabled by
-policy. Questions use fixed templates; private comments, model output, and
-raw ticket text do not enter those replies. Ticket reads and attachment
-downloads are restricted to the configured Zendesk account. OAuth uses a
-one-time callback bound to the initiating browser, PKCE, and a loopback
-origin. Grants are kept in the private ticket directory, outside browser
-storage and reports. Draft mode requests read access only. Keep the case
-state private and persistent across restarts. Use one workspace per account
-for automatic replies, and test the policy on a disposable ticket first.
+public clarifications to explicitly tracked tickets after the operator approves
+the first draft and requester. Public replies use fixed templates. Optional
+internal notes contain a reviewed, bounded summary and selected evidence from
+a completed linked run. The ticket record journals comment attempts before
+sending and holds uncertain writes for manual inspection. OAuth uses PKCE and
+a one-time loopback callback bound to the initiating browser. Credentials stay
+on the server and are sent only to the configured Zendesk account. Temporary
+attachment URLs on numbered Zendesk attachment hosts are fetched anonymously.
+Public clarification or internal notes require `tickets:write`. Keep the
+case state private and persistent across restarts. Use one workspace per
+account for automatic replies and test on a disposable ticket first.
 
 ## Cleanup and failure handling
 
