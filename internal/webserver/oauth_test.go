@@ -76,3 +76,26 @@ func TestZendeskOAuthRoutes(t *testing.T) {
 		t.Fatal("callback state was reusable")
 	}
 }
+
+func TestZendeskReturnAllowsTopLevelTicketNavigation(t *testing.T) {
+	s := newTestServer(t, nil)
+	for _, test := range []struct {
+		path, mode, dest string
+		want             int
+	}{
+		{"/tickets?zendesk=connected", "navigate", "document", http.StatusOK},
+		{"/tickets", "navigate", "iframe", http.StatusForbidden},
+		{"/tickets", "cors", "empty", http.StatusForbidden},
+		{"/api/tickets", "navigate", "document", http.StatusForbidden},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080"+test.path, nil)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Sec-Fetch-Mode", test.mode)
+		r.Header.Set("Sec-Fetch-Dest", test.dest)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != test.want {
+			t.Errorf("%s with %s/%s returned %d, want %d", test.path, test.mode, test.dest, w.Code, test.want)
+		}
+	}
+}

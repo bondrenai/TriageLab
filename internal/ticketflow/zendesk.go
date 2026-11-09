@@ -119,6 +119,9 @@ func (z *zendesk) requestAuthorized(ctx context.Context, method, target string, 
 		return nil, errors.New("invalid Zendesk request")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if strings.HasPrefix(req.URL.Path, "/api/v2/tickets/") {
+		req.Header.Set("Accept", "application/json")
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

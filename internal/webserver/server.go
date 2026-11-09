@@ -204,7 +204,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+	// The browser can carry Zendesk's cross-site classification through
+	// the callback redirect to the ticket workspace document.
+	ticketNavigation := r.Method == http.MethodGet && r.URL.Path == "/tickets" &&
+		r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Dest") == "document"
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" && !ticketNavigation {
 		fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
 		return
 	}

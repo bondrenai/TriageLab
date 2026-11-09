@@ -47,6 +47,11 @@ func newFixture(t *testing.T) *fixture {
 			w.WriteHeader(401)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/v2/tickets/") && r.Header.Get("Accept") != "application/json" {
+			t.Error("ticket requests must accept JSON")
+			w.WriteHeader(http.StatusUnsupportedMediaType)
+			return
+		}
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/v2/tickets/42.json":
 			_ = json.NewEncoder(w).Encode(map[string]any{"ticket": f.ticket})
