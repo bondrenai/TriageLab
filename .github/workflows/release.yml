@@ -1,0 +1,57 @@
+name: Release
+
+# Publishes the container image and the Helm chart to the public ghcr.io OCI
+# registry. One-time setup: make both ghcr.io packages public in the
+# repository's Packages settings after the first release; see docs/helm.md.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, including the leading v (for example v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve the release version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          case "$VERSION" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Version must look like v0.1.0" >&2; exit 2 ;;
+          esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Log in to ghcr.io
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+            -u "${{ github.actor }}" --password-stdin
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            -u "${{ github.actor }}" --password-stdin
+      - name: Build and push the linux/amd64 image
+        run: |
+          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr 'A-Z' 'a-z')"
+          docker buildx build --platform linux/amd64 --push \
+            --tag "$IMAGE:$VERSION" .
+      - name: Package, check, and push the Helm chart
+        run: |
+          CHART_REPO="oci://ghcr.io/$(echo '${{ github.repository_owner }}' | tr 'A-Z' 'a-z')/charts"
+          helm package chart/triagelab --version "$VERSION" --app-version "$VERSION"
+          helm template ./triagelab-*.tgz --set token.value=release-check > /dev/null
+          helm push ./triagelab-*.tgz "$CHART_REPO"

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^(|sha256:[0-9a-f]{64})$"},
+        "tag": {"type": "string"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    },
+    "replicaCount": {"type": "integer", "minimum": 0, "maximum": 1},
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {"type": "string", "minLength": 1},
+        "namespace": {"type": "string", "minLength": 1},
+        "agent": {"type": "string", "minLength": 1},
+        "template": {"type": "string", "minLength": 1},
+        "user_id": {"type": "string", "minLength": 1},
+        "token_env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+        "allow_cluster_http": {"type": "boolean"},
+        "investigation_timeout": {"type": "integer", "minimum": 1, "maximum": 3000},
+        "process_timeout": {"type": "integer", "minimum": 1},
+        "sandbox_ttl": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_experiments": {"type": "integer", "minimum": 1, "maximum": 32},
+        "poll_interval": {"type": "integer", "minimum": 1, "maximum": 10},
+        "request_timeout": {"type": "integer", "minimum": 1, "maximum": 60},
+        "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 4194304},
+        "manual_agents": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      },
+      "required": ["endpoint", "namespace", "agent", "template", "user_id", "token_env"]
+    },
+    "token": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "secretName": {"type": "string"},
+        "key": {"type": "string"},
+        "value": {"type": "string"}
+      }
+    },
+    "tickets": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "config": {"type": "object"},
+        "token": {
+          "type": "object",
+          "properties": {
+            "create": {"type": "boolean"},
+            "secretName": {"type": "string"},
+            "key": {"type": "string"},
+            "value": {"type": "string"}
+          }
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "storageClass": {"type": "string"},
+        "accessModes": {"type": "array", "items": {"type": "string"}},
+        "size": {"type": "string"}
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "automountServiceAccountToken": {"type": "boolean"}
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "value": {"type": "string"}
+        },
+        "required": ["name", "value"],
+        "additionalProperties": false
+      }
+    }
+  }
+}

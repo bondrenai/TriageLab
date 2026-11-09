@@ -1,0 +1,108 @@
+{{- include "triagelab.checks" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "triagelab.fullname" . }}
+  labels:
+    {{- include "triagelab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # A single RWO volume backs the reports directory.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: triagelab
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "triagelab.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "triagelab.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: triagelab
+          {{- with .Values.image.digest }}
+          image: "{{ $.Values.image.repository }}@{{ . }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+            - --config=/etc/triagelab/config.json
+            - --output=/data/reports
+            # The server refuses non-loopback listeners by design; reach the
+            # UI with `kubectl port-forward`, never a Service or Ingress.
+            - --listen=127.0.0.1:8080
+            {{- if .Values.tickets.enabled }}
+            - --tickets=/etc/triagelab/tickets/tickets.json
+            {{- end }}
+          env:
+            - name: {{ .Values.config.token_env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "triagelab.tokenSecretName" . }}
+                  key: {{ include "triagelab.tokenSecretKey" . }}
+            {{- if and .Values.tickets.enabled .Values.tickets.config.token_env }}
+            - name: {{ .Values.tickets.config.token_env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "triagelab.ticketsTokenSecretName" . }}
+                  key: {{ include "triagelab.ticketsTokenSecretKey" . }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            # Loopback-only inside the pod; listed for `kubectl port-forward`.
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - wget -q -O /dev/null -T 5 http://127.0.0.1:8080/api/settings
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/triagelab
+              readOnly: true
+            {{- if .Values.tickets.enabled }}
+            - name: tickets
+              mountPath: /etc/triagelab/tickets
+              readOnly: true
+            {{- end }}
+            - name: reports
+              mountPath: /data/reports
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "triagelab.fullname" . }}
+        {{- if .Values.tickets.enabled }}
+        - name: tickets
+          secret:
+            secretName: {{ include "triagelab.fullname" . }}-tickets
+        {{- end }}
+        - name: reports
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "triagelab.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}

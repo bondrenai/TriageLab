@@ -1,0 +1,116 @@
+# TriageLab Helm values.
+#
+# The deployment stays consistent with the project security model: the web UI
+# listens only on a loopback address inside the pod and is reached through
+# `kubectl port-forward`. The chart deliberately creates no Service or Ingress.
+
+image:
+  repository: ghcr.io/bondrenai/triagelab
+  # Prefer a digest for reviewed deployments:
+  #   digest: sha256:...
+  digest: ""
+  # Empty tag tracks the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The workspace holds one active investigation and its ticket state in memory;
+# more than one replica is refused.
+replicaCount: 1
+
+# Investigation configuration rendered verbatim to config.json. Field names
+# must match internal/investigation.Config exactly (unknown fields are
+# rejected at startup).
+config:
+  # In-cluster endpoint of the KAgent controller through the internal
+  # triagelab-tools Service created by `triagelab manifest`. Plain HTTP here is
+  # cluster-internal only; allow_cluster_http does not relax the loopback rule
+  # for any other host.
+  endpoint: http://triagelab-tools.kagent.svc.cluster.local:8083/mcp
+  namespace: kagent
+  agent: triagelab-investigator
+  template: triagelab-python
+  user_id: triagelab@localhost
+  token_env: TRIAGELAB_TOKEN
+  allow_cluster_http: true
+  investigation_timeout: 600
+  process_timeout: 60
+  sandbox_ttl: 900
+  max_experiments: 8
+  poll_interval: 2
+  request_timeout: 20
+  max_output_bytes: 1048576
+  # manual_agents:
+  #   triagelab-networker: ["shell"]
+
+# KAgent invocation credential. Mint a short-lived token from the cluster that
+# runs KAgent and refresh it before it expires; the value is read once at pod
+# start, so rotate by updating the Secret and restarting the pod.
+#
+#   kubectl -n kagent create token triagelab \
+#     --audience=kagent-invocation --duration=1h
+#
+# Prefer creating the Secret yourself (kubectl create secret generic ...) and
+# setting token.secretName; token.value passes through Helm values and is
+# therefore stored in the release metadata.
+token:
+  create: true
+  secretName: ""
+  key: ""    # defaults to config.token_env
+  value: ""
+
+# Optional ticket procedure (docs/tickets.md and docs/github-issues.md).
+# tickets.config is rendered verbatim to tickets.json; its token_env field
+# names the environment variable holding the ticket credential.
+tickets:
+  enabled: false
+  config: {}
+  token:
+    create: true
+    secretName: ""
+    key: ""    # defaults to tickets.config.token_env
+    value: ""
+
+# Reports and private ticket state. EmptyDir when disabled (lost on restart).
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 2Gi
+
+serviceAccount:
+  create: true
+  name: ""
+  # The workspace reads no cluster state; deployment status and resource
+  # writes are not enabled by this chart.
+  automountServiceAccountToken: false
+
+# Extra environment variables (name/value only) appended after the token.
+extraEnv: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+livenessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3

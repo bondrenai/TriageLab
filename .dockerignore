@@ -1,0 +1,13 @@
+.git
+.github
+bin
+deploy
+examples
+reports
+scripts
+tests
+chart
+web/node_modules
+web/dist
+**/__pycache__
+*.example.json

@@ -1,0 +1,32 @@
+TriageLab {{ .Chart.AppVersion }} is deployed in namespace {{ .Release.Namespace }}.
+
+The web UI listens only on a loopback address inside the pod, per the project
+security model. There is no Service or Ingress; reach it from your workstation:
+
+  kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "triagelab.fullname" . }} 8080:8080
+
+Then open http://127.0.0.1:8080 in a browser on the same machine. Anyone with
+this port has full workspace access; do not share or proxy it.
+
+Before the first investigation:
+
+1. The KAgent workspace resources (agent, sandbox template, triagelab-tools
+   Service) must exist in namespace {{ .Values.config.namespace }}. Render and
+   review them from the deployed binary if they are not installed yet:
+
+     kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "triagelab.fullname" . }} -- \
+       triagelab manifest | kubectl apply -f -
+
+2. The invocation token in the Secret {{ include "triagelab.tokenSecretName" . }} is
+   short-lived and read once at pod start. Refresh it on the cluster that runs
+   KAgent, then restart the pod:
+
+     kubectl -n {{ .Values.config.namespace }} create token triagelab \
+       --audience=kagent-invocation --duration=1h
+     kubectl -n {{ .Release.Namespace }} rollout restart deploy/{{ include "triagelab.fullname" . }}
+
+Reports and ticket state persist in the mounted volume under /data/reports.
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is disabled; reports and ticket state are lost on restart.
+{{- end }}
