@@ -101,7 +101,11 @@ Authoritative references:
   KAgent's default is `chatCompletions`, and `gpt-4.1` is
   [scheduled for shutdown](https://developers.openai.com/api/docs/deprecations)
   on 2027-01-14. Models defined in the workspace editor or a CLI bundle render
-  no `apiFormat`, so they still use Chat Completions.
+  no `apiFormat`, so they still use Chat Completions. KAgent rc3 and rc4 replay
+  tool calls without the model's reasoning items, which OpenAI's
+  [reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning)
+  asks clients to pass back; four live runs completed that way and one failed
+  for an unrecorded reason.
 - The `triagelab-tools` ClusterIP Service is an alias for the controller with a
   distinct HTTP origin. rc3's [actor egress policy](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/substrate/policy.go#L47)
   always replaces `Authorization` at the control-plane origin with an actor JWT.
@@ -116,7 +120,8 @@ Authoritative references:
 
 ## microVM backend
 
-Source-reviewed 2026-11-09 at the pins above and **not exercised**. The sandbox
+Source-reviewed 2026-11-09 at the pins above and exercised by the CI runs in
+[verification.md](verification.md#microvm-backend-verification). The sandbox
 class belongs to the WorkerPool. KAgent compiles a SandboxTemplate into an
 ActorTemplate using the class of the pool it references, so TriageLab's
 templates and tool calls do not change.

@@ -258,9 +258,9 @@ GitHub-hosted Linux runners expose `/dev/kvm`, so the opt-in `microvm` CI job
 a disposable runner. It needs an `OPENAI_API_KEY` repository secret, incurs
 provider charges, and uploads the investigation report as a run artifact.
 
-This path is prepared from the pinned upstream sources and is **not yet
-verified**: no microVM run is recorded in [verification.md](verification.md).
-It is not implied to work merely because gVisor works.
+Live investigations have passed on this path in four of five runs. See
+[verification.md](verification.md#microvm-backend-verification) for what ran,
+an earlier unexplained failure, and what remains untested.
 
 ## Teardown
 
