@@ -103,8 +103,8 @@ jobs:
 
   # Unlike `integration`, this job builds its own disposable deployment on the
   # runner, because GitHub-hosted Linux runners expose /dev/kvm. It calls the
-  # model provider, which incurs provider charges. The kind and KAgent CLI pins
-  # follow docs/development.md; the Helm pin matches KAgent rc3's own CI.
+  # model provider, which incurs provider charges. The kind and kagent CLI pins
+  # follow docs/development.md; the Helm pin matches kagent rc3's own CI.
   microvm:
     if: github.event_name == 'workflow_dispatch' && inputs.run_microvm
     runs-on: ubuntu-latest
@@ -139,7 +139,7 @@ jobs:
               sys.exit(f"This runner cannot create KVM guests: {error}")
           print("KVM_CREATE_VM succeeded")
           PY
-      - name: Install pinned kind, Helm, and KAgent CLI
+      - name: Install pinned kind, Helm, and kagent CLI
         working-directory: ${{ runner.temp }}
         run: |
           curl -fsSL -o kind https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
@@ -156,7 +156,7 @@ jobs:
         run: |
           kind create cluster --name triagelab --image kindest/node:v1.35.0 \
             --config deploy/kind-microvm.yaml --wait 120s
-      - name: Install KAgent, Substrate, and the microVM runtime
+      - name: Install kagent, Substrate, and the microVM runtime
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TRIAGELAB_SANDBOX_CLASS: microvm

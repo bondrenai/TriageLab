@@ -4,7 +4,7 @@
 # cluster. The pinned Helm charts install neither. Substrate's own installer
 # owns the asset versions, SHA-256 checks, staging, and the SandboxConfig, so
 # this runs that installer from the release the charts and worker image use.
-# It mirrors KAgent rc3's scripts/kind/setup-microvm.sh; see docs/upstream.md.
+# It mirrors kagent rc3's scripts/kind/setup-microvm.sh; see docs/upstream.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 substrate_tag=v1.0.0

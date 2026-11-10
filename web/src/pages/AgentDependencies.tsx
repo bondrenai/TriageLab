@@ -35,7 +35,7 @@ export function ModelEditor({ onPreview, deployment, editor }: {
       <Field label="Provider endpoint (optional)"><input name="endpoint" defaultValue={model?.endpoint} className="field mono" type="url" placeholder="https://models.example/v1" maxLength={2048} /></Field>
       {provider === "OpenAI" && <>
         <Field label="OpenAI API"><select name="api_format" defaultValue={model?.api_format ?? ""} className="field">
-          <option value="">Chat Completions (KAgent default)</option>
+          <option value="">Chat Completions (kagent default)</option>
           <option value="responses">Responses</option>
         </select></Field>
         <p className="field-help">Investigators call tools on every run. OpenAI’s GPT-6 models need the Responses API for that. Keep Chat Completions for older models and OpenAI-compatible gateways.</p>

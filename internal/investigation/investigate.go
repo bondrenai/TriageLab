@@ -374,7 +374,7 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r map[s
 	}
 	if stopped(str(turn["state"])) {
 		if turn["state"] != "TASK_STATE_COMPLETED" {
-			// KAgent's reply for a stopped turn is its failure text. It is
+			// kagent's reply for a stopped turn is its failure text. It is
 			// untrusted upstream text, so it stays in the redacted report and
 			// out of the returned error.
 			if reason := str(turn["reply"]); reason != "" {

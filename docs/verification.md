@@ -317,7 +317,7 @@ credentials, or account names appeared in the exported telemetry.
 On 2026-11-09 the opt-in `microvm` CI job ran five times on GitHub-hosted
 `ubuntu-latest` runners (image `ubuntu-26.04`). Each run built its own
 disposable kind cluster: kind 0.33.0, Kubernetes 1.35.0, Helm 3.18.0, Go 1.27.3,
-KAgent v1.0.0-rc3, and its Substrate v1.0.0 distribution. The investigator used
+kagent v1.0.0-rc3, and its Substrate v1.0.0 distribution. The investigator used
 OpenAI `gpt-6.1-sol` over the Responses API with the model's default reasoning
 effort. No agent output or sandbox was mocked.
 
@@ -362,11 +362,11 @@ Limits:
 - The sandbox lifecycle and egress-denial checks in `sandbox-smoke.json` were
   not repeated on microVMs. Suspend/restore, resource limits, and hostile
   workloads were not tested.
-- KAgent rc3 replays tool calls without the model's reasoning items, which
+- kagent rc3 replays tool calls without the model's reasoning items, which
   OpenAI's guidance asks clients to pass back. The passing runs show the API
   accepts that; the sample is too small to call it reliable.
 - Shell and workflow linting, YAML parsing, and a `helm template` of the pinned
-  KAgent chart ran on the development laptop. `make check` ran on the shared
+  kagent chart ran on the development laptop. `make check` ran on the shared
   build VM and in CI for both commits.
 
 ## Model API format option

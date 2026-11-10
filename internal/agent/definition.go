@@ -44,7 +44,7 @@ type Model struct {
 	Provider string `json:"provider"`
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint,omitempty"`
-	// APIFormat selects the OpenAI HTTP API. Empty keeps KAgent's default,
+	// APIFormat selects the OpenAI HTTP API. Empty keeps kagent's default,
 	// Chat Completions.
 	APIFormat  string `json:"api_format,omitempty"`
 	SecretName string `json:"secret_name,omitempty"`
