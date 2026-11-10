@@ -12,7 +12,8 @@ cluster work happens there; your laptop only needs an SSH tunnel and a browser.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
   **KAgent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
 - KAgent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
-- A model credential configured in KAgent (the example uses `gpt-4.1`).
+- A model credential configured in KAgent (the example uses OpenAI's
+  `gpt-6.1-sol` through the Responses API).
 
 The exact installation, port-forwarding, credential, and teardown steps are in
 [development setup](https://github.com/bondrenai/TriageLab/blob/main/docs/development.md)
