@@ -51,7 +51,10 @@
 - [ ] Add exact binary artifact export through upstream gRPC file transfer, with
       size limits, checksums, and interruption recovery. MCP read-file content and
       command outputs are currently captured in the report.
-- [ ] Validate additional templates for networking/Kubernetes reproductions and
-      an optional KVM-backed microVM WorkerPool. Cover templates authored through
-      the Sandboxes and Egress editors, including one egress-granted reproduction
-      against a disposable deployment.
+- [ ] Repeat the opt-in `microvm` CI job enough times to measure reliability:
+      one of the first five runs failed with an unrecorded cause, before reports
+      kept `task_failure`. Repeat the sandbox lifecycle and egress-denial
+      checks on that backend.
+- [ ] Validate additional templates for networking/Kubernetes reproductions.
+      Cover templates authored through the Sandboxes and Egress editors,
+      including one egress-granted reproduction against a disposable deployment.

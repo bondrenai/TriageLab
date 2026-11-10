@@ -87,6 +87,9 @@ type Report struct {
 	SessionCreationUncertain *bool          `json:"session_creation_uncertain,omitempty"`
 	// TaskState is the last observed kagent task state.
 	TaskState string `json:"task_state,omitzero"`
+	// TaskFailure is kagent's bounded failure text for a turn that stopped
+	// without completing. It is untrusted upstream text.
+	TaskFailure string `json:"task_failure,omitempty"`
 
 	Experiments []Experiment      `json:"experiments"`
 	ToolCalls   []kagent.ToolCall `json:"tool_calls,omitzero"`

@@ -24,6 +24,9 @@ exit code never means the report should be discarded.
   from process evidence. The relationship between an experiment and the
   reported symptom is model-assessed and visible for human review; the report
   does not certify root causes.
+- **Failure reason** — when the investigator's task stops without completing,
+  the reason kagent gives is kept as `task_failure`. It is upstream text, so it
+  is clipped and redacted like the rest of the report and stays out of logs.
 - **Cleanup record** — what was deleted, what failed, and any request IDs
   needed for manual recovery. `triagelab cleanup --report` and the workspace's
   **Retry cleanup** consume exactly this record, and refuse a report whose

@@ -35,6 +35,7 @@ type fixtureBackend struct {
 	killed         map[string]bool
 	noExperiments  bool
 	summaryReply   bool
+	failureReply   string
 	additionalTool string
 	// failures queues errors returned, in order, by the named tool's next calls
 	// before it behaves normally. "get_task" addresses transcript reads.
@@ -110,6 +111,9 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 		turn := map[string]any{"task_id": "task", "state": f.state}
 		if f.summaryReply {
 			turn["reply"] = analysisText()
+		}
+		if f.failureReply != "" {
+			turn["reply"] = f.failureReply
 		}
 		return map[string]any{"session": map[string]any{"id": "session"}, "turns": []any{turn}}, nil
 	case "get_sandbox_process":
@@ -392,6 +396,25 @@ func TestModelFailureStillDeletesSandbox(t *testing.T) {
 	r, _, err := runFixture(t, f)
 	if err == nil || r.Outcome != OutcomeInconclusive || !r.Cleanup.SandboxDeleted {
 		t.Fatalf("result=%+v err=%v", r, err)
+	}
+}
+
+func TestFailedTaskKeepsBoundedUpstreamReasonInReport(t *testing.T) {
+	f := newFixture()
+	f.state = "TASK_STATE_FAILED"
+	f.noExperiments = true
+	f.failureReply = "model request rejected: " + strings.Repeat("x", 3*maxTaskFailureBytes)
+	r, dir, err := runFixture(t, f)
+	if err == nil || strings.Contains(err.Error(), "model request rejected") {
+		t.Fatalf("upstream text belongs in the report, not the returned error: %v", err)
+	}
+	reason := r.TaskFailure
+	if !strings.HasPrefix(reason, "model request rejected: ") || len(reason) != maxTaskFailureBytes {
+		t.Fatalf("task_failure has %d bytes: %.60q", len(reason), reason)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	if err != nil || !strings.Contains(string(saved), `"task_failure": "model request rejected: `) {
+		t.Fatalf("saved report lacks the upstream reason: %v", err)
 	}
 }
 

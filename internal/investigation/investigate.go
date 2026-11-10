@@ -47,6 +47,9 @@ type Investigator struct {
 	AdditionalTools []string
 }
 
+// maxTaskFailureBytes bounds the upstream failure text kept for a stopped turn.
+const maxTaskFailureBytes = 2048
+
 func str(v any) string         { s, _ := v.(string); return s }
 func obj(v any) map[string]any { m, _ := v.(map[string]any); return m }
 func integer(v any) (int, bool) {
@@ -392,6 +395,15 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r *Repo
 	}
 	if stopped(str(turn["state"])) {
 		if turn["state"] != "TASK_STATE_COMPLETED" {
+			// kagent's reply for a stopped turn is its failure text. It is
+			// untrusted upstream text, so it stays in the redacted report and
+			// out of the returned error.
+			if reason := str(turn["reply"]); reason != "" {
+				if len(reason) > maxTaskFailureBytes {
+					reason = strings.ToValidUTF8(reason[:maxTaskFailureBytes], "")
+				}
+				r.TaskFailure = reason
+			}
 			return true, fmt.Errorf("investigator stopped with %s", str(turn["state"]))
 		}
 		for _, e := range r.Experiments {
