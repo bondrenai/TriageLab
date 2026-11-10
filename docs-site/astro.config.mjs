@@ -28,6 +28,7 @@ export default defineConfig({
             { label: "Browser workspace", slug: "guides/workspace" },
             { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
+            { label: "API clients (OAuth)", slug: "guides/api-clients" },
             { label: "Defining agents", slug: "guides/agents" },
             { label: "Zendesk tickets", slug: "guides/tickets-zendesk" },
             { label: "GitHub issues", slug: "guides/tickets-github" },

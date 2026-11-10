@@ -290,11 +290,17 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	content = append(content, '\n')
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	return writePrivateFile(s.path, append(content, '\n'))
+}
+
+// writePrivateFile atomically replaces path with owner-only content, creating
+// its directory when needed. The rename stays within one directory.
+func writePrivateFile(path string, content []byte) error {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(s.path), ".users-*")
+	temp, err := os.CreateTemp(directory, "."+filepath.Base(path)+"-*")
 	if err != nil {
 		return err
 	}
@@ -315,5 +321,5 @@ func (s *Store) saveLocked() error {
 	if err = temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, s.path)
+	return os.Rename(name, path)
 }

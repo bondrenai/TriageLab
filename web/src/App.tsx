@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FlaskConical, FolderOpen, Bot, Github, Inbox, LogOut, Users } from "lucide-react";
+import { ArrowUpRight, FlaskConical, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Users } from "lucide-react";
 import { AgentsPage } from "./pages/AgentsPage";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
 import { NewInvestigationPage } from "./pages/NewInvestigationPage";
@@ -8,6 +8,7 @@ import { TicketsPage } from "./pages/TicketsPage";
 import { ReportPage } from "./pages/ReportPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
+import { ApiClientsPage } from "./pages/ApiClientsPage";
 import { PageTitle, ButtonLink, Stamp } from "./components/ui";
 import { useSession, useSignOut } from "./hooks/use-auth";
 import { roleAtLeast } from "./lib/auth";
@@ -61,6 +62,7 @@ export function App() {
         <NavLink to="/agents"><Bot size={17} aria-hidden="true" />Agents</NavLink>
         <NavLink to="/tickets"><Inbox size={17} aria-hidden="true" />Ticket cases</NavLink>
         {isAdmin && <NavLink to="/accounts"><Users size={17} aria-hidden="true" />Accounts</NavLink>}
+        {isAdmin && <NavLink to="/clients"><KeyRound size={17} aria-hidden="true" />API clients</NavLink>}
       </nav>
       <div className="sidebar-footer">
         <IdentityFooter username={session.data.username} role={session.data.role} />
@@ -79,6 +81,7 @@ export function App() {
           <Route path="/agents/*" element={<AgentsPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/accounts" element={<UsersPage />} />
+          <Route path="/clients" element={<ApiClientsPage />} />
           <Route path="/example" element={<ReportPage example />} />
           <Route path="/runs/:id" element={<ReportPage />} />
           <Route path="*" element={<><PageTitle title="Page not found" description="This workspace page does not exist." /><ButtonLink to="/">Back to investigations</ButtonLink></>} />

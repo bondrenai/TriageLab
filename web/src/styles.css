@@ -465,7 +465,23 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
 .inline-form .field { width: 220px; padding: 7px 10px; }
 .account-error { margin-top: 8px; color: var(--color-red-700); font-size: var(--text-annotation); }
 .role-picker { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+
+/* API clients: scope grants, one-time secrets, and the connect notes. */
+.scope-options { display: grid; gap: 6px; }
+.scope-option { display: flex; align-items: flex-start; gap: 8px; min-height: 26px; }
+.scope-option input { flex: none; margin-top: 3px; accent-color: var(--color-blue-700); }
+.scope-option .mono { font-size: var(--text-annotation); }
+.scope-description { display: block; color: var(--color-gray-500); font-size: var(--text-annotation); }
+.account-create-wide { flex: 2 1 260px; }
+.secret-plate { border-left: 3px solid var(--color-amber-600); }
+.secret-warning { color: var(--color-amber-700); }
+.secret-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.secret-value { flex: 1 1 240px; }
+.code-note { margin: 8px 0; padding: 10px 12px; background: var(--color-gray-100); border: 1px solid var(--color-gray-200); font-size: 11px; overflow-x: auto; white-space: pre; }
+.connect-notes { margin: 8px 0 0; padding-left: 18px; color: var(--color-gray-600); font-size: var(--text-annotation); }
+.connect-notes li + li { margin-top: 4px; }
 @media (max-width: 720px) {
   .account-table .account-actions { min-width: 0; }
   .account-create > div { flex: 1 1 100%; }
+  .account-create .account-create-wide { flex: 1 1 100%; }
 }

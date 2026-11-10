@@ -22,6 +22,10 @@ type gate struct {
 	sessions *auth.SessionStore
 	oidc     *auth.OIDCProvider
 	limiter  *auth.LoginLimiter
+	// clients and oauth are attached by EnableAPIClients and stay nil when
+	// API clients are not configured.
+	clients *auth.ClientStore
+	oauth   http.Handler
 }
 
 // EnableAuth attaches local accounts and, optionally, one OpenID Connect
@@ -48,13 +52,23 @@ func actorFrom(ctx context.Context) auth.Identity {
 	return identity
 }
 
-// authorize enforces session sign-in and the route's minimum role. It writes
-// the response itself when access is denied.
+// authorize enforces session sign-in and the route's minimum role, or Bearer
+// authentication for an API client. It writes the response itself when access
+// is denied.
 func (s *Server) authorize(w http.ResponseWriter, r *http.Request, required auth.Role) bool {
 	g := s.auth
 	if g == nil {
 		fail(w, http.StatusServiceUnavailable, "Sign-in is not configured for this workspace")
 		return false
+	}
+	// A Bearer header selects API-client authentication exclusively; the
+	// session cookie is never consulted afterwards.
+	if bearerRequest(r) {
+		if g.clients == nil {
+			fail(w, http.StatusServiceUnavailable, "API clients are not configured for this workspace")
+			return false
+		}
+		return s.authorizeClient(w, r, g)
 	}
 	cookie, err := r.Cookie(auth.SessionCookie)
 	if err != nil {
@@ -123,6 +137,8 @@ func (s *Server) authRoute(w http.ResponseWriter, r *http.Request) bool {
 		s.oidcCallback(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/auth/admin/users"):
 		s.adminUsersRoute(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/auth/admin/clients"):
+		s.adminClientsRoute(w, r)
 	default:
 		fail(w, http.StatusNotFound, "Unknown sign-in route")
 	}

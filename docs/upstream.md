@@ -21,6 +21,7 @@ and [verification record](verification.md) document the completed real agent dem
 | Development Kubernetes | `kindest/node:v1.35.0` | kagent rc3's development configuration |
 | TriageLab Go toolchain | `go1.27.3` | Development VM installation verified against the official release SHA-256 |
 | OpenTelemetry Go SDK | `v1.47.0` line | `otel`/`sdk`/`sdk/metric` `v1.47.0`, `sdk/log` `v1.47.0`, OTLP/HTTP exporters `v1.47.0`/`v0.23.0`, `contrib/bridges/otelslog` `v0.21.0`, vendored in `vendor/` |
+| OAuth client-credentials library | `zitadel/oidc v3.52.0` | `go-jose` v4.1.9 line, vendored in `vendor/`; only `pkg/op`'s token and revocation endpoints |
 
 The two Substrate repositories are intentionally distinguished. kagent's
 [go.mod](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/go.mod)
@@ -273,6 +274,55 @@ Constraints that affect TriageLab:
   the exported protobuf for all three signals (see
   `internal/telemetry/telemetry_test.go`). Live export to a real collector is
   exercised only to the extent recorded in `docs/verification.md`.
+
+## OAuth client-credentials integration
+
+Added 2026-11-10. TriageLab's token endpoint (`/oauth/token`) and revocation
+endpoint (`/oauth/revoke`) use [zitadel/oidc](https://github.com/zitadel/oidc)
+`v3.52.0` — OpenID Foundation certified, Apache-2.0, actively released
+(`go-jose` v4.1.9 line). It replaces what would otherwise be hand-written
+OAuth 2.0 protocol handling. `ory/fosite` was evaluated and rejected: its
+standalone module has been frozen since v0.49.0 (December 2024) and pins a
+dated, heavier dependency graph.
+
+Interfaces used:
+
+- `pkg/op`'s experimental `Server` interface via `op.RegisterServer`, with
+  exactly two endpoints registered: token and revocation. `UnimplementedServer`
+  covers every other method, so there is no authorization endpoint, refresh
+  token, introspection, or OpenID Connect surface to refuse.
+- The library owns form decoding, how client credentials may be presented
+  (Basic or body, never both), grant dispatch, and RFC-shaped error
+  responses. TriageLab owns storage and credentials.
+
+Deliberately **not** used from the library:
+
+- Its opaque-token cryptography and storage interfaces. The library's
+  pre-v3.47 tokens were an unauthenticated encryption of `tokenID:subject`
+  that a holder could alter to impersonate another subject
+  ([GHSA-j8gq-92xf-382c](https://github.com/zitadel/oidc/security/advisories/GHSA-j8gq-92xf-382c));
+  v3.47 added signing. TriageLab's tokens are 256-bit random values with
+  only a SHA-256 retained, looked up like browser sessions, carrying no
+  data to forge. Client secrets are likewise server-generated 256-bit
+  values stored as SHA-256, so no slow KDF work is spent on unauthenticated
+  token requests.
+- Its default CORS policy, which answers every origin with credentials
+  allowed. `op.WithServerCORSOptions(nil)` disables it; TriageLab keeps its
+  same-origin, loopback-only posture on the OAuth endpoints too.
+
+Constraints that affect TriageLab:
+
+- The library logs through the process-wide `slog` default: route
+  registration at startup and rejected token requests at WARN (error type
+  and description only; no credentials).
+- `op.Server` is marked "EXPERIMENTAL: may change until v4"; pinned by
+  version and covered by tests that pin observable behavior (401
+  `invalid_client`, `invalid_scope`, `unsupported_grant_type`, URL-parameter
+  refusal, and interop with `golang.org/x/oauth2/clientcredentials` in all
+  three auth styles). Review the upstream changelog before bumping the pin.
+- v3.52.0 was released the day of this review; the relevant request paths
+  (`RegisterServer`, `tokensHandler`, `withClient`) were source-reviewed at
+  that tag. The release's only new feature (a metadata server) is unused.
 
 ## GitHub issue integration
 

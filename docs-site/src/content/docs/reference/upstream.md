@@ -22,6 +22,15 @@ Do not use a live `main` branch as a dependency.
 | Development Kubernetes | `kindest/node:v1.35.0` | kagent rc3's development configuration |
 | TriageLab Go toolchain | `go1.27.3` | verified against the official release SHA-256 |
 | OpenTelemetry Go SDK | `v1.47.0` line | `sdk`, `sdk/metric`, `sdk/log`, OTLP/HTTP exporters, `otelslog` bridge, vendored |
+| OAuth client-credentials library | `zitadel/oidc v3.52.0` | OpenID-certified, Apache-2.0, vendored; only the token and revocation endpoints of `pkg/op` |
+
+The OAuth library owns the protocol at `/oauth/token` and `/oauth/revoke` —
+form decoding, client-credential rules, grant dispatch, and RFC-shaped
+errors — while TriageLab owns storage: client secrets and access tokens are
+its own 256-bit values retained only as SHA-256 hashes. The library's own
+token cryptography and its permissive default CORS policy are deliberately
+not used; see [API clients](/TriageLab/guides/api-clients/) for the surface
+an application sees.
 
 The two Substrate repositories are intentionally distinguished. kagent
 requires `go.ate.dev/substrate v1.0.0` and replaces it with
