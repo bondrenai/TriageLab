@@ -1,0 +1,30 @@
+---
+/**
+ * Container for an isometric line figure from @lucasmarkes/hairline.
+ * The figure is drawn client-side by the initializer script in
+ * layouts/Landing.astro; without JavaScript the element stays empty,
+ * so it must never carry information the page depends on.
+ */
+interface Props {
+  /** Figure name; must exist in the initializer's import map. */
+  name: string;
+  /** Accessible name, passed to the library's `label` option. */
+  label: string;
+  /** Self-running demo loop until the pointer or focus arrives. */
+  play?: boolean;
+  /** How strongly the figure answers the pointer, 0–1. */
+  intensity?: number;
+}
+
+const { name, label, play = false, intensity } = Astro.props;
+---
+
+<div
+  class="hairline-figure"
+  data-hairline={name}
+  data-play={play ? "true" : "false"}
+  data-intensity={intensity}
+  role="img"
+  aria-label={label}
+>
+</div>

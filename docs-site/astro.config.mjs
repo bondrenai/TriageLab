@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mdx from "@astrojs/mdx";
 import starlightLinksValidator from "starlight-links-validator";
 import blog from "starlight-blog";
 
@@ -66,5 +67,8 @@ export default defineConfig({
         }),
       ],
     }),
+    // mdx must come after starlight so expressive-code (registered by
+    // starlight) applies to code blocks on .mdx pages.
+    mdx(),
   ],
 });
