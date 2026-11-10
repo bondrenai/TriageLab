@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-site/src/assets/triagelab-mark-dark.svg">
+  <img src="docs-site/src/assets/triagelab-mark-light.svg" alt="" width="64" height="64">
+</picture>
+
 # TriageLab
 
 TriageLab is a free, Apache 2.0 tool that automates technical investigations

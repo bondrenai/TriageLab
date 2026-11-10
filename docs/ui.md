@@ -6,6 +6,13 @@ navigation frame, Plex Sans and Plex Mono, and ultramarine interaction marks.
 Marcellus is reserved for the BONDREN wordmark. The workspace centers on case
 inputs and recorded experiments rather than aggregate dashboard metrics.
 
+The TriageLab mark is a flask inside drafting corner marks, with one
+ultramarine evidence dot. `web/src/components/brand-mark.tsx` draws it in
+currentColor for the UI. Static copies for the docs header and README are in
+`docs-site/src/assets/`. The favicon in `web/public/` and `docs-site/public/`
+drops the corner marks so it stays legible at 16px. When you change the
+shape, update all of these files.
+
 ## Run on a development VM
 
 Use Node.js 24 and Go 1.27.3. Install dependencies and build on the VM:

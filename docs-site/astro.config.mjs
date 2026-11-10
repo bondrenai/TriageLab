@@ -12,6 +12,11 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "TriageLab",
+      logo: {
+        light: "./src/assets/triagelab-mark-light.svg",
+        dark: "./src/assets/triagelab-mark-dark.svg",
+      },
+      favicon: "/favicon.svg",
       description:
         "A Kubernetes-based tool that automates technical investigations for tickets and issues — routing, classification, and sandboxed investigation with recorded evidence.",
       sidebar: [

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FlaskConical, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Users } from "lucide-react";
+import { ArrowUpRight, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Users } from "lucide-react";
+import { BrandMark } from "./components/brand-mark";
 import { AgentsPage } from "./pages/AgentsPage";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
 import { NewInvestigationPage } from "./pages/NewInvestigationPage";
@@ -55,7 +56,7 @@ export function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar ink-frame">
-      <Link className="brand" to="/" aria-label="TriageLab home"><span className="brand-mark"><FlaskConical size={23} strokeWidth={1.5} /></span><span>TriageLab</span></Link>
+      <Link className="brand" to="/" aria-label="TriageLab home"><span className="brand-mark"><BrandMark /></span><span>TriageLab</span></Link>
       <div className="workspace-label engraved">Workbench</div>
       <nav className="main-nav" aria-label="Main navigation">
         <NavLink to="/" end><FolderOpen size={17} aria-hidden="true" />Investigations</NavLink>
