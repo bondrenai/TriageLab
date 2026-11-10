@@ -21,7 +21,7 @@ The first account defaults to `admin`; later accounts default to
 least-privilege `viewer`. Admins can also manage accounts on the workspace's
 Accounts page. Manage accounts from the CLI while the server is stopped — a
 running server holds its own copy and would overwrite CLI changes on its next
-save. The full `user` command surface is in the [CLI reference](\/TriageLab\/reference/cli/).
+save. The full `user` command surface is in the [CLI reference](/TriageLab/reference/cli/).
 
 ## Single sign-on
 

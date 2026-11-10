@@ -11,7 +11,7 @@ discipline we use to depend on alpha software without inheriting its churn.
 
 ## Pin to commits, not versions alone
 
-The [upstream compatibility record](\/TriageLab\/reference/upstream/) lists each
+The [upstream compatibility record](/TriageLab/reference/upstream/) lists each
 dependency's version *and* the exact commit identity it was reviewed against.
 A tag can be moved; a commit hash cannot. When we say "KAgent rc3," we mean
 `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d`, and every interface claim in the

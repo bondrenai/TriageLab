@@ -28,7 +28,7 @@ report.
    message, or start a run. **Track** a matching ticket to begin the procedure.
 
 Configure the source and initial policy in the JSON file (see
-[configuration examples](\/TriageLab\/reference/configuration-examples/); use
+[configuration examples](/TriageLab/reference/configuration-examples/); use
 **Ticket cases → Edit procedures** to add or edit procedures at runtime. Each
 procedure has its own match tag, evidence checklist, clarification settings,
 agent, and sandbox; the first matching procedure applies. An open ticket must

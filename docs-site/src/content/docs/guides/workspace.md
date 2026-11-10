@@ -27,13 +27,13 @@ ssh -N -L 8080:127.0.0.1:8080 YOUR_DEV_VM
 ```
 
 Open `http://127.0.0.1:8080`. Sign-in is required — see
-[sign-in and roles](\/TriageLab\/guides/sign-in/). The UI lists existing CLI reports in the
+[sign-in and roles](/TriageLab/guides/sign-in/). The UI lists existing CLI reports in the
 selected output directory, including a separately labelled example bundled
 from the repository's recorded verification report. Viewing history or the
 example does not require a running model provider.
 
 To investigate, configure KAgent and its model credential as in the
-[quickstart](\/TriageLab\/start/quickstart/), forward the controller port on the VM, and
+[quickstart](/TriageLab/start/quickstart/), forward the controller port on the VM, and
 set `TRIAGELAB_TOKEN` in the server's environment before starting it. Neither
 that token nor the model key belongs in browser configuration. Model and cloud
 usage can incur charges even though TriageLab is free.
@@ -46,7 +46,7 @@ usage can incur charges even though TriageLab is free.
   abrupt crash, inspect the report and use `triagelab cleanup` if resources
   remain.
 - The workspace can also show live KAgent deployment status and save KAgent
-  resources — see [defining agents](\/TriageLab\/guides/agents/).
+  resources — see [defining agents](/TriageLab/guides/agents/).
 
 ## Iterate on the UI
 

@@ -61,8 +61,8 @@ Prerequisites:
 Reports, private ticket state, and sign-in accounts persist in a
 PersistentVolumeClaim mounted at `/data/reports` (`persistence.*`; disable for
 an ephemeral emptyDir). The optional ticket procedures
-([Zendesk](\/TriageLab\/guides/tickets-zendesk/), [GitHub](\/TriageLab\/guides/tickets-github/),
-[Linear](\/TriageLab\/guides/tickets-linear/)) are enabled with `tickets.enabled` and
+([Zendesk](/TriageLab/guides/tickets-zendesk/), [GitHub](/TriageLab/guides/tickets-github/),
+[Linear](/TriageLab/guides/tickets-linear/)) are enabled with `tickets.enabled` and
 `tickets.config`; their JSON is stored in a Secret, and the credential named
 by `token_env` comes from `tickets.token` or your own Secret.
 
@@ -78,7 +78,7 @@ kubectl -n triagelab exec -it deploy/triagelab -- \
 
 Optional single sign-on uses one OpenID Connect provider via `auth.enabled`
 with `auth.config` (rendered verbatim to a Secret as `auth.json`). See
-[sign-in and roles](\/TriageLab\/guides/sign-in/) for the configuration shape and the
+[sign-in and roles](/TriageLab/guides/sign-in/) for the configuration shape and the
 provider roles mapping; register the exact redirect URI with the provider.
 
 ## Cluster HTTP endpoints

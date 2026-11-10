@@ -47,5 +47,5 @@ The outcome field separates what happened from why:
   support either claim; infrastructure failures are never reported as "not
   reproduced."
 
-Exit codes map onto these outcomes — see the [CLI reference](\/TriageLab\/reference/cli/)
+Exit codes map onto these outcomes — see the [CLI reference](/TriageLab/reference/cli/)
 for the full table.

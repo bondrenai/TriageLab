@@ -76,7 +76,7 @@ kubectl --context kind-triagelab apply -f network-investigator.json
 A definition contains a `name`, `system_prompt`, a `model` object (or
 `"model_ref": "triagelab-model"` to reuse the installed model), and optional
 `mcp_servers` entries with explicit tool lists. Flags and the full example are
-in the [CLI reference](\/TriageLab\/reference/cli/).
+in the [CLI reference](/TriageLab/reference/cli/).
 
 ## Use a saved agent
 

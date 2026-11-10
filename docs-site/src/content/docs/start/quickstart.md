@@ -17,7 +17,7 @@ cluster work happens there; your laptop only needs an SSH tunnel and a browser.
 The exact installation, port-forwarding, credential, and teardown steps are in
 [development setup](https://github.com/bondrenai/TriageLab/blob/main/docs/development.md)
 in the repository. The pinned interfaces are prerelease APIs; read the
-[upstream compatibility record](\/TriageLab\/reference/upstream/) before upgrading anything.
+[upstream compatibility record](/TriageLab/reference/upstream/) before upgrading anything.
 Do not install the development configuration into a production cluster.
 
 ## Run the example
@@ -61,5 +61,5 @@ cleanup from the saved report:
   --report reports/<case-id>/report.json
 ```
 
-See the [CLI reference](\/TriageLab\/reference/cli/) for the full exit-code table, then
-walk through [what the example investigation shows](\/TriageLab\/start/example/).
+See the [CLI reference](/TriageLab/reference/cli/) for the full exit-code table, then
+walk through [what the example investigation shows](/TriageLab/start/example/).
