@@ -268,6 +268,18 @@ import SystemMap from "./diagrams/SystemMap.astro";
     margin: 0;
   }
 
+  /* Starlight's content styles give every element after its first sibling a
+     top margin. In these grid and flex rows that drops all but the first item
+     and leaves it shorter, so the rows space their items with gap alone. */
+  .pipeline > *,
+  .features > *,
+  .fit > *,
+  .fit-list > *,
+  .chips > *,
+  .cta-band > * {
+    margin-top: 0;
+  }
+
   /* Mono overline with a short drafter's rule in the accent. */
   .overline {
     font-family: var(--bondren-font-mono);
