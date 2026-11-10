@@ -1,4 +1,4 @@
-// Package investigation bounds a real KAgent investigation and independently collects evidence.
+// Package investigation bounds a real kagent investigation and independently collects evidence.
 package investigation
 
 import (
@@ -24,7 +24,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Backend is the small upstream seam. Production always supplies a real KAgent client.
+// Backend is the small upstream seam. Production always supplies a real kagent client.
 // Tests may use protocol fixtures; there is deliberately no fake CLI backend.
 type Backend interface {
 	CallTool(context.Context, string, map[string]any) (map[string]any, error)
@@ -270,7 +270,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err != nil {
 		return result, err
 	}
-	i.progress(ctx, "Starting the KAgent investigator")
+	i.progress(ctx, "Starting the kagent investigator")
 	sessionRequest := map[string]any{"agent": map[string]any{"namespace": i.Config.Namespace, "name": i.Config.Agent}, "request_id": c.ID, "name": "triagelab-" + c.ID}
 	result["session_request"] = sessionRequest
 	if err = i.persist(dir, result); err != nil {

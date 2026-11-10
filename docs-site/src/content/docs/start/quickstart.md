@@ -10,15 +10,15 @@ cluster work happens there; your laptop only needs an SSH tunnel and a browser.
 
 - Go **1.27.3** or later in the supported 1.27 line, and Node.js 24 for the UI.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
-  **KAgent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
-- KAgent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
-- A model credential configured in KAgent (the example uses OpenAI's
+  **kagent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
+- kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
+- A model credential configured in kagent (the example uses OpenAI's
   `gpt-6.1-sol` through the Responses API).
 
 The exact installation, port-forwarding, credential, and teardown steps are in
 [development setup](https://github.com/bondrenai/TriageLab/blob/main/docs/development.md)
 in the repository. The pinned interfaces are prerelease APIs; read the
-[upstream compatibility record](\/TriageLab\/reference/upstream/) before upgrading anything.
+[upstream compatibility record](/TriageLab/reference/upstream/) before upgrading anything.
 Do not install the development configuration into a production cluster.
 
 ## Run the example
@@ -37,7 +37,7 @@ export TRIAGELAB_TOKEN="$(kubectl -n kagent create token triagelab \
   --description-file examples/config-bug/issue.md --repo examples/config-bug
 ```
 
-`doctor` verifies the KAgent sandbox API is reachable. `investigate` runs the
+`doctor` verifies the kagent sandbox API is reachable. `investigate` runs the
 included Python timeout example end to end and prints the report location.
 
 ## Run your own case
@@ -62,5 +62,5 @@ cleanup from the saved report:
   --report reports/<case-id>/report.json
 ```
 
-See the [CLI reference](\/TriageLab\/reference/cli/) for the full exit-code table, then
-walk through [what the example investigation shows](\/TriageLab\/start/example/).
+See the [CLI reference](/TriageLab/reference/cli/) for the full exit-code table, then
+walk through [what the example investigation shows](/TriageLab/start/example/).

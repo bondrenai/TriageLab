@@ -2,8 +2,8 @@ apiVersion: v2
 name: triagelab
 description: >-
   Evidence-driven investigations with a private, single-user web UI. Installs
-  the TriageLab workspace beside an existing KAgent/Substrate installation;
-  it does not install or replace KAgent.
+  the TriageLab workspace beside an existing kagent/Substrate installation;
+  it does not install or replace kagent.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

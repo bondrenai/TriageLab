@@ -1,7 +1,7 @@
 # Define an investigation agent
 
 Open **Agents** in the workspace. The **Agents**, **Models**, **MCP servers**,
-**Sandboxes**, and **Egress** tabs edit separate KAgent resources. **Save**
+**Sandboxes**, and **Egress** tabs edit separate kagent resources. **Save**
 creates or updates the resource in the workspace namespace. Use **Edit** in
 Deployment status to reopen a resource saved by TriageLab. Each tab can also
 preview and download Kubernetes JSON.
@@ -10,15 +10,15 @@ preview and download Kubernetes JSON.
   provider and model ID. The editor supports OpenAI-compatible, Anthropic,
   Gemini, Mistral, and Ollama models. An optional endpoint overrides the
   provider default. For a local Ollama daemon, use an endpoint reachable by
-  KAgent. For Ollama Cloud, select a cloud model, reference its Secret, and leave
+  kagent. For Ollama Cloud, select a cloud model, reference its Secret, and leave
   the endpoint blank. For OpenAI, **OpenAI API** selects Chat Completions
-  (KAgent's default) or Responses. OpenAI's GPT-6 models need Responses to call
+  (kagent's default) or Responses. OpenAI's GPT-6 models need Responses to call
   tools, which every investigator does.
 - In **MCP servers**, give the server a resource name and enter its URL and
   transport. For authenticated servers, the selected Kubernetes Secret entry
   contains the full Authorization header value. Create credential values in
   Kubernetes and provide their Secret references in the editor. With live status
-  enabled, the editor uses the tools KAgent discovers for the deployed server.
+  enabled, the editor uses the tools kagent discovers for the deployed server.
   Enter manual tool names for servers whose discovery is unavailable.
 - In **Agents**, choose a runtime and select a model saved or previewed in
   **Models**. Select servers saved or previewed in **MCP servers** and check the tools to expose
@@ -45,9 +45,9 @@ TriageLab adds the investigation instructions, the six standalone sandbox tools,
 and the structured report schema. The selected model needs to support tool calls
 and structured responses.
 
-## Connect the workspace to KAgent
+## Connect the workspace to kagent
 
-Start the workspace with an explicit kubeconfig and context to see what KAgent
+Start the workspace with an explicit kubeconfig and context to see what kagent
 has deployed in the workspace namespace:
 
 ```sh
@@ -86,7 +86,7 @@ rules:
     verbs: [get, create]
 ```
 
-Save writes the definition to Kubernetes and KAgent reconciles it asynchronously.
+Save writes the definition to Kubernetes and kagent reconciles it asynchronously.
 TriageLab preserves the editable definition on the resource. If it changes while
 you edit, reopen it before saving again. Resources created outside TriageLab
 remain visible in Deployment status. For a custom image, TriageLab creates a
@@ -134,22 +134,22 @@ instead of Chat Completions.
 
 Select **Bring your own image** or add a `runtime` object with `image`, a
 `command` array, and optional `args`. The image must be pinned by SHA-256 and
-the command must identify its executable. This creates a KAgent BYO Harness
+the command must identify its executable. This creates a kagent BYO Harness
 using the development install's `kagent-default` WorkerPool and snapshot policy.
 A model configuration is optional when the image handles model setup.
 
-The image must implement KAgent rc3's private A2A gRPC, readiness, and durable
+The image must implement kagent rc3's private A2A gRPC, readiness, and durable
 TaskStore contract. It must consume the supplied configuration for MCP bindings,
 preserve caller authentication for the sandbox tool server, and record tool
 activity in the canonical transcript. Return the investigation JSON described
-in the generated prompt as terminal A2A text or as a KAgent canonical structured
+in the generated prompt as terminal A2A text or as a kagent canonical structured
 output part. TriageLab validates the report and fetches process state, exit
 status and output independently. The recorded command and arguments come from
 the runtime's transcript. An ordinary reproduction image belongs in the
 standalone SandboxTemplate, which can be set with
 `triagelab manifest --workload-image`.
 
-- [Pinned KAgent BYO runtime contract](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/configuration-and-compilation.md#runtime-configuration)
+- [Pinned kagent BYO runtime contract](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/configuration-and-compilation.md#runtime-configuration)
 - [Canonical tool activity and structured output parts](https://github.com/kagent-dev/kagent/tree/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/a2a)
 
 ## Deploy and use
@@ -159,14 +159,14 @@ with your Kubernetes operator credentials in the same namespace as the
 TriageLab installation. Apply any new model and server manifests before the
 agent that references them.
 
-Before attaching additional MCP servers, make sure the running KAgent deployment
+Before attaching additional MCP servers, make sure the running kagent deployment
 has `config.runtimeDefaults.tokenPropagation.enabled: false`, as in the current
 TriageLab Helm values. Earlier development installs enabled global propagation,
 which sends the invocation bearer and caller ID to every MCP server. Update the
 controller configuration and let it reconcile the agents before running a
 custom agent. The trusted `triagelab-sandbox-api` server keeps
 `tokenPassthrough: true`. Use a verified invocation service-account token so
-KAgent can authenticate the same sandbox owner when that server receives a call.
+kagent can authenticate the same sandbox owner when that server receives a call.
 
 Render and deploy the CLI definition on your development environment.
 
@@ -180,7 +180,7 @@ kubectl --context kind-triagelab -n kagent wait --for=condition=Ready \
 ```
 
 Agents saved in the workspace appear in the **New investigation** picker. You
-can select them once KAgent marks them ready. The workspace reads the saved
+can select them once kagent marks them ready. The workspace reads the saved
 tool selection when starting a run.
 
 For CLI runs and agents deployed from a downloaded manifest, add an entry to
@@ -212,5 +212,5 @@ runtimes can receive the invocation credential. Review existing model and MCP
 references for caller-token passthrough. Additional tools should be read-only
 and intended for use with the data in the workspace. TriageLab's watchdog
 checks tool names after they appear in the upstream transcript. This check
-cannot prevent a tool call or undo a side effect. KAgent compiles references and prepares the runtime snapshot before marking the
+cannot prevent a tool call or undo a side effect. kagent compiles references and prepares the runtime snapshot before marking the
 Agent ready. Verify model and tool connectivity in a manual run. See [TriageLab’s security model](../SECURITY.md).

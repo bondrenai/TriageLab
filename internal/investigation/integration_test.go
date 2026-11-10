@@ -13,10 +13,10 @@ import (
 )
 
 // TestLiveInvestigation never falls back to a mock. Opt-in requires a dedicated
-// real KAgent/Substrate deployment and a working model credential in its gateway.
+// real kagent/Substrate deployment and a working model credential in its gateway.
 func TestLiveInvestigation(t *testing.T) {
 	if os.Getenv("TRIAGELAB_INTEGRATION") != "1" {
-		t.Skip("set TRIAGELAB_INTEGRATION=1 for real KAgent/Substrate/model integration")
+		t.Skip("set TRIAGELAB_INTEGRATION=1 for real kagent/Substrate/model integration")
 	}
 	configPath := os.Getenv("TRIAGELAB_CONFIG")
 	if configPath != "" && !filepath.IsAbs(configPath) {

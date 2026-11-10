@@ -30,7 +30,7 @@ output directory. Its saved example is bundled from the repository's real
 verification report and is explicitly separate from your investigation history.
 Viewing history or the example does not require a running model provider.
 
-To investigate, configure KAgent and its model credential as described in
+To investigate, configure kagent and its model credential as described in
 [development setup](development.md), forward the controller on the VM, and set
 `TRIAGELAB_TOKEN` in the server's environment before starting it. Neither that
 token nor the model key belongs in browser configuration. Free source code does
@@ -109,7 +109,7 @@ Three roles are enforced server-side on every API route:
 | --- | --- | --- |
 | viewer | Read reports, cases, deployment status | Change anything |
 | user | Everything a viewer can, plus launching and steering investigations and ticket actions | Define agents, sandbox templates, egress policies, procedures, or accounts |
-| admin | Everything, including saving KAgent definitions, ticket procedures, and account management | |
+| admin | Everything, including saving kagent definitions, ticket procedures, and account management | |
 
 Each report records `started_by`. Sign-in attempts are rate-limited per
 account. There is no per-user action audit log yet.

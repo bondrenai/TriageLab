@@ -36,7 +36,7 @@ verbatim to `telemetry.json` in the ConfigMap):
 ## What is exported
 
 The Go SDK's batch processors send spans, metrics, and structured logs, with
-W3C `traceparent` propagation into KAgent MCP requests so a run traces end to
+W3C `traceparent` propagation into kagent MCP requests so a run traces end to
 end. Export is **best effort**: collector failures surface on stderr and never
 change investigation outcomes, and the shutdown flush is bounded to five
 seconds.

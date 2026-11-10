@@ -122,7 +122,7 @@ func ValidateExtraTools(tools []string) error {
 		}
 		switch name {
 		case "read_file", "write_file", "edit_file", "list_files", "grep_file", "bash", "ask_user":
-			return fmt.Errorf("an MCP tool name conflicts with a KAgent built-in")
+			return fmt.Errorf("an MCP tool name conflicts with a kagent built-in")
 		}
 		if IsSandboxTool(name) || seen[name] {
 			return fmt.Errorf("MCP tool names must be unique and distinct from the investigation sandbox tools")
@@ -289,7 +289,7 @@ func RenderMCPServerDefinition(namespace string, d MCPServer) ([]byte, error) {
 	return json.MarshalIndent(resource(namespace, "RemoteMCPServer", d.Name, spec), "", "  ")
 }
 
-// RenderDefinition emits native KAgent rc3 configuration with the TriageLab
+// RenderDefinition emits native kagent rc3 configuration with the TriageLab
 // sandbox binding. It performs no network, filesystem, or cluster operations.
 func RenderDefinition(namespace string, d Definition) ([]byte, error) {
 	return renderDefinition(namespace, d, false)

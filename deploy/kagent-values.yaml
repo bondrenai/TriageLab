@@ -1,5 +1,5 @@
 # Private, single-user development installation; see docs/development.md.
-# KAgent 1.0.0-rc3 chart values, checked against the release's protobuf config.
+# kagent 1.0.0-rc3 chart values, checked against the release's protobuf config.
 global:
   watchNamespaces: [kagent]
 rbac:

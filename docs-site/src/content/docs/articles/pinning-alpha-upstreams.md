@@ -1,9 +1,9 @@
 ---
 title: Pinning alpha upstreams
-description: How TriageLab integrates KAgent rc3 and Substrate 1.0 without inheriting their churn.
+description: How TriageLab integrates kagent rc3 and Substrate 1.0 without inheriting their churn.
 ---
 
-TriageLab sits on two young upstreams: KAgent `v1.0.0-rc3` and its matching
+TriageLab sits on two young upstreams: kagent `v1.0.0-rc3` and its matching
 Agent Substrate `v1.0.0` packaging. Both are moving — the current 1.x alpha
 schemas differ meaningfully from older public examples — and an investigation
 tool whose substrate shifts underneath it is worse than no tool. This is the
@@ -11,16 +11,16 @@ discipline we use to depend on alpha software without inheriting its churn.
 
 ## Pin to commits, not versions alone
 
-The [upstream compatibility record](\/TriageLab\/reference/upstream/) lists each
+The [upstream compatibility record](/TriageLab/reference/upstream/) lists each
 dependency's version *and* the exact commit identity it was reviewed against.
-A tag can be moved; a commit hash cannot. When we say "KAgent rc3," we mean
+A tag can be moved; a commit hash cannot. When we say "kagent rc3," we mean
 `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d`, and every interface claim in the
 record was read at that commit — not copied from a README that may predate a
 breaking change.
 
 The record also distinguishes things that are easy to confuse. There are two
-Substrate repositories: the core project and KAgent's packaging fork of it.
-KAgent's Go module requires one and replaces it with the other. Installing
+Substrate repositories: the core project and kagent's packaging fork of it.
+kagent's Go module requires one and replaces it with the other. Installing
 both installers duplicates infrastructure. The only way to catch that class
 of problem is to read the module graph and the installers yourself, at the
 pinned commits.
@@ -28,7 +28,7 @@ pinned commits.
 ## Read the contract before the example
 
 The biggest schema trap in this stack: a standalone **Sandbox is an
-owner-scoped service object** in KAgent's API — a database-backed resource
+owner-scoped service object** in kagent's API — a database-backed resource
 mapped to a Substrate Actor — while **SandboxTemplate** is the Kubernetes
 CRD. Older examples blur this distinction, and code written against the wrong
 one appears to work until lifecycle operations start failing. Similar traps:
@@ -57,7 +57,7 @@ routinely in alphas.
 We don't track `main`. We don't vendor behavior into local approximations —
 if upstream provides a security mechanism (isolation, egress policy, token
 verification), we use it rather than reimplementing a weaker local version.
-And we don't pretend the alpha boundary doesn't exist: KAgent's shipped
+And we don't pretend the alpha boundary doesn't exist: kagent's shipped
 authorizer is not a production tenant policy, so TriageLab's development
 setup stays on a dedicated cluster and says so plainly.
 

@@ -1,5 +1,5 @@
 # Dedicated development cluster. No workload receives a Docker socket.
-# Pod certificates require these gates in the pinned KAgent/Substrate release.
+# Pod certificates require these gates in the pinned kagent/Substrate release.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:

@@ -74,7 +74,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	if command == "serve" {
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
-		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save KAgent definitions in the configured namespace")
+		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
 		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
 		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
 	}
@@ -104,7 +104,7 @@ type agentManifestOptions struct {
 func registerAgentManifestFlags(flags *flag.FlagSet) *agentManifestOptions {
 	opts := &agentManifestOptions{}
 	flags.StringVar(&opts.definition, "definition", "", "local agent definition JSON file")
-	flags.StringVar(&opts.namespace, "namespace", investigation.DefaultConfig().Namespace, "KAgent namespace")
+	flags.StringVar(&opts.namespace, "namespace", investigation.DefaultConfig().Namespace, "kagent namespace")
 	return opts
 }
 
@@ -140,7 +140,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		return 2
 	}
 	if args[0] == "version" {
-		fmt.Fprintln(out, "triagelab 0.1.0 (KAgent v1.0.0-rc3 / Substrate v1.0.0)")
+		fmt.Fprintln(out, "triagelab 0.1.0 (kagent v1.0.0-rc3 / Substrate v1.0.0)")
 		return 0
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
@@ -299,7 +299,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 4
 		}
-		fmt.Fprintln(out, "KAgent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
+		fmt.Fprintln(out, "kagent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
 		return 0
 	case "investigate":
 		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(opts.manualAgent)
@@ -464,7 +464,7 @@ func enableSignIn(ctx context.Context, workspace *webserver.Server, authConfigPa
 	return nil
 }
 
-// runUserCommand manages local sign-in accounts without contacting KAgent.
+// runUserCommand manages local sign-in accounts without contacting kagent.
 func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 	if len(args) == 0 {
 		fmt.Fprintln(errout, "Usage: triagelab user <add|list|remove|set-role|set-password> [options]")

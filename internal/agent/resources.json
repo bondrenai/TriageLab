@@ -79,7 +79,7 @@
         "namespace": "kagent"
       },
       "spec": {
-        "description": "Trusted KAgent sandbox APIs; caller identity is propagated",
+        "description": "Trusted kagent sandbox APIs; caller identity is propagated",
         "protocol": "STREAMABLE_HTTP",
         "url": "http://triagelab-tools.kagent.svc.cluster.local:8083/mcp",
         "timeout": "30s",

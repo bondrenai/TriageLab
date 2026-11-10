@@ -21,7 +21,7 @@ replicaCount: 1
 # must match internal/investigation.Config exactly (unknown fields are
 # rejected at startup).
 config:
-  # In-cluster endpoint of the KAgent controller through the internal
+  # In-cluster endpoint of the kagent controller through the internal
   # triagelab-tools Service created by `triagelab manifest`. Plain HTTP here is
   # cluster-internal only; allow_cluster_http does not relax the loopback rule
   # for any other host.
@@ -42,8 +42,8 @@ config:
   # manual_agents:
   #   triagelab-networker: ["shell"]
 
-# KAgent invocation credential. Mint a short-lived token from the cluster that
-# runs KAgent and refresh it before it expires; the value is read once at pod
+# kagent invocation credential. Mint a short-lived token from the cluster that
+# runs kagent and refresh it before it expires; the value is read once at pod
 # start, so rotate by updating the Secret and restarting the pod.
 #
 #   kubectl -n kagent create token triagelab \

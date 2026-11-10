@@ -1,4 +1,4 @@
-// Package agent contains trusted configuration installed into KAgent, not an agent framework.
+// Package agent contains trusted configuration installed into kagent, not an agent framework.
 package agent
 
 import (

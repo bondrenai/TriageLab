@@ -30,7 +30,7 @@ if [[ "$(kubectl config current-context)" != "kind-triagelab" ]]; then
   exit 2
 fi
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "Set OPENAI_API_KEY for the KAgent installer; its value is never sent to the fixture." >&2
+  echo "Set OPENAI_API_KEY for the kagent installer; its value is never sent to the fixture." >&2
   exit 2
 fi
 if [[ "$sandbox_class" == microvm ]]; then

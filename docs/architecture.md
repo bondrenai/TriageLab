@@ -28,7 +28,7 @@ authorized Zendesk write. Waiting cases consume no sandbox. An operator
 approves the plan's evidence and limits before the same workspace run slot
 dispatches the existing investigation workflow. See [ticket setup](tickets.md).
 
-KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
+kagent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, Go ADK tool loop, authorization integration, model gateway,
 and expiry. Sandbox is a database-backed API resource, **not** a Kubernetes CRD.
 Substrate owns WorkerPools, Actors, gVisor/optional microVM isolation, snapshots,
@@ -74,7 +74,7 @@ read-only ingestion is the first planned external adapter. Additional reproducti
 images belong in upstream SandboxTemplates; use the manifest image override with
 an OCI digest. Egress exceptions belong in reviewed upstream EgressPolicy
 configuration, not model output. Specialized investigators can use additional
-KAgent AgentTemplates when concrete cases justify them.
+kagent AgentTemplates when concrete cases justify them.
 
 There is no generic plugin framework, multiagent topology, database, job queue,
 custom Kubernetes operator, or production mutation tool in the initial CLI.
