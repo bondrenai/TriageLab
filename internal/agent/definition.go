@@ -41,9 +41,12 @@ type RuntimeImage struct {
 }
 
 type Model struct {
-	Provider   string `json:"provider"`
-	Name       string `json:"name"`
-	Endpoint   string `json:"endpoint,omitempty"`
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// APIFormat selects the OpenAI HTTP API. Empty keeps KAgent's default,
+	// Chat Completions.
+	APIFormat  string `json:"api_format,omitempty"`
 	SecretName string `json:"secret_name,omitempty"`
 	SecretKey  string `json:"secret_key,omitempty"`
 }
@@ -160,6 +163,9 @@ func (m Model) spec() (map[string]any, error) {
 	if m.Endpoint != "" && !validEndpoint(m.Endpoint) {
 		return nil, fmt.Errorf("model endpoint must be an HTTP(S) URL without credentials, query or fragment")
 	}
+	if m.APIFormat != "" && (m.Provider != "OpenAI" || (m.APIFormat != "chatCompletions" && m.APIFormat != "responses")) {
+		return nil, fmt.Errorf("API format applies to OpenAI models and must be chatCompletions or responses")
+	}
 	if err := validateSecretRef(m.SecretName, m.SecretKey); err != nil {
 		return nil, fmt.Errorf("model credentials: %w", err)
 	}
@@ -179,8 +185,15 @@ func (m Model) spec() (map[string]any, error) {
 			ollama["host"] = m.Endpoint
 		}
 		spec[field] = ollama
-	} else if m.Endpoint != "" {
-		spec[field] = map[string]string{"baseUrl": m.Endpoint}
+	} else if m.Endpoint != "" || m.APIFormat != "" {
+		settings := map[string]string{}
+		if m.Endpoint != "" {
+			settings["baseUrl"] = m.Endpoint
+		}
+		if m.APIFormat != "" {
+			settings["apiFormat"] = m.APIFormat
+		}
+		spec[field] = settings
 	}
 	return spec, nil
 }

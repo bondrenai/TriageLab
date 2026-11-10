@@ -20,6 +20,7 @@ export function ModelEditor({ onPreview, deployment, editor }: {
     name: field(data, "name").trim(),
     model: {
       provider, name: field(data, "model_id").trim(), endpoint: field(data, "endpoint").trim(),
+      api_format: provider === "OpenAI" ? field(data, "api_format") : "",
       secret_name: field(data, "secret_name").trim(), secret_key: field(data, "secret_key").trim(),
     },
   })} guidance={<p>Save this model to use it in an agent. Preview manifest exports a definition you can deploy separately.</p>}>
@@ -32,6 +33,13 @@ export function ModelEditor({ onPreview, deployment, editor }: {
         <Field label="Model ID"><input name="model_id" defaultValue={model?.name} className="field mono" required maxLength={256} /></Field>
       </div>
       <Field label="Provider endpoint (optional)"><input name="endpoint" defaultValue={model?.endpoint} className="field mono" type="url" placeholder="https://models.example/v1" maxLength={2048} /></Field>
+      {provider === "OpenAI" && <>
+        <Field label="OpenAI API"><select name="api_format" defaultValue={model?.api_format ?? ""} className="field">
+          <option value="">Chat Completions (KAgent default)</option>
+          <option value="responses">Responses</option>
+        </select></Field>
+        <p className="field-help">Investigators call tools on every run. OpenAI’s GPT-6 models need the Responses API for that. Keep Chat Completions for older models and OpenAI-compatible gateways.</p>
+      </>}
       <SecretFields name={model?.secret_name} secretKey={model?.secret_key} />
       <p className="field-help">{provider === "Ollama"
         ? "Enter the daemon endpoint, or leave it blank and reference a Secret for an Ollama Cloud model."

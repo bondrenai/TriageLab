@@ -320,3 +320,20 @@ Limits:
 - Shell and workflow linting, YAML parsing, and a `helm template` of the pinned
   KAgent chart ran on the development laptop. `make check` ran on the shared
   build VM and in CI for both commits.
+
+## Model API format option
+
+On 2026-11-09 the shared build VM passed `make check`, `make check-ui`, and
+`make build-ui` for the OpenAI API format option on model definitions. Unit
+tests cover rendering `spec.openAI.apiFormat` beside a custom endpoint and
+rejecting the option for other providers and unknown values.
+
+Playwright 1.65.0 with Chromium 1254 exercised the built server and assets on
+the VM at 1440px and 390px, signed in with a throwaway local admin account. The
+Models editor showed the option only for the OpenAI provider, previewed
+`apiFormat: responses`, kept the choice after returning to the editor, and
+omitted the block for the default. There was no horizontal overflow or browser
+error. The temporary server and account were removed.
+
+No model call used a model defined this way. The live runs above exercise the
+Responses API only through the installed `triagelab-model`.

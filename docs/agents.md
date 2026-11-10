@@ -11,7 +11,9 @@ preview and download Kubernetes JSON.
   Gemini, Mistral, and Ollama models. An optional endpoint overrides the
   provider default. For a local Ollama daemon, use an endpoint reachable by
   KAgent. For Ollama Cloud, select a cloud model, reference its Secret, and leave
-  the endpoint blank.
+  the endpoint blank. For OpenAI, **OpenAI API** selects Chat Completions
+  (KAgent's default) or Responses. OpenAI's GPT-6 models need Responses to call
+  tools, which every investigator does.
 - In **MCP servers**, give the server a resource name and enter its URL and
   transport. For authenticated servers, the selected Kubernetes Secret entry
   contains the full Authorization header value. Create credential values in
@@ -125,6 +127,8 @@ The `engineering-docs` entry references an existing `RemoteMCPServer`. The
 second entry generates `network-investigator-mcp-reference`. Use a short DNS
 label for the suffix and reserve `mcp-` at the start and `-mcp-` within it. Use `"model_ref":
 "triagelab-model"` in place of the `model` object to reuse the installed model.
+For an OpenAI `model`, add `"api_format": "responses"` to use the Responses API
+instead of Chat Completions.
 
 ## Custom runtime images
 

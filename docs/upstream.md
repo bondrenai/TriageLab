@@ -100,8 +100,9 @@ Authoritative references:
   models require the [Responses API for tool calling](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
   KAgent's default is `chatCompletions`, and `gpt-4.1` is
   [scheduled for shutdown](https://developers.openai.com/api/docs/deprecations)
-  on 2027-01-14. Models defined in the workspace editor or a CLI bundle render
-  no `apiFormat`, so they still use Chat Completions. KAgent rc3 and rc4 replay
+  on 2027-01-14. Models defined in the workspace editor or a CLI bundle use
+  Chat Completions unless they set `api_format` to `responses`; that setting
+  has unit and browser tests but no live model call. KAgent rc3 and rc4 replay
   tool calls without the model's reasoning items, which OpenAI's
   [reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning)
   asks clients to pass back; four live runs completed that way and one failed
