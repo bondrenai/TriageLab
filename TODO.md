@@ -4,13 +4,6 @@
       `examples/corpus.json`. Five of its six cases, including the
       prompt-injection bait, have never met a model; their expectations are
       design intent until a scorecard exists.
-- [ ] Clear the two CI jobs that fail on the current tree; the release
-      workflow is gated on both. `make vulncheck` reports five HTTP/2
-      advisories in the vendored `golang.org/x/net` v0.59.0, all fixed in
-      v0.60.0. `make lint` reports seven findings: deprecated
-      `ecdsa.PublicKey` coordinates in the OIDC key parsing and its test, a
-      deprecated OpenTelemetry call in a test, and a self-comparison in a
-      Linear test.
 - [ ] Review held drafts and blocked notes from the first pilots and tune the
       input and output sanitizers: deny-list matching thresholds, per-source
       internal terms, and provenance of applied redactions, before widening

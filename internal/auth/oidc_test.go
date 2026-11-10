@@ -397,12 +397,15 @@ func TestOIDCES256Flow(t *testing.T) {
 	}
 	idp.key = key
 	idp.kid = "ec-key-1"
+	point, err := key.PublicKey.Bytes() // 0x04 || X || Y, 32 bytes each for P-256
+	if err != nil {
+		t.Fatal(err)
+	}
 	idp.jwks = func(w http.ResponseWriter) {
-		public := key.PublicKey
 		writeJSONForTest(w, map[string]any{"keys": []any{map[string]any{
 			"kty": "EC", "kid": idp.kid, "use": "sig", "alg": "ES256", "crv": "P-256",
-			"x": base64.RawURLEncoding.EncodeToString(public.X.FillBytes(make([]byte, 32))),
-			"y": base64.RawURLEncoding.EncodeToString(public.Y.FillBytes(make([]byte, 32))),
+			"x": base64.RawURLEncoding.EncodeToString(point[1:33]),
+			"y": base64.RawURLEncoding.EncodeToString(point[33:]),
 		}}})
 	}
 	config, err := baseOIDCConfig(idp).Validate("")
@@ -435,5 +438,29 @@ func TestClaimGroups(t *testing.T) {
 	// Zitadel's project roles claim is an object keyed by role name.
 	if got := claimGroups(map[string]any{"triagelab-admin": map[string]any{"org": "org"}, "": nil}); len(got) != 1 || got[0] != "triagelab-admin" {
 		t.Fatalf("object groups: %v", got)
+	}
+}
+
+// A JWKS entry whose coordinates are not a point on P-256 is not a usable
+// signing key; it must be refused when the key set is read.
+func TestECKeyRefusesPointOffCurve(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	point, err := key.PublicKey.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, y := base64.RawURLEncoding.EncodeToString(point[1:33]), base64.RawURLEncoding.EncodeToString(point[33:])
+	if _, err := ecKey(x, y); err != nil {
+		t.Fatalf("valid key refused: %v", err)
+	}
+	point[64] ^= 1 // change y so the point leaves the curve
+	if _, err := ecKey(x, base64.RawURLEncoding.EncodeToString(point[33:])); err == nil {
+		t.Fatal("accepted a point that is not on the curve")
+	}
+	if _, err := ecKey(x, base64.RawURLEncoding.EncodeToString(point[33:64])); err == nil {
+		t.Fatal("accepted a short y coordinate")
 	}
 }

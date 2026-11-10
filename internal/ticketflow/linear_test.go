@@ -157,8 +157,9 @@ func TestLinearReadsIssueDescriptionCommentsAndProvenance(t *testing.T) {
 }
 
 func TestLinearIdentifiersMapStably(t *testing.T) {
-	if linearID(linearIssueUUID) <= 0 || linearID(linearIssueUUID) != linearID(linearIssueUUID) ||
-		linearID(linearIssueUUID) == linearID(linearCommentA) || linearID("not-a-uuid") != 0 || linearID("") != 0 {
+	first, again := linearID(linearIssueUUID), linearID(linearIssueUUID)
+	if first <= 0 || first != again ||
+		first == linearID(linearCommentA) || linearID("not-a-uuid") != 0 || linearID("") != 0 {
 		t.Fatal("Linear UUID mapping is not stable and distinct")
 	}
 }

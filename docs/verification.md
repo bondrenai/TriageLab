@@ -484,3 +484,11 @@ deployment, a model, or a GitHub workflow run:
   lower case, were merged afterwards. `make check`, the UI checks, and the docs
   site build were repeated on that tree; `make race`, `make dist`, and the
   image build were not.
+- Both failing checks were then fixed. `golang.org/x/net` moved to v0.60.0,
+  the only module that changed. The OIDC key parsing now uses
+  `ecdsa.ParseUncompressedPublicKey`, which also refuses a point that is not
+  on the curve, with a test for that; the three test findings were rewritten.
+  On that tree `make check`, `make lint`, `make vulncheck`, `make race`, and
+  the image build pass. govulncheck still lists two advisories in the `html`
+  package of `golang.org/x/net`, fixed in v0.62.0; TriageLab does not import
+  that package. The ES256 sign-in path is covered by fixtures only.
