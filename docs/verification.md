@@ -523,10 +523,9 @@ Checks run on the merged tree:
   path only.
 
 Not verified: any live investigation, retry behaviour over a real dropped
-port-forward, deletion of a real sandbox or session through Retry cleanup, and
-every GitHub workflow change (the macOS job, the lint and vulncheck jobs, the
-release gate, the multi-architecture publish, the provenance attestation, and
-the release binaries).
+port-forward, and deletion of a real sandbox or session through Retry cleanup.
+No GitHub workflow had run at this point; the first CI run is recorded at the
+end of this section.
 
 ### After merging `main`
 
@@ -574,3 +573,18 @@ deployment, a model, or a GitHub workflow run:
   `config-bug` case so it still runs one investigation rather than the whole
   corpus. `make check`, `make lint`, `make vulncheck`, the UI checks, and the
   docs site build pass on that tree.
+
+### CI on the pull request
+
+On November 9, 2026, the CI workflow ran on the pull request for these changes
+at commit `8dc4d95`, once for the push and once for the pull request event.
+Both runs passed every job that is not opt-in: `checks` on `ubuntu-latest` and
+`macos-latest`, `race`, `lint`, `vulncheck`, `frontend`, `docs`, `helm`, and
+`image`. It was the first run of the macOS, `race`, `lint`, and `vulncheck`
+jobs. The `race` job finished in under four minutes.
+
+Still not run: the opt-in `integration` and `microvm` jobs with these changes,
+and the release workflow, which means its CI gate, the multi-architecture
+publish, the provenance attestation, and the release binaries. A last
+`make race` on the build VM for that commit did not finish, because the VM
+stopped responding; the CI `race` job ran on the same commit.
