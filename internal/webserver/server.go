@@ -253,7 +253,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-TriageLab-Request") != "1" {
+	// The OAuth endpoints authenticate the caller in the request itself, so
+	// they need no session and no cross-site request marker.
+	if r.URL.Path == auth.OAuthTokenPath || r.URL.Path == auth.OAuthRevocationPath {
+		if s.auth == nil || s.auth.oauth == nil {
+			fail(w, http.StatusServiceUnavailable, "API clients are not configured for this workspace")
+			return
+		}
+		s.auth.oauth.ServeHTTP(w, r)
+		return
+	}
+	// A Bearer token is a credential in the request itself, so a cross-site
+	// page cannot supply one and the request marker that protects session
+	// cookies is not needed. Session routes under /api/auth/ keep the marker.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && !bearerRequest(r) &&
+		r.Header.Get("X-TriageLab-Request") != "1" {
 		fail(w, http.StatusForbidden, "Missing request header")
 		return
 	}
@@ -425,7 +439,7 @@ func (s *Server) decodeReport(content []byte, id string) (map[string]any, error)
 	return report.Redact(saved, s.secrets...).(map[string]any), nil
 }
 
-func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	directory, err := s.reports.Open(".")
 	if err != nil {
 		fail(w, 500, "Could not read report history")
@@ -447,6 +461,11 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
 		}
 		saved, err := s.readReport(entry.Name())
 		if err != nil {
+			continue
+		}
+		// A client without read scope sees only the runs it started.
+		if grant, client := clientFrom(r.Context()); client && !grant.Allows(auth.ScopeRead) &&
+			saved["started_by"] != auth.ClientActor(grant.ClientID) {
 			continue
 		}
 		c, _ := saved["case"].(map[string]any)
@@ -725,7 +744,12 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	if r.Context().Err() != nil {
 		return
 	}
-	if err := s.launchRun(c, nil, config, extraTools, actorFrom(r.Context()).Username, "ui"); err != nil {
+	actor := actorFrom(r.Context())
+	trigger := "ui"
+	if _, client := clientFrom(r.Context()); client {
+		trigger = "api"
+	}
+	if err := s.launchRun(c, nil, config, extraTools, actor.Username, trigger); err != nil {
 		writeLaunchError(w, err)
 		return
 	}

@@ -355,6 +355,35 @@ func TestOIDCTokenRejection(t *testing.T) {
 	}
 }
 
+func TestOIDCRejectsNamesReservedForAPIClients(t *testing.T) {
+	idp := newFakeIdP(t)
+	config, err := baseOIDCConfig(idp).Validate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every claim that can supply the username is covered, including the
+	// fallbacks used when the configured claim is absent.
+	for name, claims := range map[string]map[string]any{
+		"username-claim": {"sub": "u123", "preferred_username": "client:billing"},
+		"email-fallback": {"sub": "u123", "email": "client:billing"},
+		"sub-fallback":   {"sub": "client:billing"},
+		"padded":         {"sub": "u123", "preferred_username": "  client:billing  "},
+	} {
+		provider, _, state := beginLogin(t, idp, config)
+		idp.claims = claims
+		if _, err := provider.FinishLogin(context.Background(), nil, state, idp.expectedCode); !errors.Is(err, ErrOIDCToken) {
+			t.Fatalf("%s signed in under a reserved API client name: %v", name, err)
+		}
+	}
+	// A colon that does not start the name is an ordinary account.
+	provider, _, state := beginLogin(t, idp, config)
+	idp.claims = map[string]any{"sub": "u123", "preferred_username": "team:client:pat"}
+	identity, err := provider.FinishLogin(context.Background(), nil, state, idp.expectedCode)
+	if err != nil || identity.Username != "team:client:pat" {
+		t.Fatalf("ordinary colon name rejected: %+v %v", identity, err)
+	}
+}
+
 func TestOIDCClientSecretSent(t *testing.T) {
 	idp := newFakeIdP(t)
 	idp.expectedSecret = "s3cret"

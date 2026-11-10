@@ -159,8 +159,11 @@ investigation; it does not start a model or sandbox.
 Starting a new investigation requires the configured kagent deployment and
 `TRIAGELAB_TOKEN` in the server environment, as in the CLI quickstart. Model and
 cloud usage can incur charges even though TriageLab is free. The server binds
-only to loopback and accepts one active run at a time. It has no accounts or
-multi-user access control; keep it behind your SSH tunnel.
+only to loopback and accepts one active run at a time. Sign-in is required:
+local accounts or one OpenID Connect provider, with viewer/user/admin roles,
+and admins can additionally register OAuth API clients so your own
+applications launch investigations and read results with a scoped access
+token. Keep the port forward private either way.
 
 The **Agents** workspace and `triagelab agent-manifest` render native kagent
 definitions for declarative investigators or compatible custom runtime images.

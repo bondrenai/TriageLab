@@ -1,5 +1,14 @@
 # Roadmap
 
+- [x] Add OAuth API clients: admins register clients with
+      `investigations:run`/`investigations:read` scopes; applications use the
+      RFC 6749 client credentials grant at `/oauth/token` and Bearer tokens on
+      the run API, steering only the runs they started. Landed 2026-11-10 with
+      the pinned zitadel/oidc v3.52.0 owning protocol handling (see
+      [upstream record](docs/upstream.md) and the
+      [API clients guide](https://bondrenai.github.io/TriageLab/guides/api-clients/)).
+      Open: pilot one real integration end to end, and add RFC 8414 metadata
+      or token introspection only when an integrator needs them.
 - [x] Pause and resume investigations using the same sandbox and conversation.
       Verified 2026-11-10 with a real model: two rounds across process restart,
       sandbox and conversation restoration, preserved files and evidence, fresh

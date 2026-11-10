@@ -111,6 +111,7 @@ triagelab serve [options]
 | --allow-resource-writes | false | allow the workspace to save kagent definitions in the configured namespace |
 | --assets | web/dist | built frontend directory |
 | --auth | (none) | optional sign-in configuration JSON with an oidc section |
+| --clients | (none) | API client file for OAuth access (default <output>/.auth/clients.json) |
 | --config | (none) | JSON configuration (default: built-in localhost settings) |
 | --description | (none) | local issue description |
 | --description-file | (none) | UTF-8 issue description file |

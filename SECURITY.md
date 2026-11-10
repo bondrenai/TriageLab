@@ -125,6 +125,24 @@ credential screening as CLI inputs. There is no per-user action audit log
 yet, and a running server does not pick up CLI account changes (manage
 accounts in the UI or restart).
 
+### API clients (OAuth)
+
+Programs authenticate separately from people, through OAuth client
+credentials an admin creates in the workspace. Only the client credentials
+grant exists, at `/oauth/token`, backed by the pinned zitadel/oidc library.
+Client secrets are generated 256-bit values stored as SHA-256 hashes; only
+the hash of an access token is retained, and tokens are memory-only like
+sessions. Bearer tokens carry scopes rather than roles, never open account,
+ticket, agent, or settings routes, and never act as the human approval for
+ticket continuations. A client with `investigations:run` steers only the
+runs it started (`started_by: client:<id>`); `investigations:read` is a
+deliberate workspace-wide read grant, including ticket reports. Any change
+to a client's grant, secret, or enabled state ends its tokens at once. The
+OAuth endpoints sit inside the same loopback, request-host, and same-origin
+rules as the rest of the API and send no CORS headers, so an integration is
+a server-side program reaching the same port forward — not a web app on
+another origin.
+
 The optional [Helm chart](docs/helm.md) runs the same workspace as one pod in
 a dedicated cluster. The loopback rule is unchanged: the UI is reached through
 `kubectl port-forward`, and the chart creates no Service or Ingress. Its

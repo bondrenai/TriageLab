@@ -26,7 +26,12 @@ or one OIDC provider) of the same workflow, reached over loopback.
   one JSON file, in-memory sessions, and one optional OIDC provider. Roles are
   viewer (read), user (run and steer investigations), admin (define agents,
   procedures, and accounts). Keep enforcement server-side in the webserver and
-  fail closed without a configured login method.
+  fail closed without a configured login method. The same package owns OAuth
+  API clients: admin-managed clients with scopes (not roles), SHA-256-hashed
+  generated secrets in one JSON file, and memory-only access tokens. OAuth
+  protocol handling comes from the pinned zitadel/oidc adapter in
+  `internal/auth/oauth.go`; never hand-roll grant parsing or client
+  authentication.
 - `web/` uses React 19, TypeScript, Vite, and the Bondren design language.
   Read `web/AGENTS.md` before changing the frontend.
 - `docs-site/` builds the public documentation site (Astro/Starlight; see

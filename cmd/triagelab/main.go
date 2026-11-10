@@ -50,6 +50,7 @@ type runOptions struct {
 	statusContext       string
 	authConfigPath      string
 	usersPath           string
+	clientsPath         string
 	allowResourceWrites bool
 	manualAgent         string
 	files               stringsFlag
@@ -76,6 +77,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
 		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
 		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
+		flags.StringVar(&opts.clientsPath, "clients", "", "API client file for OAuth access (default <output>/.auth/clients.json)")
 	}
 	if command == "investigate" {
 		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
@@ -262,6 +264,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
+		clients, err := auth.OpenClientStore(resolveClientsPath(opts.output, opts.clientsPath))
+		if err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if err := workspace.EnableAPIClients(clients); err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
 		if opts.statusKubeconfig != "" || opts.statusContext != "" {
 			if err := workspace.EnableDeploymentStatus(opts.statusKubeconfig, opts.statusContext); err != nil {
 				_ = workspace.Close(ctx)
@@ -382,6 +395,15 @@ func resolveUsersPath(output, explicit string) string {
 		return explicit
 	}
 	return filepath.Join(output, ".auth", "users.json")
+}
+
+// resolveClientsPath keeps OAuth API clients beside the account file so both
+// credentials persist on the same volume in clustered deployments.
+func resolveClientsPath(output, explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return filepath.Join(output, ".auth", "clients.json")
 }
 
 // enableSignIn wires local accounts and the optional identity provider. It

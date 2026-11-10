@@ -49,3 +49,42 @@ export const setAccountPassword = (username: string, password: string) =>
 
 export const removeAccount = (username: string) =>
   request<{ users: Account[] }>(`/api/auth/admin/users/${encodeURIComponent(username)}`, { method: "DELETE" });
+
+/** One OAuth permission an API client can be granted. */
+export type Scope = "investigations:run" | "investigations:read";
+
+export interface APIClient {
+  id: string;
+  scopes: Scope[];
+  disabled: boolean;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientListing {
+  clients: APIClient[];
+  scopes: Scope[];
+}
+
+/** A listing plus the one-time secret of the client that was created or rotated. */
+export interface IssuedSecret extends ClientListing {
+  client_id: string;
+  client_secret: string;
+}
+
+export const listClients = () => request<ClientListing>("/api/auth/admin/clients");
+
+export const createClient = (input: { id: string; scopes: Scope[] }) =>
+  request<IssuedSecret>("/api/auth/admin/clients", { method: "POST", body: JSON.stringify(input) });
+
+export const updateClient = (id: string, input: { scopes?: Scope[]; disabled?: boolean }) =>
+  request<ClientListing>(`/api/auth/admin/clients/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+
+export const rotateClientSecret = (id: string) =>
+  request<IssuedSecret>(`/api/auth/admin/clients/${encodeURIComponent(id)}/secret`, { method: "POST" });
+
+export const removeClient = (id: string) =>
+  request<ClientListing>(`/api/auth/admin/clients/${encodeURIComponent(id)}`, { method: "DELETE" });

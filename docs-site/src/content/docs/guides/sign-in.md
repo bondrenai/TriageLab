@@ -64,3 +64,8 @@ Each report records `started_by`. Sign-in attempts are rate-limited per
 account. There is no per-user action audit log yet, and roles do not isolate
 accounts from each other's reports on the shared volume — this remains a
 single-user workspace reached over a tunnel.
+
+Roles are for people. Programs connect differently: an admin creates an
+OAuth API client with scopes, and the application exchanges its secret for a
+short-lived access token that only launches and reads investigations. See
+[API clients](/TriageLab/guides/api-clients/).

@@ -1,5 +1,45 @@
 # Executed verification
 
+## OAuth API clients — November 10, 2026
+
+Executed remotely on `bondren-build` with Go 1.27.3; no builds, tests, or
+containers ran on the local laptop.
+
+- `make check` passed (gofmt, `go vet ./...`, all Go tests), including the new
+  suites: `internal/auth` client store (persistence and failed-save rollback,
+  damaged-file refusal, token lifecycle and per-client bound, revocation on
+  every grant change, reserved-prefix rejection for single sign-on names),
+  the OAuth protocol tests (Basic and body credentials, dual-method
+  rejection, scope narrowing and `invalid_scope`, every non-
+  client-credentials grant refused, URL-parameter refusal, oversized and JSON
+  bodies, no CORS headers, revocation ownership, and interop with
+  `golang.org/x/oauth2/clientcredentials` over real HTTP in all three auth
+  styles), and `internal/webserver` (Bearer enforcement, scope and ownership
+  boundaries, the refused surface, the cross-site marker rules, the admin
+  client API, and route classification).
+- `make check-ui build-ui`, `make build-docs` (25 pages, all internal links
+  valid), `make chart-lint`, and `docker build` (the offline vendored image
+  build) passed. The generated reference pages were regenerated for the new
+  `serve --clients` flag.
+- The live smoke (`scripts/oauth-smoke.sh`, served UI with an unreachable
+  investigator endpoint) passed end to end: admin sign-in, client creation
+  over the admin API, token issuance over Basic auth without the request
+  marker, a Bearer launch answered 202, `started_by: client:<id>` recorded in
+  the report, listing and report download through the API, a narrowed
+  read-only token refused at launch (403), revocation (200) followed by 401
+  on the next call, and disabling the client ending both its fresh token and
+  further issuance (401). zitadel/oidc's route-registration lines appeared in
+  the serve log.
+- Not exercised live: the API clients page in a browser (typechecked and
+  built, not clicked), a non-Go OAuth client library, and any flow against a
+  real kagent deployment; the standard Go client is covered by the interop
+  test against the same endpoint.
+
+Dependency note: this adds the module's second direct third-party dependency,
+`zitadel/oidc v3.52.0` (Apache-2.0, OpenID-certified), vendored; see the
+[upstream record](upstream.md) for the review, including why fosite was
+rejected and which library parts are deliberately unused.
+
 ## Pause/resume integration — November 10, 2026
 
 Executed remotely on `bondren-build` with Go 1.27.3. No builds, tests, containers,

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
@@ -83,7 +84,8 @@ func routePattern(path string) string {
 	if !strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/oauth/") && path != "/healthz" {
 		return "static"
 	}
-	if path == "/healthz" || path == ticketflow.OAuthCallbackPath {
+	if path == "/healthz" || path == ticketflow.OAuthCallbackPath ||
+		path == auth.OAuthTokenPath || path == auth.OAuthRevocationPath {
 		return path
 	}
 	segments := strings.Split(strings.Trim(strings.TrimSuffix(path, "/"), "/"), "/")
@@ -97,6 +99,8 @@ func routePattern(path string) string {
 		return "/" + strings.Join(segments, "/")
 	case segments[1] == "auth" && len(segments) >= 4 && segments[2] == "admin" && segments[3] == "users":
 		return "/api/auth/admin/users"
+	case segments[1] == "auth" && len(segments) >= 4 && segments[2] == "admin" && segments[3] == "clients":
+		return "/api/auth/admin/clients"
 	case segments[1] == "auth" && len(segments) == 4 && segments[2] == "oidc":
 		return "/api/auth/oidc/callback"
 	case segments[1] == "auth":

@@ -114,6 +114,23 @@ Three roles are enforced server-side on every API route:
 Each report records `started_by`. Sign-in attempts are rate-limited per
 account. There is no per-user action audit log yet.
 
+### API clients
+
+Roles are for people; programs use OAuth API clients. Admins create them on
+the **API clients** page (or `PUT`/`POST` under `/api/auth/admin/clients`),
+choosing a client ID and the `investigations:run` and/or
+`investigations:read` scopes. The generated secret is shown once. Clients
+persist in `<output>/.auth/clients.json` (`serve --clients` to relocate) as
+SHA-256 hashes; access tokens are memory-only. The application exchanges the
+secret at `POST /oauth/token` (RFC 6749 client credentials, zitadel/oidc
+protocol handling) and sends `Authorization: Bearer …` on the run API. A
+`run`-scoped client sees and steers only the runs it started
+(`started_by: client:<id>`); `read` is a workspace-wide read grant. Bearer
+requests bypass the `X-TriageLab-Request` marker rule — the token is a
+credential in the request itself — but stay inside the loopback and
+same-origin checks and never reach account, ticket, or definition routes.
+The public guide is [API clients (OAuth)](https://bondrenai.github.io/TriageLab/guides/api-clients/).
+
 ## Data flow
 
 The browser uses an API transport module, typed domain functions, and query hooks
