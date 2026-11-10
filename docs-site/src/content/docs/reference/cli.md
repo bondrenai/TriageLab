@@ -25,7 +25,76 @@ triagelab investigate [options]
 | --log | (repeatable) | log file (repeatable) |
 | --output | reports | parent directory for private reports |
 | --repo | (none) | small local repository or fixture directory |
-| --report | (none) | saved report.json for cleanup |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
+
+## pause
+
+Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.
+
+```text
+triagelab pause --report <report.json> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --assets | web/dist | built frontend directory |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --description | (none) | local issue description |
+| --description-file | (none) | UTF-8 issue description file |
+| --file | (repeatable) | attachment (repeatable) |
+| --listen | 127.0.0.1:8080 | loopback address for the private web UI |
+| --log | (repeatable) | log file (repeatable) |
+| --output | reports | parent directory for private reports |
+| --repo | (none) | small local repository or fixture directory |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
+
+## resume
+
+Continue a paused manual investigation in its saved sandbox and session with a fresh bounded turn. Saved settings and tools are reused; ticket continuations require review in the signed-in workspace.
+
+```text
+triagelab resume --report <report.json> --description <new-information> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --assets | web/dist | built frontend directory |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --description | (none) | local issue description |
+| --description-file | (none) | UTF-8 issue description file |
+| --file | (repeatable) | attachment (repeatable) |
+| --listen | 127.0.0.1:8080 | loopback address for the private web UI |
+| --log | (repeatable) | log file (repeatable) |
+| --output | reports | parent directory for private reports |
+| --repo | (none) | small local repository or fixture directory |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
+
+## close
+
+Release an investigation's retained session and sandbox using its private lifecycle record. Keep the reports and previous rounds.
+
+```text
+triagelab close --report <report.json> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --assets | web/dist | built frontend directory |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --description | (none) | local issue description |
+| --description-file | (none) | UTF-8 issue description file |
+| --file | (repeatable) | attachment (repeatable) |
+| --listen | 127.0.0.1:8080 | loopback address for the private web UI |
+| --log | (repeatable) | log file (repeatable) |
+| --output | reports | parent directory for private reports |
+| --repo | (none) | small local repository or fixture directory |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 | --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
 
@@ -50,7 +119,7 @@ triagelab serve [options]
 | --log | (repeatable) | log file (repeatable) |
 | --output | reports | parent directory for private reports |
 | --repo | (none) | small local repository or fixture directory |
-| --report | (none) | saved report.json for cleanup |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --status-context | (none) | Kubernetes context for live deployment status |
 | --status-kubeconfig | (none) | explicit Kubernetes config for live deployment status and optional saves |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
@@ -76,7 +145,7 @@ triagelab doctor [options]
 | --log | (repeatable) | log file (repeatable) |
 | --output | reports | parent directory for private reports |
 | --repo | (none) | small local repository or fixture directory |
-| --report | (none) | saved report.json for cleanup |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 | --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
 
@@ -99,7 +168,7 @@ triagelab cleanup [options]
 | --log | (repeatable) | log file (repeatable) |
 | --output | reports | parent directory for private reports |
 | --repo | (none) | small local repository or fixture directory |
-| --report | (none) | saved report.json for cleanup |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 | --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration (serve only) |
 
@@ -159,7 +228,7 @@ A nonzero exit never means the report should be discarded.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Command succeeded; an investigation reproduced the reported symptom |
+| 0 | Command succeeded; an investigation reproduced the reported symptom, paused, or closed |
 | 1 | Investigation completed; the symptom was not reproduced |
 | 2 | Invalid input, configuration, or usage |
 | 3 | Investigation finished inconclusive |

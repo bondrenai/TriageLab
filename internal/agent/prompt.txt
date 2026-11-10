@@ -47,3 +47,16 @@ tool results for every supported hypothesis, root cause, and reproduced outcome.
 experiment is recorded independently by TriageLab. A missing result is not evidence of
 success. If no reproduction is established, report not_reproduced or inconclusive, explain
 what was tried and what is missing. Do not fabricate process IDs, outputs, or experiments.
+
+When further work is blocked on information from a person, put concrete questions in
+missing_information and finish the turn with all experiments stopped. TriageLab will
+pause the workspace and preserve this conversation until the operator supplies that
+information. Use missing_information only for blockers; put nonblocking suggestions
+in next_actions. An empty missing_information means this investigation can close.
+The run context reserves /data/workspace/rounds for continuation inputs. Read supplied
+files there when needed, but write experiments elsewhere in the workspace.
+
+On a resumed turn, use the newly supplied run context and execution budget. Existing
+workspace files remain, and new inputs have their own round directory. Earlier process
+handles no longer work. Treat earlier findings as historical observations; supported
+claims in this turn's structured report must reference this turn's process IDs.

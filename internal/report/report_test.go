@@ -107,6 +107,33 @@ func TestPreservesFailureVerificationAndCleanup(t *testing.T) {
 	}
 }
 
+func TestRoundHistoryKeepsEvidenceSeparateAndRedactedInBothFormats(t *testing.T) {
+	directory := t.TempDir()
+	prior := sample()
+	prior["round"] = 1
+	prior["experiments"].([]any)[0].(map[string]any)["stdout"] = "earlier observation historical-credential"
+	latest := sample()
+	latest["round"] = 2
+	latest["rounds"] = []any{prior}
+	latest["continuation"] = map[string]any{"description": "Additional customer information"}
+	if err := Write(directory, latest, "historical-credential"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"report.json", "report.md"} {
+		content := read(t, filepath.Join(directory, name))
+		if !strings.Contains(content, "earlier observation") || !strings.Contains(content, "Additional customer information") || strings.Contains(content, "historical-credential") {
+			t.Fatalf("%s lost round evidence or exposed a historical credential", name)
+		}
+	}
+	var saved map[string]any
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(directory, "report.json"))), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(saved["experiments"].([]any)[0].(map[string]any)["stdout"].(string), "earlier observation") {
+		t.Fatal("historical evidence leaked into the current round")
+	}
+}
+
 func TestExistingReportsAreReplacedPrivately(t *testing.T) {
 	directory := t.TempDir()
 	name := filepath.Join(directory, "report.json")

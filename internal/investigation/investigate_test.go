@@ -56,7 +56,7 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 				return nil, err
 			}
 		}
-		return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE"}, nil
+		return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE", "retain_while_suspended": true}, nil
 	case "write_sandbox_file":
 		data, err := base64.StdEncoding.DecodeString(args["data_base64"].(string))
 		return map[string]any{"bytes_written": len(data)}, err

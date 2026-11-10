@@ -83,9 +83,10 @@ type Case struct {
 	SelectedFor       string                `json:"selected_for,omitempty"`
 	ProcedureRevision string                `json:"procedure_revision,omitempty"`
 
-	Requester             *Requester    `json:"requester,omitempty"`
-	ClarificationApproval string        `json:"clarification_approval,omitempty"`
-	Note                  *NoteDelivery `json:"note,omitempty"`
+	Requester             *Requester                `json:"requester,omitempty"`
+	ClarificationApproval string                    `json:"clarification_approval,omitempty"`
+	Note                  *NoteDelivery             `json:"note,omitempty"`
+	Continuations         []ContinuationReservation `json:"continuations,omitempty"`
 
 	replyID                int64
 	clarificationRecipient string

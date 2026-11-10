@@ -22,17 +22,18 @@ unchanged (loopback listener, `kubectl port-forward` only).
 
 - Linux with Docker or a compatible kind provider. Docker is used to host kind;
   its socket is never mounted into an investigator or reproduction sandbox.
-- Go 1.27.3, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
+- Go 1.27.3, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
-- kagent CLI **1.0.0-rc3**, matching the charts and runtime images.
+- kagent CLI **1.0.0-rc3**, matching the charts and runtime images. The installation
+  script builds the reviewed controller fork from source on this Linux host.
 - A provider account/key for the real agent. The example uses OpenAI's
   `gpt-6.1-sol` model through the Responses API, with bounded investigation
   limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
-Install the released kagent binary rather than compiling the large upstream
-project. For Linux amd64:
+Install the released kagent CLI binary. The controller fork is built separately
+by the installation script. For Linux amd64:
 
 ```sh
 mkdir -p .tools
@@ -67,12 +68,49 @@ bash scripts/install-dev.sh
 unset OPENAI_API_KEY
 ```
 
-This uses kagent's installer to install the pinned Substrate Helm distribution,
+This selects only the explicitly named `triagelab` Kind cluster, without using
+an ambient Kubernetes context. It uses kagent's installer for the pinned Substrate Helm distribution,
 its pod certificate controller, Atelet, the development PostgreSQL database,
-RustFS snapshot store, and kagent. It also configures Substrate's ingress
+RustFS snapshot store, and kagent. It then builds controller commit
+`9bf1a20db0a165c477e893584c1904e58f361cd2` from
+[`bondrenai/kagent`](https://github.com/bondrenai/kagent/tree/9bf1a20db0a165c477e893584c1904e58f361cd2),
+loads the image into Kind, and waits for its rollout before installing TriageLab's
+Agent and SandboxTemplate. The source commit and local image ID are printed for
+the verification record. There is no published fork image to pull.
+
+The installer refuses an existing kagent controller before making cluster
+changes. It is for fresh clusters only: temporarily running the released
+controller would allow its expiration worker to delete retained investigations.
+
+The installation also configures Substrate's ingress
 identity, controller access grants, and required preview gates. TriageLab adds
 only ordinary kagent resources, rendered by `triagelab manifest`. The script
-refuses any Kubernetes context except `kind-triagelab`.
+requires Linux and selects only `kind-triagelab`.
+
+The patched controller is the only forked component. Its runtime filesystem uses
+the digest-pinned rc3 base; the investigator runtime, guest image, and Substrate
+keep their released versions. The helper reuses the host's Go build cache and
+does not push an image or change a registry. To rebuild or reinstall the pinned
+controller in an existing deployment, use only this helper on the VM:
+
+```sh
+bash scripts/install-fork-controller.sh
+```
+
+The chart still describes the released controller image. Do not run a chart
+install, upgrade, or rollback that replaces the fork while investigations are
+retained: even a short interval with the released controller can delete them,
+and reinstalling the fork afterward cannot recover them. Close retained
+investigations before changing the deployment through an upstream chart
+operation. Keep the helper's pinned image loaded in the single-node Kind
+cluster. For another cluster, publish a reviewed image and pin that deployment
+explicitly before enabling resumable investigations.
+
+The values set `config.sessions.idleTtl: 0s`. Waiting investigator Sessions can
+therefore survive weeks without activity, while kagent still suspends idle
+runtimes automatically. TriageLab must explicitly delete completed and closed
+Sessions. Retained Sandbox files and Session state depend on keeping PostgreSQL
+and the snapshot store.
 
 The rendered `triagelab-tools` ClusterIP Service sends investigator MCP calls to
 the same controller through a separate hostname. Keep that hostname distinct
@@ -177,11 +215,31 @@ default controller hostname changes the outgoing identity to an actor token.
 Keep `config.runtimeDefaults.tokenPropagation.enabled` set to `false` so the Go
 ADK runtime forwards the token only to tools with explicit passthrough.
 
-kagent's sandbox TTL expires even if the CLI disappears. Normal and interrupted
-runs also explicitly delete their sandbox. A process-kill acknowledgment is not
+kagent's active Sandbox TTL expires even if the CLI disappears. An opted-in
+Sandbox is retained only after suspension completes; resuming it starts a fresh
+bounded active TTL. Ordinary interrupted runs still explicitly delete their
+sandbox, while a successful pause keeps the same Sandbox and Session until resume
+or close. A process-kill acknowledgment is not
 proof it exited; the CLI observes completion and records cleanup failures. If a
 controller outage prevents cleanup, retain the report's IDs and retry against
 the same controller once it recovers.
+
+The opt-in pause/resume test requires this disposable deployment with a real
+model credential and the patched controller:
+
+```sh
+TRIAGELAB_CONFIG=/absolute/path/to/triagelab.json \
+  TRIAGELAB_REPORT_DIR=/absolute/path/to/private-test-reports make test-pause-integration
+```
+
+It starts and pauses a real investigation, exits that process, resumes from a
+new process, verifies the same sandbox/session and retained/new file bytes,
+pauses again, then closes and verifies deletion. The first round's evidence
+archive must remain byte-identical. `TRIAGELAB_PAUSE_RESUME_TOKEN` can supply a
+refreshed caller token for the resume/close processes; keep it out of shell
+history and logs. This checks real restoration and continuation, not weeks of
+elapsed uptime. The fork's separate retention integration test covers passing
+the original sandbox expiry deadline.
 
 ### Inspecting telemetry export locally
 

@@ -28,8 +28,26 @@ exit code never means the report should be discarded.
   the reason kagent gives is kept as `task_failure`. It is upstream text, so it
   is clipped and redacted like the rest of the report and stays out of logs.
 - **Cleanup record** — what was deleted, what failed, and any request IDs
-  needed for manual recovery. `triagelab cleanup --report` consumes exactly
-  this record.
+  needed for manual recovery. New runs keep operational identities in a private
+  `lifecycle.json`; `triagelab close --report` uses it. Legacy cleanup still
+  supports reports created before lifecycle records existed.
+
+## Paused investigations and rounds
+
+`paused` means evidence capture and durable sandbox suspension completed.
+`pausing`, `resuming`, or `invoking` describe unfinished operations, not a safe
+pause. An uncertain model invocation is never automatically replayed.
+
+The top-level report describes the latest `round` and keeps the original `case`.
+`continuation` records the added information for a later round; `rounds` contains
+previous reports without recursive history. Immutable copies also live in
+`rounds/0001/report.json` and `report.md`, and so on. Process handles are scoped
+to their round because suspension resets the guest process registry.
+
+Keep the whole private run directory to resume. Downloads contain redacted
+evidence reports; they do not include the operational lifecycle record. See
+[pause and resume](/TriageLab/guides/pause-resume/) for the workflow and storage
+requirements.
 
 ## Provenance and redaction
 

@@ -4,16 +4,18 @@
 # create the cluster from deploy/kind-microvm.yaml first. See docs/development.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "Run this installation on the disposable Linux development VM." >&2
+  exit 2
+fi
 sandbox_class="${TRIAGELAB_SANDBOX_CLASS:-gvisor}"
 case "$sandbox_class" in
   gvisor)
     cli_config=deploy/kagent-cli.yaml
-    tools=(kind kubectl helm kagent go)
     ready_timeout=300s
     ;;
   microvm)
     cli_config=deploy/kagent-cli-microvm.yaml
-    tools=(kind kubectl helm kagent go docker git)
     # A golden snapshot is a full guest boot plus a checkpoint.
     ready_timeout=600s
     ;;
@@ -22,11 +24,21 @@ case "$sandbox_class" in
     exit 2
     ;;
 esac
-for tool in "${tools[@]}"; do
+for tool in docker git kind kubectl helm kagent go; do
   command -v "$tool" >/dev/null || { echo "Missing prerequisite: $tool" >&2; exit 2; }
 done
-if [[ "$(kubectl config current-context)" != "kind-triagelab" ]]; then
-  echo "Refusing to install outside context kind-triagelab. See docs/development.md." >&2
+umask 077
+kubeconfig=$(mktemp)
+trap 'rm -f "$kubeconfig"' EXIT
+kind get kubeconfig --name triagelab > "$kubeconfig"
+export KUBECONFIG="$kubeconfig"
+if ! existing_controller=$(kubectl --context kind-triagelab -n kagent \
+  get deployment kagent-controller --ignore-not-found -o name); then
+  echo "Cannot inspect the controller deployment; refusing to install." >&2
+  exit 2
+fi
+if [[ -n "$existing_controller" ]]; then
+  echo "This installer requires a fresh cluster without a kagent controller. Use scripts/install-fork-controller.sh to update an existing controller; a released controller can delete retained investigations." >&2
   exit 2
 fi
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
@@ -44,6 +56,7 @@ if [[ "$sandbox_class" == microvm ]]; then
   done
 fi
 kagent --config "$cli_config" install --namespace kagent
+bash scripts/install-fork-controller.sh
 if [[ "$sandbox_class" == microvm ]]; then
   # Workers request the ate.dev/kvm device from atelet and stay Pending without it.
   kvm=""

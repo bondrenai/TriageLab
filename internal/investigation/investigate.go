@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -44,6 +45,12 @@ type Investigator struct {
 	Actor           string
 	Secrets         []string
 	AdditionalTools []string
+	// ExpectedRound binds a reviewed Resume or Close request to the round
+	// admitted under the lifecycle lock. Zero allows an unbound direct call.
+	ExpectedRound int
+	// ExpectedPhase also binds retries of pending continuation, whose round
+	// number does not change when its invocation finishes and pauses again.
+	ExpectedPhase string
 }
 
 // maxTaskFailureBytes bounds the upstream failure text kept for a stopped turn.
@@ -55,6 +62,11 @@ func integer(v any) (int, bool) {
 	switch n := v.(type) {
 	case int:
 		return n, true
+	case json.Number:
+		value, err := n.Int64()
+		if err == nil && value >= -2147483648 && value <= 2147483647 {
+			return int(value), true
+		}
 	case float64:
 		if !math.IsNaN(n) && !math.IsInf(n, 0) && n == math.Trunc(n) && n >= -2147483648 && n <= 2147483647 {
 			return int(n), true
@@ -100,6 +112,9 @@ func (i *Investigator) pause(ctx context.Context) error {
 	return wait(ctx, time.Duration(i.Config.PollInterval)*time.Second)
 }
 func (i *Investigator) persist(dir string, r map[string]any) error {
+	if err := checkReportSize(r); err != nil {
+		return err
+	}
 	return report.Write(dir, r, i.Secrets...)
 }
 
@@ -109,18 +124,32 @@ func listLen(value any) int {
 		return len(list)
 	case []any:
 		return len(list)
+	case []map[string]any:
+		return len(list)
 	}
 	return 0
 }
 
 func experimentCount(r map[string]any) int { return listLen(r["experiments"]) }
 
-// Run always attempts cleanup and persists an error report, including interrupted or failed runs.
+// Run retains resources only after a durable pause intent; other exits attempt cleanup.
 func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) (result map[string]any, returnErr error) {
 	if err := i.Config.Validate(); err != nil {
 		return nil, err
 	}
 	if err := agent.ValidateExtraTools(i.AdditionalTools); err != nil {
+		return nil, err
+	}
+	unlock, err := lockRun(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if _, err := LoadState(dir); !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("investigation directory already has lifecycle state; resume or close it")
+	}
+	state := State{Version: 1, Config: i.Config, AdditionalTools: append([]string(nil), i.AdditionalTools...), Trigger: i.Trigger, Actor: i.Actor, RunID: c.ID, Round: 1, Phase: "creating"}
+	if err := saveState(dir, &state); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
@@ -136,9 +165,9 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		attribute.String("sandbox_template", i.Config.Template),
 	))
 	runStart := time.Now()
-	request := map[string]any{"namespace": i.Config.Namespace, "template": i.Config.Template, "request_id": c.ID, "name": "triagelab-" + c.ID, "ttl_seconds": i.Config.SandboxTTL}
+	request := sandboxRequest(state)
 	result = map[string]any{
-		"schema_version": 1, "run_id": c.ID, "case": c, "started_at": stamp(), "finished_at": nil,
+		"schema_version": 1, "run_id": c.ID, "round": 1, "case": c, "started_at": stamp(), "finished_at": nil,
 		"status": "running", "outcome": "inconclusive", "sandbox": map[string]any{}, "session": map[string]any{},
 		"agent":            map[string]string{"namespace": i.Config.Namespace, "name": i.Config.Agent},
 		"sandbox_template": i.Config.Template,
@@ -169,6 +198,16 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			result["status"] = status
 			result["errors"] = append(result["errors"].([]string), returnErr.Error())
 		}
+		if state.Phase == "paused" || state.Phase == "pausing" && ctx.Err() == nil {
+			result["status"] = state.Phase
+			result["finished_at"] = stamp()
+			if err := i.persist(dir, result); err != nil {
+				returnErr = errors.Join(returnErr, err)
+			}
+			runSpan.End()
+			loadInstruments().runEnded(state.Phase, str(result["outcome"]), trigger, time.Since(runStart).Seconds(), experimentCount(result))
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		i.progress(cleanupCtx, "Collecting final evidence and cleaning up")
@@ -183,7 +222,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 				}
 			}
 		}
-		if returnErr != nil && str(session["task_id"]) != "" {
+		if returnErr != nil && str(session["task_id"]) != "" && !(state.Phase == "pausing" && state.PauseReady) {
 			captureCtx, cc := context.WithTimeout(cleanupCtx, 20*time.Second)
 			if _, err := i.observe(captureCtx, result, observed); err != nil {
 				result["warnings"] = append(result["warnings"].([]string), "Final evidence capture was incomplete")
@@ -191,9 +230,20 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			cc()
 		}
 		i.Cleanup(cleanupCtx, result)
+		stateFromReport(&state, result)
+		state.Phase = "closing"
+		if cleanupComplete(result) {
+			state.Phase = "closed"
+		}
+		if err := saveState(dir, &state); err != nil {
+			returnErr = errors.Join(returnErr, err)
+		}
 		result["finished_at"] = stamp()
 		if err := i.persist(dir, result); err != nil {
 			returnErr = errors.Join(returnErr, fmt.Errorf("save report: %w", err))
+		}
+		if err := i.archiveRound(dir, &state, result); err != nil {
+			returnErr = errors.Join(returnErr, err)
 		}
 		status, outcome := str(result["status"]), str(result["outcome"])
 		runSpan.SetAttributes(attribute.String("status", status), attribute.String("outcome", outcome))
@@ -211,6 +261,10 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		sandboxSpan.End()
 	}()
 	var sandbox map[string]any
+	state.SandboxCreationPending = true
+	if err := saveState(dir, &state); err != nil {
+		return result, err
+	}
 	for attempt := 0; ; attempt++ {
 		sandboxAttempts = attempt + 1
 		var err error
@@ -227,12 +281,20 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			return result, fmt.Errorf("create sandbox: %w", err)
 		}
 		if str(sandbox["id"]) == "" {
+			result["creation_uncertain"] = true
 			return result, fmt.Errorf("create_sandbox omitted resource ID")
 		}
 		result["sandbox"] = sandbox
 		result["creation_uncertain"] = false
+		state.SandboxID, state.SandboxCreationPending = str(sandbox["id"]), false
+		if err = saveState(dir, &state); err != nil {
+			return result, err
+		}
 		if err = i.persist(dir, result); err != nil {
 			return result, err
+		}
+		if sandbox["retain_while_suspended"] != true {
+			return result, fmt.Errorf("kagent did not enable retain_while_suspended; install the compatible TriageLab kagent fork")
 		}
 		if sandbox["failure"] != nil {
 			return result, fmt.Errorf("sandbox preparation failed; inspect controller diagnostics")
@@ -264,7 +326,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	uploadSpan.SetAttributes(attribute.Int("files", len(c.Attachments)), attribute.Int("bytes", uploadedBytes))
 	uploadSpan.End()
 	message, err := json.Marshal(map[string]any{
-		"run_context":    map[string]any{"sandbox_id": sid, "workspace": "/data/workspace", "max_experiments": i.Config.MaxExperiments, "process_timeout_seconds": i.Config.ProcessTimeout},
+		"run_context":    map[string]any{"sandbox_id": sid, "workspace": "/data/workspace", "reserved_continuation_input_directory": "/data/workspace/rounds", "max_experiments": i.Config.MaxExperiments, "process_timeout_seconds": i.Config.ProcessTimeout},
 		"untrusted_case": c,
 	})
 	if err != nil {
@@ -280,6 +342,10 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	sessionCtx, sessionSpan := tracer().Start(ctx, "investigation.session.create")
 	defer sessionSpan.End()
 	var created map[string]any
+	state.SessionCreationPending = true
+	if err = saveState(dir, &state); err != nil {
+		return result, err
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		created, err = i.call(sessionCtx, "create_session", sessionRequest)
 		if err == nil {
@@ -296,10 +362,15 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	}
 	sessionID := str(obj(created["session"])["id"])
 	if sessionID == "" {
+		result["session_creation_uncertain"] = true
 		return result, fmt.Errorf("create_session omitted resource ID")
 	}
 	result["session"] = map[string]any{"id": sessionID}
 	result["session_creation_uncertain"] = false
+	state.SessionID, state.SessionCreationPending = sessionID, false
+	if err = saveState(dir, &state); err != nil {
+		return result, err
+	}
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
@@ -321,15 +392,14 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		return result, fmt.Errorf("investigator invocation omitted task ID")
 	}
 	obj(result["session"])["task_id"] = taskID
+	state.TaskID, state.Phase = taskID, "running"
+	if err = saveState(dir, &state); err != nil {
+		return result, err
+	}
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
-	for iteration := 0; ; iteration++ {
-		finished, pollErr := i.pollOnce(ctx, dir, taskID, result, observed, iteration)
-		if finished || pollErr != nil {
-			return result, pollErr
-		}
-	}
+	return result, i.runRound(ctx, dir, &state, result, observed)
 }
 
 // pollOnce performs one session poll: read the latest turn, collect evidence,
@@ -386,11 +456,6 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r map[s
 			return true, fmt.Errorf("investigator stopped with %s", str(turn["state"]))
 		}
 		experiments := r["experiments"].([]map[string]any)
-		for _, e := range experiments {
-			if e["state"] != "PROCESS_STATE_EXITED" {
-				return true, fmt.Errorf("investigator finished with experiments still running")
-			}
-		}
 		if reply == "" {
 			if turn["clipped"] == true {
 				return true, fmt.Errorf("agent reply was truncated")
@@ -400,6 +465,13 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r map[s
 		analysis, warnings, validateErr := ValidateAnalysis(reply, experiments)
 		if validateErr != nil {
 			return true, validateErr
+		}
+		if listLen(analysis["missing_information"]) == 0 {
+			for _, e := range experiments {
+				if e["state"] != "PROCESS_STATE_EXITED" {
+					return true, fmt.Errorf("investigator finished with experiments still running")
+				}
+			}
 		}
 		r["analysis"] = analysis
 		r["warnings"] = warnings

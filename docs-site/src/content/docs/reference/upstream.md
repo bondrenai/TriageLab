@@ -3,7 +3,7 @@ title: Upstream compatibility
 description: Source-reviewed pins for kagent, Agent Substrate, images, and the OpenTelemetry SDK.
 ---
 
-Research date: 2026-11-08. These are **source-reviewed integration pins**, not
+Research date: 2026-11-10. These are **source-reviewed integration pins**, not
 a claim that every backend was exercised. The dedicated Linux development VM
 completed the real gVisor sandbox checks — nested upload, fixture failure,
 corrected run, DNS/HTTP egress denial, process termination, and deletion —
@@ -13,7 +13,8 @@ Do not use a live `main` branch as a dependency.
 
 | Component | Pin | Identity |
 | --- | --- | --- |
-| kagent CLI/charts/controller/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| kagent CLI/charts/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| kagent controller | bondrenai retention patch on rc3 | `9bf1a20db0a165c477e893584c1904e58f361cd2` |
 | kagent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
 | Agent Substrate core reviewed | `v1.0.0` | `agent-substrate/substrate`, `b34fbee742906494b5eb4f1f36987176bf8770a4` |
 | Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
@@ -56,8 +57,12 @@ TriageLab uses only the supported kagent installation path.
 
 ## Constraints that affect TriageLab
 
-- kagent requires digest-pinned workload and guest images. Sandbox lifetime
-  is fixed at creation; activity does not renew it. Creation has a stable
+- kagent requires digest-pinned workload and guest images. Ordinary sandbox
+  lifetime is fixed at creation. TriageLab opts into the fork's suspended
+  retention: `SUSPENDED/NONE` has no expiry, and the first resume admission
+  starts one fresh bounded active TTL. Activity and duplicate resumes do not
+  renew it. The dedicated deployment sets `config.sessions.idleTtl: 0s` so a
+  blocked investigation's conversation survives too. Creation has a stable
   request ID, but process start has **no idempotency receipt** — never
   blindly replay a process start after an uncertain response.
 - Process state and handles are guest-local. Collect evidence before deleting

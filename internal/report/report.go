@@ -168,8 +168,19 @@ func render(data map[string]any) string {
 	output.WriteString("The investigator's diagnosis is a model-generated hypothesis, not a confirmed root cause. ")
 	output.WriteString("Imported case material and process output remain untrusted. ")
 	output.WriteString("Secret redaction is best effort; review this report before sharing.\n")
-	section("Run result", selectFields(data, "run_id", "status", "outcome", "started_at", "finished_at"))
+	section("Run result", selectFields(data, "run_id", "round", "status", "outcome", "started_at", "finished_at"))
 	section("Original case and input inventory", data["case"])
+	if continuation, ok := data["continuation"]; ok {
+		section("Additional information for this round", continuation)
+	}
+	if rounds, ok := data["rounds"].([]any); ok && len(rounds) > 0 {
+		output.WriteString("\n## Previous rounds\n\nProcess IDs belong to their recorded round. Historical handles must not be queried after suspension.\n")
+		for _, raw := range rounds {
+			round := object(raw)
+			section("Previous round result", selectFields(round, "round", "status", "outcome", "finished_at", "analysis"))
+			section("Previous round evidence", selectFields(round, "round", "continuation", "experiments", "tool_calls", "errors", "warnings", "cleanup"))
+		}
+	}
 	section("Runtime references", selectFields(data, "agent", "sandbox_template", "sandbox", "session"))
 	output.WriteString("\n## Experiments and independently collected evidence\n\n")
 	experiments, _ := data["experiments"].([]any)
@@ -248,7 +259,15 @@ func atomicWrite(name string, content []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporary, name)
+	if err := os.Rename(temporary, name); err != nil {
+		return err
+	}
+	directory, err := os.Open(filepath.Dir(name))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 // Write replaces each report atomically with private permissions. JSON is the
@@ -276,6 +295,9 @@ func Write(directory string, data map[string]any, secrets ...string) error {
 	encoded, err := json.MarshalIndent(safe, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode investigation report: %w", err)
+	}
+	if len(encoded) >= 64<<20 {
+		return fmt.Errorf("investigation report exceeds the 64 MiB limit")
 	}
 	if err := atomicWrite(filepath.Join(directory, "report.json"), append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write JSON report: %w", err)

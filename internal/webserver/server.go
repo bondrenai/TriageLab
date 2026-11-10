@@ -59,6 +59,7 @@ type Server struct {
 	mu             sync.Mutex
 	activeID       string
 	active         *runningCase
+	actionErrors   map[string]string
 	closed         bool
 	tickets        *ticketflow.Flow
 	deployments    *kagent.DeploymentReader
@@ -449,8 +450,19 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
 			continue
 		}
 		c, _ := saved["case"].(map[string]any)
+		description, _ := c["description"].(string)
 		experiments, _ := saved["experiments"].([]any)
-		runs = append(runs, map[string]any{"id": entry.Name(), "description": c["description"], "status": saved["status"], "outcome": saved["outcome"], "started_at": saved["started_at"], "finished_at": saved["finished_at"], "experiment_count": len(experiments), "active": entry.Name() == activeID})
+		experimentCount := len(experiments)
+		if rounds, ok := saved["rounds"].([]any); ok {
+			for _, round := range rounds {
+				if prior, ok := round.(map[string]any); ok {
+					previous, _ := prior["experiments"].([]any)
+					experimentCount += len(previous)
+				}
+			}
+		}
+		s.projectLifecycle(entry.Name(), saved, entry.Name() == activeID)
+		runs = append(runs, map[string]any{"id": entry.Name(), "description": description, "status": saved["status"], "outcome": saved["outcome"], "started_at": saved["started_at"], "finished_at": saved["finished_at"], "experiment_count": experimentCount, "active": entry.Name() == activeID})
 	}
 	sort.Slice(runs, func(i, j int) bool { return fmt.Sprint(runs[i]["started_at"]) > fmt.Sprint(runs[j]["started_at"]) })
 	jsonResponse(w, 200, map[string]any{"runs": runs})
@@ -463,6 +475,16 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if len(parts) == 2 && r.Method == http.MethodPost {
+		switch parts[1] {
+		case "pause":
+			s.pauseRun(w, r, id)
+			return
+		case "resume", "close":
+			s.continueRun(w, r, id, parts[1])
+			return
+		}
+	}
 	if len(parts) == 2 && parts[1] == "ticket-note" && r.Method == http.MethodPost {
 		s.postTicketNote(w, r, id)
 		return
@@ -499,10 +521,15 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	saved["active"] = s.activeID == id
 	saved["progress"] = []string{}
+	delete(saved, "action_error")
+	if message := s.actionErrors[id]; message != "" {
+		saved["action_error"] = message
+	}
 	if s.activeID == id && s.active != nil {
 		saved["progress"] = append([]string{}, s.active.progress...)
 	}
 	s.mu.Unlock()
+	s.projectLifecycle(id, saved, saved["active"] == true)
 	if s.tickets != nil && saved["active"] == false {
 		if note := s.tickets.NotePreview(id, saved); note != nil {
 			saved["ticket_note"] = note
@@ -755,35 +782,11 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 			return err
 		}
 	}
-	ctx, cancel := context.WithCancel(s.ctx)
-	active := &runningCase{cancel: cancel, done: make(chan struct{}), progress: []string{"Investigation queued"}}
-	s.activeID, s.active = c.ID, active
+	s.startOperationLocked(c.ID, config, extraTools, actor, trigger, "Investigation queued", func(ctx context.Context, runner *investigation.Investigator) error {
+		_, err := runner.Run(ctx, c, dir)
+		return err
+	})
 	s.mu.Unlock()
-	go func() {
-		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: extraTools, Secrets: s.secrets, Actor: actor, Trigger: trigger, Progress: func(message string) {
-			safe := fmt.Sprint(report.Redact(message, s.secrets...))
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if len(active.progress) >= 100 {
-				active.progress = active.progress[1:]
-			}
-			active.progress = append(active.progress, safe)
-		}}
-		_, runErr := runner.Run(ctx, c, dir)
-		if runErr != nil {
-			// The investigator normally persists errors itself. Keep an explicit
-			// diagnostic even if a final write failed, without reporting success.
-			s.mu.Lock()
-			active.progress = append(active.progress, "Investigation ended; inspect the report for errors")
-			s.mu.Unlock()
-		}
-		s.mu.Lock()
-		s.activeID = ""
-		s.active = nil
-		close(active.done)
-		s.mu.Unlock()
-	}()
 	return nil
 }
 
