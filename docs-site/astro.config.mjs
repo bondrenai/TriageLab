@@ -17,7 +17,7 @@ export default defineConfig({
         {
           label: "Start",
           items: [
-            { label: "What is TriageLab", slug: "start" },
+            { label: "What is TriageLab", slug: "" },
             { label: "Quickstart", slug: "start/quickstart" },
             { label: "The example investigation", slug: "start/example" },
           ],
