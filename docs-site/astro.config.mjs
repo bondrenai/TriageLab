@@ -26,6 +26,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Browser workspace", slug: "guides/workspace" },
+            { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
             { label: "Defining agents", slug: "guides/agents" },
             { label: "Zendesk tickets", slug: "guides/tickets-zendesk" },

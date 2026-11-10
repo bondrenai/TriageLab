@@ -15,7 +15,6 @@ import (
 
 	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/auth"
-	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
@@ -66,7 +65,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
 	flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
 	flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
-	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for cleanup")
+	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
 	flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
 	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, or Linear case configuration (serve only)")
@@ -136,11 +135,11 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode int) {
 	if len(args) == 0 {
-		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
+		fmt.Fprintln(errout, "Usage: triagelab <investigate|pause|resume|close|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
 		return 2
 	}
 	if args[0] == "version" {
-		fmt.Fprintln(out, "triagelab 0.1.0 (kagent v1.0.0-rc3 / Substrate v1.0.0)")
+		fmt.Fprintf(out, "triagelab 0.1.0 (kagent %s / Substrate v1.0.0)\n", kagent.Version)
 		return 0
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
@@ -250,6 +249,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		commandSpan.End()
 	}()
 	switch args[0] {
+	case "pause", "resume", "close":
+		return runSavedInvestigation(ctx, args[0], opts, &runner, out, errout)
 	case "serve":
 		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, token)
 		if err != nil {
@@ -307,25 +308,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if opts.description != "" && opts.descriptionFile != "" {
-			fmt.Fprintln(errout, "Use either --description or --description-file")
-			return 2
-		}
-		if opts.descriptionFile != "" {
-			f, err := os.Open(opts.descriptionFile)
-			if err != nil {
-				fmt.Fprintln(errout, err)
-				return 2
-			}
-			data, err := io.ReadAll(io.LimitReader(f, 32769))
-			f.Close()
-			if err != nil || len(data) > 32768 {
-				fmt.Fprintln(errout, "Cannot read description, or it exceeds 32 KiB")
-				return 2
-			}
-			opts.description = string(data)
-		}
-		c, err := casefile.Ingest(opts.description, opts.repo, opts.files, opts.logs)
+		c, err := ingestRunOptions(opts)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -336,46 +319,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 2
 		}
 		result, runErr := runner.Run(ctx, c, dir)
-		if _, err := os.Stat(filepath.Join(dir, "report.md")); err == nil {
-			fmt.Fprintf(out, "Report: %s\n", filepath.Join(dir, "report.md"))
-		} else {
-			fmt.Fprintln(errout, "Report could not be saved to", dir)
-		}
-		if runErr != nil {
-			fmt.Fprintln(errout, report.Redact(runErr.Error(), token))
-		}
-		if result == nil {
-			return 4
-		}
-		fmt.Fprintf(out, "Outcome: %v (%v)\n", result["outcome"], result["status"])
-		cleanup, _ := result["cleanup"].(map[string]any)
-		if problems, ok := cleanup["errors"].([]string); ok && len(problems) > 0 {
-			fmt.Fprintln(errout, "Cleanup incomplete; see report and use triagelab cleanup.")
-			return 5
-		}
-		switch result["status"] {
-		case "interrupted":
-			return 130
-		case "timed_out":
-			return 124
-		case "error":
-			return 4
-		}
-		if runErr != nil {
-			return 4
-		}
-		switch result["outcome"] {
-		case "reproduced":
-			return 0
-		case "not_reproduced":
-			return 1
-		default:
-			return 3
-		}
+		return printInvestigationResult(result, runErr, dir, out, errout, token)
 	case "cleanup":
 		if opts.reportPath == "" {
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
 			return 2
+		}
+		if _, stateErr := os.Lstat(filepath.Join(filepath.Dir(opts.reportPath), "lifecycle.json")); stateErr == nil {
+			return runSavedInvestigation(ctx, "close", opts, &runner, out, errout)
+		} else if !os.IsNotExist(stateErr) {
+			fmt.Fprintln(errout, "Cannot read the investigation lifecycle record")
+			return 4
 		}
 		f, err := os.Open(opts.reportPath)
 		if err != nil {

@@ -1,5 +1,11 @@
 # Roadmap
 
+- [x] Pause and resume investigations using the same sandbox and conversation.
+      Verified 2026-11-10 with a real model: two rounds across process restart,
+      sandbox and conversation restoration, preserved files and evidence, fresh
+      caller credentials, and complete cleanup. The fork's separate retention
+      test passed beyond the original expiry. See [verification](docs/verification.md) and
+      [lifecycle design](docs/durable-investigations.md).
 - [ ] Review held drafts and blocked notes from the first pilots and tune the
       input and output sanitizers: deny-list matching thresholds, per-source
       internal terms, and provenance of applied redactions, before widening

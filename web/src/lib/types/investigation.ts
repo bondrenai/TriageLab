@@ -65,12 +65,28 @@ export interface InvestigationReport {
   finished_at?: string;
   active?: boolean;
   progress?: string[];
+  action_error?: string;
   ticket_note?: TicketNote;
+  round?: number;
+  round_started_at?: string;
+  rounds?: InvestigationReport[];
+  lifecycle?: {
+    phase: string;
+    round: number;
+    can_pause: boolean;
+    can_resume: boolean;
+    can_close: boolean;
+    resume_settings: string;
+    timeout_seconds: number;
+    max_experiments: number;
+    message?: string;
+  };
   case: {
     description: string;
     attachments?: { path: string; size_bytes: number; sha256: string }[];
     environment?: { repository_name?: string };
   };
+  continuation?: InvestigationReport["case"];
   experiments?: Experiment[];
   analysis?: {
     summary?: string;

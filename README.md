@@ -56,7 +56,8 @@ example is only a reproduction fixture.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
   **kagent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
   work and verification should run remotely on resource-constrained laptops.
-- kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0 packaging fork**.
+- kagent **v1.0.0-rc3** with the pinned **bondrenai retention controller patch**
+  (`9bf1a20d`), plus its matching **Substrate v1.0.0 packaging fork**.
 - A model credential configured in kagent. The example uses OpenAI's
   `gpt-6.1-sol` through the Responses API.
 
@@ -104,10 +105,37 @@ If cleanup fails, the report retains IDs and the CLI exits nonzero:
   --report reports/<case-id>/report.json
 ```
 
-Exit codes: `0` reproduced; `1` not reproduced; `2` invalid input;
+Exit codes: `0` reproduced, paused, or closed; `1` not reproduced; `2` invalid input;
 `3` inconclusive; `4` infrastructure/agent/protocol failure; `5` cleanup incomplete;
 `124` time limit; `130` interrupted. A nonzero exit never means the report should
 be discarded. Infrastructure failures are not reported as “not reproduced.”
+
+### Pause and resume
+
+When the investigator needs more information, TriageLab captures its evidence
+and suspends the sandbox. You can also request a pause during a run. Paused work
+keeps the same sandbox and conversation until you resume or close it, including
+across TriageLab restarts and weeks of waiting:
+
+```sh
+./bin/triagelab pause --config triagelab.example.json --report reports/<case-id>/report.json
+./bin/triagelab resume --config triagelab.example.json --report reports/<case-id>/report.json \
+  --description 'The customer supplied these additional details' --log ./new-evidence.log
+./bin/triagelab close --config triagelab.example.json --report reports/<case-id>/report.json
+```
+
+Wait for `paused` in the report before stopping TriageLab. Resume uses the saved
+agent, tools, and limits for a fresh bounded round; earlier round reports remain
+under `rounds/`. Keep the entire private run directory, including `lifecycle.json`.
+Use a refreshed caller credential with the same endpoint and identity. The UI
+provides the same actions and requires explicit review of new ticket evidence.
+
+The dedicated kagent deployment must run the pinned fork on every controller and
+set `config.sessions.idleTtl: 0s`; `scripts/install-dev.sh` configures both. Paused
+resources have no automatic expiry. Upstream database and snapshot storage must
+remain available. Durable workspace files are preserved; process memory, running
+commands, and edits outside durable directories are not. See the
+[lifecycle design and limitations](docs/durable-investigations.md).
 
 ## Development and verification
 

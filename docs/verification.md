@@ -1,5 +1,68 @@
 # Executed verification
 
+## Pause/resume integration — November 10, 2026
+
+Executed remotely on `bondren-build` with Go 1.27.3. No builds, tests, containers,
+or cluster work ran on the local laptop.
+
+- `make fmt docs-generate check` passed: generated reference pages, formatting,
+  `go vet ./...`, and all Go tests. The lifecycle fixtures cover automatic and
+  operator pause, same-session continuation, immutable rounds, restart recovery,
+  stale approvals, concurrent admission, cancellation, uncertain invocation,
+  evidence precision, and cleanup. These fixtures do not prove live restoration.
+- `make check-ui build-ui` passed. `make build-docs` passed with all internal
+  links valid. Installer scripts passed `bash -n`. Browser interaction was not
+  exercised in this check.
+- The isolated PR branch was rebased onto the current microVM/model changes and
+  passed the full Go, UI, and documentation checks again. Remote installer
+  fixtures verified that an existing controller or an inspection error stops
+  installation before mutations, while a fresh cluster reaches the install step.
+- Race checks passed for the investigation and ticket packages, and for all six
+  new web lifecycle tests (restart/privacy, stale approval, pause, resume/active
+  slot, close, and failure feedback). The broader web race run encountered
+  `no space left on device` in temporary test files; the targeted retry passed
+  with test fixtures under `/dev/shm`. The full web suite passed without race
+  instrumentation under `make check`.
+- `TestLiveInvestigationPauseResume` **passed in 22.35 seconds** against the real
+  `gpt-4.1` model and disposable `triagelab` cluster, with controller `9bf1a20d`,
+  Session idle expiration disabled, and the updated trusted prompt. The first
+  attempt had failed with OpenAI HTTP 401; replacing the rejected credential
+  resolved that failure. The key was validated with a bounded provider request,
+  updated through Kubernetes Secret stdin, and verified without logging its value.
+- Run, resume, and close executed in separate OS processes. Both rounds produced
+  real experiments and honored an operator pause. Resume kept the same Sandbox
+  and Session, created a new task, preserved the original file bytes, and uploaded
+  new input files. The first round's report stayed byte-identical and its task
+  history remained readable. Resume and close used a freshly issued caller token.
+- The Session Actor checkpointed at 12:39:16.714 UTC, restored at 12:39:19.551 UTC,
+  and checkpointed again at 12:39:25.977 UTC. Both tasks have native snapshot
+  references. This verifies restoration of the conversation runtime as well as
+  the standalone sandbox. Round 1 recorded the Python failure (exit 1) and a
+  corrected override (exit 0); round 2 recorded a new failure experiment with a
+  fresh process ID. Every experiment's output collection completed.
+- Cleanup deleted the test Sandbox and Session. The original controller image,
+  ConfigMap data, and investigator prompt were restored and compared with their
+  saved originals; the Agent returned to Ready. The corrected provider credential
+  remains installed. No credential values were recorded in this repository.
+
+Evidence: [JSON report](verification/pause-resume.json) and
+[Markdown report](verification/pause-resume.md), including both rounds and final
+cleanup. Both artifacts were checked for credential values before saving.
+
+The fork's separate real Sandbox retention test passed: an ordinary suspended
+sandbox expired, an opted-in sandbox survived its original TTL, and restoration
+preserved its ID and file bytes with one fresh bounded TTL. Duplicate resume did
+not renew that deadline. Together these checks cover passing the original expiry
+deadline and real model continuation; they do not represent weeks of elapsed
+uptime. There is no new snapshot service or Substrate API in TriageLab.
+
+Re-run `make test-pause-integration` with `TRIAGELAB_CONFIG`, a fresh invocation
+token, and a real model credential on the disposable deployment. Private attempt
+artifacts from the passing run remain on the VM under
+`/home/will_bondren_ai/triagelab-pause-verification.FFPejT`.
+
+## Original investigation integration — November 8, 2026
+
 Verified on November 8, 2026 (America/New_York) on a dedicated Linux development
 VM: 4 vCPU, 16 GiB RAM, Ubuntu 24.04, kind Kubernetes 1.35.0, Go 1.25.12,
 kagent v1.0.0-rc3, its matching Substrate v1.0.0 distribution, and gVisor.

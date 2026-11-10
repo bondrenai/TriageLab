@@ -1,6 +1,6 @@
 # Upstream compatibility record
 
-Research date: 2026-11-08. These are **source-reviewed integration pins**, not a
+Research updated: 2026-11-10. These are **source-reviewed integration pins**, not a
 claim that every backend was exercised. The dedicated Linux development VM
 completed the real gVisor sandbox checks recorded in
 [sandbox-smoke.json](verification/sandbox-smoke.json): nested upload, fixture
@@ -11,7 +11,9 @@ and [verification record](verification.md) document the completed real agent dem
 
 | Component | Pin | Identity |
 | --- | --- | --- |
-| kagent CLI/charts/controller/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| kagent CLI/charts/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| TriageLab kagent controller fork | rc3 plus retained suspended sandboxes, [bondrenai/kagent#1](https://github.com/bondrenai/kagent/pull/1) | `9bf1a20db0a165c477e893584c1904e58f361cd2` |
+| Controller runtime base image | `controller:1.0.0-rc3` | `sha256:e12e7be9346d3f338581a7ccc583bdb7990e27341a227cd0a13d8aaaf325df3f` |
 | kagent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
 | Agent Substrate core reviewed | `v1.0.0` | `agent-substrate/substrate`, `b34fbee742906494b5eb4f1f36987176bf8770a4` |
 | Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
@@ -30,6 +32,24 @@ describe synchronization with Agent Substrate. Installing the core project's
 source installer alongside kagent's Helm installer would duplicate infrastructure;
 TriageLab uses only the supported kagent installation path.
 
+The controller fork adds the opt-in `retain_while_suspended` field and durable
+active TTL bookkeeping. It reuses the released Sandbox lifecycle and Substrate
+snapshot operations. The CLI, charts, investigator runtime, sandbox guest, and
+Substrate remain at their release pins. `scripts/install-fork-controller.sh`
+builds the exact fork commit on the Linux development host, layers its executable
+onto the pinned rc3 controller image, loads it into Kind, and waits for the
+controller rollout. There is no published fork image dependency. Reports identify
+the expected integration as `v1.0.0-rc3+bondrenai.9bf1a20d`; that pin is not an
+independent attestation of the running controller.
+
+The fork's `TestSandboxRetentionWhileSuspended` passed against real gVisor and
+Substrate in the disposable Linux deployment: an ordinary suspended Sandbox
+expired, a retained one survived its original TTL, restored the same workspace
+and file contents, received a fresh active TTL, and kept that deadline after a
+duplicate resume. TriageLab's separate real-model pause/resume test also passed,
+including conversation runtime restoration and process restart; see
+[verification.md](verification.md). Neither check claims weeks of elapsed uptime.
+
 ## Interfaces used
 
 1. Kubernetes configuration uses **`api.kagent.dev/v1alpha3`**: `Harness`,
@@ -47,6 +67,11 @@ TriageLab uses only the supported kagent installation path.
    through that binding. Built-in runtime bash and file search are disabled.
    Upstream still exposes basic read/write/edit tools for the investigator's own
    separate runtime filesystem; this release has no switch to remove them.
+   Continuing a Session uses `invoke_agent` with its existing `session_id`.
+   TriageLab advertises the MCP tasks extension, so that tool returns a task
+   receipt rather than `structuredContent`. The adapter validates its encoded
+   Session/task reference and exposes those identifiers without retrying the
+   invocation. Session runtime suspension and restoration remain automatic.
 4. The investigator returns kagent structured output (`outputSchema`) backed by
    its Go ADK harness. kagent validates the terminal JSON; TriageLab additionally
    reconciles process references with observed upstream execution records.
@@ -59,6 +84,8 @@ Authoritative references:
 
 - [Standalone sandbox contract and MCP tools](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/sandboxes.md)
 - [Exact MCP sandbox implementations](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/mcp/sandboxes.go)
+- [Fork retention semantics and lifecycle](https://github.com/bondrenai/kagent/blob/9bf1a20db0a165c477e893584c1904e58f361cd2/docs/architecture/sandboxes.md)
+- [MCP asynchronous invocation receipts](https://github.com/bondrenai/kagent/blob/9bf1a20db0a165c477e893584c1904e58f361cd2/go/core/internal/mcp/tasks.go)
 - [kagent structured output](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/structured-output.md)
 - [kagent installation and version constraints](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/helm/README.md)
 - [Substrate runtime classes](https://github.com/agent-substrate/substrate/blob/b34fbee742906494b5eb4f1f36987176bf8770a4/docs/reference/sandbox-classes.md)
@@ -71,11 +98,22 @@ Authoritative references:
   digests were resolved from their registries, not invented from examples.
   Runtime resource limits are operator configuration, not agent-selectable
   template fields.
-- Sandbox lifetime is fixed at creation; activity does not renew it. kagent's
-  expiration workers delete expired sandboxes. Ordinary pending lifecycle
+- Ordinary Sandbox lifetime is fixed at creation; activity does not renew it.
+  The fork exempts an opted-in Sandbox only while it is `SUSPENDED/NONE` and
+  omits `expires_at` in that state. Its first resume admission starts one new
+  interval of the original bounded TTL. Retries do not renew it. Pending create,
+  suspend, or resume work still expires, and explicit deletion always applies.
+  TriageLab requires the returned retention flag before treating work as
+  resumable. Ordinary pending lifecycle
   operations need retries; reads alone do not advance them. Creation has a
   stable request ID, but process start has **no idempotency receipt**. Never
   blindly replay a process start after an uncertain response.
+- The dedicated deployment sets `config.sessions.idleTtl: 0s` so a waiting
+  investigator Session is not deleted after days or weeks. Automatic runtime
+  quiescence remains enabled. The Session stays logically `READY`; there are no
+  public Session suspend/resume controls. Finished or explicitly closed work
+  must delete its Session. PostgreSQL records and snapshot storage remain needed
+  for as long as work is paused.
 - Process state and handles are guest-local. Suspension ends processes and
   restoring a volume snapshot does not preserve their handles. Collect evidence
   before deleting or suspending. MCP output pages and writes are capped at 1 MiB;
@@ -187,8 +225,11 @@ permissions. It projects current-generation conditions and the controller's
 
 Review the upstream CRD schemas, protobuf configuration, MCP input/output
 schemas, guest dependency, lifecycle retry rules, and credential propagation
-before changing pins. Update CLI, chart, controller, guest and runtime images
-together. Resolve and record new image digests. Render and validate manifests,
+before changing pins. For an upstream release upgrade, update CLI, chart,
+controller, guest and runtime images together. The current controller-only fork
+is based on the exact rc3 source and leaves the other components pinned; build
+its reviewed commit with `scripts/install-fork-controller.sh` after installing
+the released chart. Resolve and record new image digests. Render and validate manifests,
 run unit/error-path tests, then run the real demo on a fresh disposable cluster.
 Inspect failure and corrective outputs, network denial, timeouts and deletion;
 record precisely which versions and checks ran. Preserve reports before deleting

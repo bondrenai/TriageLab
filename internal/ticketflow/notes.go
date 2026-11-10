@@ -115,6 +115,15 @@ func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
 	if _, err := time.Parse(time.RFC3339Nano, finished); err != nil {
 		return Case{}, false
 	}
+	return f.approvedCase(runID, saved)
+}
+
+// approvedCase binds local work to the original durable ticket approval. It
+// does not fetch new ticket material or grant permission to send a message.
+func (f *Flow) approvedCase(runID string, saved map[string]any) (Case, bool) {
+	if runID == "" || saved["run_id"] != runID {
+		return Case{}, false
+	}
 	input, _ := saved["case"].(map[string]any)
 	source, _ := input["source"].(map[string]any)
 	rawID, _ := source["ticket_id"].(string)
