@@ -1,0 +1,182 @@
+---
+/**
+ * Evidence path: what the sandbox observed versus what the model claims,
+ * and how the report keeps the two apart. Inline SVG on Bondren tokens.
+ */
+---
+
+<figure class="diagram" role="group" aria-labelledby="evpath-title evpath-desc">
+  <div class="diagram-scroll">
+  <svg viewBox="0 0 960 300" role="img" preserveAspectRatio="xMidYMid meet">
+    <title id="evpath-title">How evidence and hypothesis reach the report</title>
+    <desc id="evpath-desc">
+      The kagent investigator session runs experiments in the sandbox and
+      returns a structured answer whose claims must cite process IDs.
+      Separately, TriageLab fetches each process's state, exit code, and
+      paginated output from the sandbox itself. The report stores observed
+      evidence and model hypothesis as separate sections.
+    </desc>
+
+    <defs>
+      <marker id="ep-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L8,4 L0,8 z" class="arrow-head" />
+      </marker>
+    </defs>
+
+    <!-- sandbox -->
+    <g class="plate">
+      <rect x="6" y="36" width="212" height="180" class="plate-bg" rx="3" />
+      <rect x="6" y="36" width="212" height="20" class="band" rx="3" />
+      <rect x="6" y="48" width="212" height="8" class="band-fill" />
+      <text x="112" y="50" class="band-text">SANDBOX</text>
+      <text x="112" y="66" class="sub-text">one disposable sandbox per run</text>
+
+      <rect x="22" y="76" width="180" height="20" class="chip" rx="2" />
+      <text x="112" y="90" class="chip-text">process a · exit 0</text>
+      <rect x="22" y="104" width="180" height="20" class="chip" rx="2" />
+      <text x="112" y="118" class="chip-text">process b · exit 1</text>
+      <rect x="22" y="132" width="180" height="20" class="chip" rx="2" />
+      <text x="112" y="146" class="chip-text">paginated output</text>
+      <rect x="22" y="160" width="180" height="32" class="chip deny" rx="2" />
+      <text x="112" y="174" class="chip-text deny-text">egress</text>
+      <text x="112" y="186" class="chip-text deny-text">default deny</text>
+    </g>
+
+    <!-- investigator lane -->
+    <g class="plate">
+      <rect x="312" y="48" width="200" height="70" class="plate-bg" rx="3" />
+      <rect x="312" y="48" width="200" height="20" class="band" rx="3" />
+      <rect x="312" y="60" width="200" height="8" class="band-fill" />
+      <text x="412" y="60" class="band-text">INVESTIGATOR</text>
+      <text x="412" y="80" class="sub-text">kagent session, one model</text>
+      <text x="412" y="96" class="sub-text">proposes and revises experiments</text>
+    </g>
+
+    <!-- fetcher lane -->
+    <g class="plate">
+      <rect x="312" y="160" width="200" height="56" class="plate-bg" rx="3" />
+      <rect x="312" y="160" width="200" height="20" class="band" rx="3" />
+      <rect x="312" y="172" width="200" height="8" class="band-fill" />
+      <text x="412" y="172" class="band-text">FETCHER</text>
+      <text x="412" y="194" class="sub-text">triagelab, independent of the model</text>
+    </g>
+
+    <!-- report -->
+    <g class="plate">
+      <rect x="636" y="36" width="318" height="180" class="plate-bg" rx="3" />
+      <rect x="636" y="36" width="318" height="20" class="band" rx="3" />
+      <rect x="636" y="48" width="318" height="8" class="band-fill" />
+      <text x="795" y="50" class="band-text">REPORT</text>
+
+      <rect x="652" y="66" width="286" height="46" class="chip" rx="2" />
+      <text x="795" y="85" class="chip-text">HYPOTHESIS</text>
+      <text x="795" y="100" class="sub-text">model interpretation, cites process ids</text>
+
+      <line x1="652" y1="122" x2="938" y2="122" class="cut-rule" />
+
+      <rect x="652" y="132" width="286" height="60" class="chip" rx="2" />
+      <text x="795" y="152" class="chip-text">EVIDENCE</text>
+      <text x="795" y="168" class="sub-text">state · exit codes · output</text>
+      <text x="795" y="182" class="sub-text">fetched from the sandbox itself</text>
+    </g>
+
+    <!-- arrows -->
+    <line x1="312" y1="83" x2="222" y2="96" class="arrow" marker-end="url(#ep-arrow)" />
+    <text x="267" y="76" class="arrow-label">experiments</text>
+
+    <line x1="218" y1="150" x2="308" y2="184" class="arrow" marker-end="url(#ep-arrow)" />
+    <text x="263" y="158" class="arrow-label">results</text>
+
+    <line x1="512" y1="83" x2="630" y2="83" class="arrow" marker-end="url(#ep-arrow)" />
+    <text x="571" y="76" class="arrow-label">answer</text>
+
+    <line x1="512" y1="188" x2="630" y2="166" class="arrow" marker-end="url(#ep-arrow)" />
+    <text x="571" y="212" class="arrow-label">evidence</text>
+  </svg>
+  </div>
+  <figcaption>Two lanes into one document: the model's answer on top, observed evidence below it, never mixed.</figcaption>
+</figure>
+
+<style>
+  .diagram {
+    margin: 1.25rem 0 0;
+  }
+  .diagram svg {
+    display: block;
+    width: 100%;
+    min-width: 700px;
+    height: auto;
+    background: var(--bondren-paper);
+    border: 1px solid var(--bondren-line-object);
+    border-radius: var(--bondren-radius);
+    box-shadow: var(--shadow-plate);
+  }
+  .diagram figcaption {
+    font-family: var(--bondren-font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--bondren-ink-muted);
+    padding: 0.625rem 0.25rem 0;
+  }
+  .diagram-scroll {
+    overflow-x: auto;
+  }
+
+  .diagram text {
+    font-family: var(--bondren-font-mono);
+    text-anchor: middle;
+  }
+  .plate-bg {
+    fill: var(--bondren-plate);
+    stroke: var(--bondren-line-frame);
+    stroke-width: 1;
+  }
+  .band,
+  .band-fill {
+    fill: var(--bondren-ink);
+    stroke: none;
+  }
+  .band-text {
+    fill: var(--bondren-paper);
+    font-size: 10px;
+    letter-spacing: 1.6px;
+  }
+  .sub-text {
+    fill: var(--bondren-ink-muted);
+    font-size: 8.5px;
+    letter-spacing: 0.4px;
+  }
+  .chip {
+    fill: var(--bondren-paper);
+    stroke: var(--bondren-line-object);
+    stroke-width: 1;
+  }
+  .chip-text {
+    fill: var(--bondren-ink-2);
+    font-size: 9px;
+    letter-spacing: 0.8px;
+  }
+  .deny {
+    stroke: var(--bondren-danger);
+    fill: transparent;
+  }
+  .deny-text {
+    fill: var(--bondren-danger);
+  }
+  .cut-rule {
+    stroke: var(--bondren-rule-cut);
+    stroke-width: 2;
+  }
+  .arrow {
+    stroke: var(--bondren-rule-cut);
+    stroke-width: 1.25;
+  }
+  .arrow-head {
+    fill: var(--bondren-rule-cut);
+  }
+  .arrow-label {
+    fill: var(--bondren-ink-muted);
+    font-size: 8.5px;
+    letter-spacing: 0.4px;
+  }
+</style>

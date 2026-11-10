@@ -1,5 +1,6 @@
 ---
 import HairlineFigure from "./HairlineFigure.astro";
+import SystemMap from "./diagrams/SystemMap.astro";
 ---
 
 <div class="landing">
@@ -92,6 +93,12 @@ import HairlineFigure from "./HairlineFigure.astro";
       exactly what will run. Once a run starts, upstream isolation and egress
       policy enforce the hard limits, not the prompt.
     </p>
+  </section>
+
+  <section class="section" id="where-the-work-runs">
+    <p class="overline">Under the hood</p>
+    <h2>Where the work runs</h2>
+    <SystemMap />
   </section>
 
   <section class="section" id="why-triagelab">

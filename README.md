@@ -25,12 +25,7 @@ or dependencies. There is no simulated agent or local command-execution backend.
 
 ## Architecture
 
-```text
-Ticket/issue or local case → UI / Go CLI → kagent MCP API
-                                │          ├─ investigator Session → model provider
-                                │          └─ Sandbox → Agent Substrate → gVisor
-                                └─ tool events + process results → reports
-```
+![TriageLab system map: ticket sources feed TriageLab, which routes, classifies, and holds the case for human approval; an approved run reaches kagent and a disposable Agent Substrate sandbox; evidence returns with the report](docs/system-map.svg)
 
 TriageLab owns ticket routing, clarification policy, human approval, case
 normalization, input limits, investigation budgets, evidence

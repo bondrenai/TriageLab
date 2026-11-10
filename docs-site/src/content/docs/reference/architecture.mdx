@@ -3,11 +3,21 @@ title: Architecture
 description: Ownership boundaries, evidence lifecycle, and deliberate non-goals.
 ---
 
+import SystemMap from "../../../components/diagrams/SystemMap.astro";
+import OwnershipDomains from "../../../components/diagrams/OwnershipDomains.astro";
+import EvidencePath from "../../../components/diagrams/EvidencePath.astro";
+
 TriageLab is deliberately small: one investigator, one standalone sandbox per
 run, local JSON/Markdown reports. There is no database, operator, custom
 sandbox runtime, or agent framework.
 
+## System map
+
+<SystemMap />
+
 ## Boundaries
+
+<OwnershipDomains />
 
 - `cmd/triagelab` is a testable standard-library CLI with injected writers.
 - `internal/casefile` treats descriptions, repositories, files, and logs as
@@ -47,6 +57,8 @@ isolation, snapshots, resource enforcement, and the default-deny egress
 gateway.
 
 ## Evidence and lifecycle
+
+<EvidencePath />
 
 1. Allocate a case ID and write a private initial report.
 2. Create a standalone sandbox using that stable idempotency key. Repeat only
