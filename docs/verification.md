@@ -63,9 +63,11 @@ parked/active task cancellation, timeouts, missing output, truncation, private
 report writes, redaction, input rejection, and protocol errors using test
 fixtures. These are not live controller outage or hostile escape tests.
 
-Not executed: microVM backend, multi-user deployment, production authorization,
-controller/VM crash during a run, or broad hostile
-workload security testing. Exact binary artifact export and external issue
+Not executed in this verification: multi-user deployment, production
+authorization, controller/VM crash during a run, or broad hostile
+workload security testing. The microVM backend was exercised later; see
+[MicroVM backend verification](#microvm-backend-verification). Exact binary
+artifact export and external issue
 connectors remain roadmap items. The development VM is ephemeral; saved evidence
 is retained in the repository, not dependent on its continued availability.
 
@@ -309,3 +311,77 @@ authentication (the wire behavior is covered by unit tests decoding real OTLP
 protobuf in `internal/telemetry/telemetry_test.go`). Resource attributes were
 `service.name=triagelab`, `service.version=0.1.0`; no case content, prompts,
 credentials, or account names appeared in the exported telemetry.
+
+## MicroVM backend verification
+
+On 2026-11-09 the opt-in `microvm` CI job ran five times on GitHub-hosted
+`ubuntu-latest` runners (image `ubuntu-26.04`). Each run built its own
+disposable kind cluster: kind 0.33.0, Kubernetes 1.35.0, Helm 3.18.0, Go 1.27.3,
+kagent v1.0.0-rc3, and its Substrate v1.0.0 distribution. The investigator used
+OpenAI `gpt-6.1-sol` over the Responses API with the model's default reasoning
+effort. No agent output or sandbox was mocked.
+
+Passed in all five runs:
+
+- The runner created a KVM guest (`KVM_CREATE_VM`), and the kind node received
+  `/dev/kvm`.
+- `TRIAGELAB_SANDBOX_CLASS=microvm scripts/install-dev.sh` completed in about
+  four minutes, including Substrate's asset installer. `kagent-default` used
+  the `microvm` class and SandboxConfig with the `ateworker-microvm:v1.0.0`
+  image, and the SandboxTemplate and Agent reached Ready.
+- The live test created a sandbox on that pool and uploaded three files, and
+  the investigator read fixture files through `read_sandbox_file`.
+
+Four runs at commit `02d9fa3` passed `make test-integration`, each in 34 to 35
+seconds with the same nine tool calls: the failing experiment, the corrected
+experiment, a supported `reproduced` outcome, and deletion of both runtimes.
+They are runs [42718539343](https://github.com/bondrenai/TriageLab/actions/runs/42718539343),
+[42724580664](https://github.com/bondrenai/TriageLab/actions/runs/42724580664),
+[42724585200](https://github.com/bondrenai/TriageLab/actions/runs/42724585200), and
+[42724589679](https://github.com/bondrenai/TriageLab/actions/runs/42724589679).
+
+| Command | Exit | Observation |
+| --- | --- | --- |
+| `python3 app.py` | 1 | 5 ms deadline expires before the simulated 120 ms response |
+| `python3 app.py --timeout-ms 5000` | 0 | Corrected timeout succeeds |
+
+Evidence from run 42718539343: [human-readable report](verification/microvm-demo.md)
+and [machine-readable report](verification/microvm-demo.json).
+
+The first run ([42716580719](https://github.com/bondrenai/TriageLab/actions/runs/42716580719),
+commit `5f59591`) failed. After two successful file reads the investigator's
+task ended `TASK_STATE_FAILED` seven seconds after it started, with no
+experiment. Cleanup succeeded. The cause is unknown: reports did not yet keep
+the upstream failure text, which `task_failure` now records. Four passes in
+five runs is a small sample, not a reliability measurement.
+
+Limits:
+
+- The isolation backend is inferred from the WorkerPool class, worker image,
+  and SandboxConfig. Nothing observed it from inside the guest.
+- The sandbox lifecycle and egress-denial checks in `sandbox-smoke.json` were
+  not repeated on microVMs. Suspend/restore, resource limits, and hostile
+  workloads were not tested.
+- kagent rc3 replays tool calls without the model's reasoning items, which
+  OpenAI's guidance asks clients to pass back. The passing runs show the API
+  accepts that; the sample is too small to call it reliable.
+- Shell and workflow linting, YAML parsing, and a `helm template` of the pinned
+  kagent chart ran on the development laptop. `make check` ran on the shared
+  build VM and in CI for both commits.
+
+## Model API format option
+
+On 2026-11-09 the shared build VM passed `make check`, `make check-ui`, and
+`make build-ui` for the OpenAI API format option on model definitions. Unit
+tests cover rendering `spec.openAI.apiFormat` beside a custom endpoint and
+rejecting the option for other providers and unknown values.
+
+Playwright 1.65.0 with Chromium 1254 exercised the built server and assets on
+the VM at 1440px and 390px, signed in with a throwaway local admin account. The
+Models editor showed the option only for the OpenAI provider, previewed
+`apiFormat: responses`, kept the choice after returning to the editor, and
+omitted the block for the default. There was no horizontal overflow or browser
+error. The temporary server and account were removed.
+
+No model call used a model defined this way. The live runs above exercise the
+Responses API only through the installed `triagelab-model`.

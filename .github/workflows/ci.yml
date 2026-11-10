@@ -10,6 +10,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_microvm:
+        description: Build a disposable kind cluster on the runner and run the live investigation on a KVM-backed microVM WorkerPool
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -95,3 +100,116 @@ jobs:
       - name: Remove integration configuration
         if: always()
         run: rm -f "$RUNNER_TEMP/triagelab.json"
+
+  # Unlike `integration`, this job builds its own disposable deployment on the
+  # runner, because GitHub-hosted Linux runners expose /dev/kvm. It calls the
+  # model provider, which incurs provider charges. The kind and kagent CLI pins
+  # follow docs/development.md; the Helm pin matches kagent rc3's own CI.
+  microvm:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_microvm
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false # dependencies are vendored; no module cache is needed
+      - name: Require the model credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Set the OPENAI_API_KEY repository secret for the live microVM run" >&2
+            exit 2
+          fi
+      - name: Verify that the runner can create KVM guests
+        run: |
+          sudo python3 - <<'PY'
+          import fcntl
+          import os
+          import sys
+
+          try:
+              with open("/dev/kvm", "r+b", buffering=0) as kvm:
+                  if fcntl.ioctl(kvm, 0xAE00, 0) != 12:  # KVM_GET_API_VERSION
+                      sys.exit("Unsupported KVM API version")
+                  os.close(fcntl.ioctl(kvm, 0xAE01, 0))  # KVM_CREATE_VM
+          except OSError as error:
+              sys.exit(f"This runner cannot create KVM guests: {error}")
+          print("KVM_CREATE_VM succeeded")
+          PY
+      - name: Install pinned kind, Helm, and kagent CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL -o kind https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          echo 'aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind' | sha256sum -c -
+          curl -fsSL -o helm.tar.gz https://get.helm.sh/helm-v3.18.0-linux-amd64.tar.gz
+          echo '961e587fc2c03807f8a99ac25ef063fa9e6915f1894729399cbb95d2a79af931  helm.tar.gz' | sha256sum -c -
+          tar -xzf helm.tar.gz linux-amd64/helm
+          curl -fsSL -o kagent https://github.com/kagent-dev/kagent/releases/download/v1.0.0-rc3/kagent-linux-amd64
+          echo '8d0ba56fe8382f20511ce585810cf1ac043b361482d15ac7163264699b882e63  kagent' | sha256sum -c -
+          mkdir -p tools
+          install -m 0755 kind linux-amd64/helm kagent tools/
+          echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
+      - name: Create the disposable kind cluster with the KVM device
+        run: |
+          kind create cluster --name triagelab --image kindest/node:v1.35.0 \
+            --config deploy/kind-microvm.yaml --wait 120s
+      - name: Install kagent, Substrate, and the microVM runtime
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TRIAGELAB_SANDBOX_CLASS: microvm
+        run: bash scripts/install-dev.sh
+      - name: Confirm the WorkerPool runs microVMs
+        run: |
+          class="$(kubectl --context kind-triagelab -n kagent get workerpool kagent-default \
+            -o jsonpath='{.spec.sandboxClasses[0].name}')"
+          image="$(kubectl --context kind-triagelab -n kagent get workerpool kagent-default \
+            -o jsonpath='{.spec.workerImage}')"
+          kvm="$(kubectl --context kind-triagelab get nodes \
+            -o jsonpath='{.items[*].status.capacity.ate\.dev/kvm}')"
+          {
+            echo "### microVM backend"
+            echo "- WorkerPool sandbox class: \`$class\`"
+            echo "- Worker image: \`$image\`"
+            echo "- Node \`ate.dev/kvm\` capacity: \`$kvm\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          kubectl --context kind-triagelab get sandboxconfig microvm
+          test "$class" = microvm
+          case "$image" in
+            */ateworker-microvm:*) ;;
+            *) echo "Unexpected worker image: $image" >&2; exit 1 ;;
+          esac
+      - name: Run the genuine investigation on the microVM pool
+        run: |
+          kubectl --context kind-triagelab -n kagent port-forward --address 127.0.0.1 \
+            svc/kagent-controller 8083:8083 > "$RUNNER_TEMP/port-forward.log" 2>&1 &
+          forward=$!
+          trap 'kill "$forward"' EXIT
+          timeout 30 bash -c 'until (exec 3<>/dev/tcp/127.0.0.1/8083) 2>/dev/null; do sleep 1; done'
+          TRIAGELAB_TOKEN="$(kubectl --context kind-triagelab -n kagent \
+            create token triagelab --audience=kagent-invocation --duration=1h)"
+          echo "::add-mask::$TRIAGELAB_TOKEN"
+          export TRIAGELAB_TOKEN
+          TRIAGELAB_REPORT_DIR="$RUNNER_TEMP/reports" make test-integration
+      - name: Keep the investigation report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: microvm-investigation-report
+          path: ${{ runner.temp }}/reports
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Describe the deployment after a failure
+        if: failure()
+        run: |
+          kubectl --context kind-triagelab get nodes -o wide || true
+          kubectl --context kind-triagelab get sandboxconfigs || true
+          kubectl --context kind-triagelab -n kagent get workerpools,sandboxtemplates,agents,pods -o wide || true
+          kubectl --context kind-triagelab -n kagent describe workerpool kagent-default || true
+          kubectl --context kind-triagelab -n kagent describe sandboxtemplate triagelab-python || true
+          kubectl --context kind-triagelab -n ate-system get pods -o wide || true
+      - name: Delete the cluster
+        if: always()
+        run: kind delete cluster --name triagelab

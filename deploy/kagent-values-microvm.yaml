@@ -1,0 +1,9 @@
+# Overlay for the optional KVM-backed microVM WorkerPool, merged over
+# kagent-values.yaml by kagent-cli-microvm.yaml. The pool keeps its name, so
+# the investigator runtime and the reproduction sandbox both move to microVMs.
+# Neither chart installs the "microvm" SandboxConfig or its guest assets;
+# scripts/install-microvm-assets.sh stages them. See docs/development.md.
+substrateWorkerPool:
+  sandboxClass: microvm
+  sandboxConfigRef: microvm
+  workerImage: ghcr.io/kagent-dev/substrate/ateworker-microvm:v1.0.0

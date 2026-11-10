@@ -2,6 +2,7 @@ export interface AgentModel {
   provider: string;
   name: string;
   endpoint?: string;
+  api_format?: string;
   secret_name?: string;
   secret_key?: string;
 }

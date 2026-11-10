@@ -95,6 +95,18 @@ Authoritative references:
   in Go ADK rc3. Keep it disabled. The trusted sandbox server uses its own
   `tokenPassthrough: true` binding and kagent re-verifies the Kubernetes
   service-account token to recover the caller identity.
+- The installed `triagelab-model` uses OpenAI's `gpt-6.1-sol` with
+  `spec.openAI.apiFormat: responses`. Reviewed 2026-11-09: OpenAI's GPT-6
+  models require the [Responses API for tool calling](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+  kagent's default is `chatCompletions`, and `gpt-4.1` is
+  [scheduled for shutdown](https://developers.openai.com/api/docs/deprecations)
+  on 2027-01-14. Models defined in the workspace editor or a CLI bundle use
+  Chat Completions unless they set `api_format` to `responses`; that setting
+  has unit and browser tests but no live model call. kagent rc3 and rc4 replay
+  tool calls without the model's reasoning items, which OpenAI's
+  [reasoning guidance](https://developers.openai.com/api/docs/guides/reasoning)
+  asks clients to pass back; four live runs completed that way and one failed
+  for an unrecorded reason.
 - The `triagelab-tools` ClusterIP Service is an alias for the controller with a
   distinct HTTP origin. rc3's [actor egress policy](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/substrate/policy.go#L47)
   always replaces `Authorization` at the control-plane origin with an actor JWT.
@@ -106,6 +118,43 @@ Authoritative references:
   [authentication documentation](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/oidc-proxy-authentication.md).
   TriageLab's private development setup does not claim a multi-tenant perimeter.
   Prompt-injection instructions reduce risk but are not a security boundary.
+
+## microVM backend
+
+Source-reviewed 2026-11-09 at the pins above and exercised by the CI runs in
+[verification.md](verification.md#microvm-backend-verification). The sandbox
+class belongs to the WorkerPool. kagent compiles a SandboxTemplate into an
+ActorTemplate using the class of the pool it references, so TriageLab's
+templates and tool calls do not change.
+
+- kagent's chart renders `substrateWorkerPool.sandboxClass: microvm` with the
+  `ateworker-microvm` image and defaults the SandboxConfig reference to
+  `microvm`. Its Helm README states that kagent does not install the `microvm`
+  SandboxConfig, the runtime assets, or KVM-capable workers. The Substrate
+  chart ships only the gVisor SandboxConfig.
+- Substrate's `ate-setup deploy sandboxconfig --sandbox-classes=microvm`
+  supplies them. At `v1.0.0` it downloads Kata Containers 4.3.1 and Cloud
+  Hypervisor v53.0, checks the per-architecture SHA-256 digests pinned in its
+  SandboxConfig template, stages the four files under
+  `microvm-assets/<arch>/<sha256>` in the kind RustFS bucket `ate-snapshots`
+  using the chart's default RustFS credentials, and applies the SandboxConfig.
+  It also reapplies the SandboxConfig admission policy from the same release.
+  kagent rc3's CI runs this step after `kagent install`;
+  `scripts/install-microvm-assets.sh` does the same and refuses a tag that no
+  longer resolves to the reviewed commit.
+- Workers reach KVM through the `ate.dev/kvm` extended resource, which atelet's
+  device plugin advertises only on nodes where `/dev/kvm` exists. A kind node
+  needs the device bind-mounted (`deploy/kind-microvm.yaml`); otherwise the
+  workers stay Pending.
+- Upstream requires assets to stay outside any snapshot location's
+  `/atespaces/` prefix. The `microvm-assets/` prefix satisfies that.
+
+References:
+
+- [kagent microVM values and prerequisites](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/helm/README.md)
+- [kagent's kind microVM setup](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/scripts/kind/setup-microvm.sh)
+- [Substrate local microVM guide](https://github.com/kagent-dev/substrate/blob/563df06f6be751c101539986896c17c55aa22a9d/docs/dev/microvm-local.md)
+- [Pinned microVM SandboxConfig and asset digests](https://github.com/kagent-dev/substrate/blob/563df06f6be751c101539986896c17c55aa22a9d/manifests/ate-install/sandboxconfig-microvm.yaml.tmpl)
 
 ## Custom investigators
 

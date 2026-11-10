@@ -98,3 +98,43 @@ func TestDefinitionRejectsInvalidAndOverbroadConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAIModelRendersRequestedAPIFormat(t *testing.T) {
+	definition, err := DecodeDefinition[ModelDefinition](strings.NewReader(
+		`{"name":"incident-model","model":{"provider":"OpenAI","name":"gpt-6.1-sol","endpoint":"https://models.example/v1","api_format":"responses"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := RenderModelDefinition("kagent", definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resource struct {
+		Spec struct {
+			OpenAI map[string]string `json:"openAI"`
+		}
+	}
+	if err := json.Unmarshal(manifest, &resource); err != nil {
+		t.Fatal(err)
+	}
+	if got := resource.Spec.OpenAI; len(got) != 2 || got["apiFormat"] != "responses" || got["baseUrl"] != "https://models.example/v1" {
+		t.Fatalf("openAI = %v", got)
+	}
+}
+
+func TestModelRejectsAPIFormatItCannotRender(t *testing.T) {
+	for name, model := range map[string]string{
+		"other provider": `{"provider":"Anthropic","name":"example","api_format":"responses"}`,
+		"unknown format": `{"provider":"OpenAI","name":"example","api_format":"assistants"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			definition, err := DecodeDefinition[ModelDefinition](strings.NewReader(`{"name":"incident-model","model":` + model + `}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := RenderModelDefinition("kagent", definition); err == nil {
+				t.Fatal("unsupported API format accepted")
+			}
+		})
+	}
+}

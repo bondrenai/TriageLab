@@ -57,7 +57,8 @@ example is only a reproduction fixture.
   **kagent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
   work and verification should run remotely on resource-constrained laptops.
 - kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0 packaging fork**.
-- A model credential configured in kagent. The example uses `gpt-4.1`.
+- A model credential configured in kagent. The example uses OpenAI's
+  `gpt-6.1-sol` through the Responses API.
 
 See [development setup](docs/development.md) for exact installation, private
 port-forwarding, credential setup, and teardown. The pinned interfaces are

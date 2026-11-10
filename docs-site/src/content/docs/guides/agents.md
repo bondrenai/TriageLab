@@ -12,7 +12,9 @@ credentials.
 - **Models** — name the model configuration and choose the provider and model
   ID (OpenAI-compatible, Anthropic, Gemini, Mistral, or Ollama). An optional
   endpoint overrides the provider default; for a local Ollama daemon use an
-  endpoint reachable by kagent.
+  endpoint reachable by kagent. For OpenAI, **OpenAI API** selects Chat
+  Completions (kagent's default) or Responses; OpenAI's GPT-6 models need
+  Responses to call tools, which every investigator does.
 - **MCP servers** — enter the server URL and transport. For authenticated
   servers, the referenced Kubernetes Secret entry contains the full
   `Authorization` header value. With live status enabled, the editor uses the
@@ -75,7 +77,8 @@ kubectl --context kind-triagelab apply -f network-investigator.json
 
 A definition contains a `name`, `system_prompt`, a `model` object (or
 `"model_ref": "triagelab-model"` to reuse the installed model), and optional
-`mcp_servers` entries with explicit tool lists. Flags and the full example are
+`mcp_servers` entries with explicit tool lists. An OpenAI `model` can set
+`"api_format": "responses"` to use the Responses API. Flags and the full example are
 in the [CLI reference](/TriageLab/reference/cli/).
 
 ## Use a saved agent
