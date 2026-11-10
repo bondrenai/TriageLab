@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -98,35 +99,180 @@ func TestGeneratedDirectoriesExcluded(t *testing.T) {
 }
 
 func TestSymlinksAndParentTraversalRefused(t *testing.T) {
-	for _, kind := range []string{"file", "directory", "root", "ancestor", "traversal"} {
-		t.Run(kind, func(t *testing.T) {
+	for _, test := range []struct {
+		kind     string
+		location bool
+	}{
+		{"file", false},
+		{"directory", false},
+		{"link under a linked ancestor", false},
+		{"root", true},
+		{"root with trailing slash", true},
+		{"traversal", true},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
 			directory := temporary(t)
 			repo := filepath.Join(directory, "repo")
 			outside := filepath.Join(directory, "outside")
 			put(t, filepath.Join(repo, "app"), []byte("safe"))
 			put(t, filepath.Join(outside, "private"), []byte("private data"))
 			var err error
-			switch kind {
+			switch test.kind {
 			case "file":
 				err = os.Symlink(filepath.Join(outside, "private"), filepath.Join(repo, "link"))
 			case "directory":
 				err = os.Symlink(outside, filepath.Join(repo, "linked-directory"))
+			case "link under a linked ancestor":
+				// Resolving the named location must not relax checks below it.
+				if err = os.Symlink(directory, filepath.Join(directory, "alias")); err == nil {
+					err = os.Symlink(outside, filepath.Join(repo, "linked-directory"))
+				}
+				repo = filepath.Join(directory, "alias", "repo")
 			case "root":
 				repo = filepath.Join(directory, "linked-root")
 				err = os.Symlink(outside, repo)
-			case "ancestor":
-				err = os.Symlink(directory, filepath.Join(directory, "alias"))
-				repo = filepath.Join(directory, "alias", "repo")
+			case "root with trailing slash":
+				// A trailing slash makes lstat follow the link; it must still be refused.
+				err = os.Symlink(outside, filepath.Join(directory, "linked-root"))
+				repo = filepath.Join(directory, "linked-root") + "/"
 			case "traversal":
 				repo = repo + "/missing/.."
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Ingest("bug", repo, nil, nil); err == nil {
+			_, err = Ingest("bug", repo, nil, nil)
+			if err == nil {
 				t.Fatal("unsafe path accepted")
 			}
+			if errors.Is(err, ErrLocation) != test.location {
+				t.Fatalf("location classification %v for %v", !test.location, err)
+			}
 		})
+	}
+}
+
+// The operator names a location; links in that path are resolved once.
+// This changes the earlier policy, which refused a linked ancestor.
+func TestNamedLocationMayCrossSymlinks(t *testing.T) {
+	t.Run("repository ancestor", func(t *testing.T) {
+		directory := temporary(t)
+		put(t, filepath.Join(directory, "repo", "app.py"), []byte("pass"))
+		if err := os.Symlink(directory, filepath.Join(directory, "alias")); err != nil {
+			t.Fatal(err)
+		}
+		result, err := Ingest("bug", filepath.Join(directory, "alias", "repo"), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Attachments) != 1 || result.Attachments[0].Path != "app.py" ||
+			result.Environment["repository_name"] != "repo" {
+			t.Fatalf("unexpected case: %#v", result)
+		}
+	})
+	t.Run("unresolved temporary directory", func(t *testing.T) {
+		// On macOS this path crosses the /var link.
+		directory := t.TempDir()
+		put(t, filepath.Join(directory, "app.py"), []byte("pass"))
+		if _, err := Ingest("bug", directory, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("working directory entered through a link", func(t *testing.T) {
+		// The named input is ".", a real directory, even though PWD names a link.
+		directory := temporary(t)
+		put(t, filepath.Join(directory, "repo", "app.py"), []byte("pass"))
+		link := filepath.Join(directory, "current")
+		if err := os.Symlink(filepath.Join(directory, "repo"), link); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(link)
+		result, err := Ingest("bug", ".", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Attachments) != 1 || result.Attachments[0].Path != "app.py" {
+			t.Fatalf("unexpected attachments: %#v", result.Attachments)
+		}
+	})
+	for _, group := range []string{"files", "logs"} {
+		t.Run(group+" parent", func(t *testing.T) {
+			directory := temporary(t)
+			put(t, filepath.Join(directory, "evidence", "failure.log"), []byte("connection failed"))
+			if err := os.Symlink(filepath.Join(directory, "evidence"), filepath.Join(directory, "alias")); err != nil {
+				t.Fatal(err)
+			}
+			named := []string{filepath.Join(directory, "alias", "failure.log")}
+			files, logs := named, []string(nil)
+			if group == "logs" {
+				files, logs = nil, named
+			}
+			result, err := Ingest("bug", "", files, logs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Attachments) != 1 || result.Attachments[0].Path != group+"/failure.log" {
+				t.Fatalf("unexpected attachments: %#v", result.Attachments)
+			}
+		})
+	}
+}
+
+func TestNamedFileMustNotBeSymlink(t *testing.T) {
+	for _, group := range []string{"files", "logs"} {
+		for _, suffix := range []string{"", "/"} {
+			name := group
+			if suffix != "" {
+				name += " with trailing slash"
+			}
+			t.Run(name, func(t *testing.T) {
+				directory := temporary(t)
+				put(t, filepath.Join(directory, "outside", "private"), []byte("private data"))
+				link := filepath.Join(directory, "failure.log")
+				if err := os.Symlink(filepath.Join(directory, "outside", "private"), link); err != nil {
+					t.Fatal(err)
+				}
+				named := []string{link + suffix}
+				files, logs := named, []string(nil)
+				if group == "logs" {
+					files, logs = nil, named
+				}
+				_, err := Ingest("bug", "", files, logs)
+				if err == nil {
+					t.Fatal("accepted a linked file")
+				}
+				if errors.Is(err, ErrLocation) {
+					t.Fatalf("a linked file is material, not a location problem: %v", err)
+				}
+			})
+		}
+	}
+	t.Run("traversal", func(t *testing.T) {
+		directory := temporary(t)
+		put(t, filepath.Join(directory, "failure.log"), []byte("connection failed"))
+		_, err := Ingest("bug", "", []string{directory + "/missing/../failure.log"}, nil)
+		if !errors.Is(err, ErrLocation) {
+			t.Fatalf("traversal was not refused as a location problem: %v", err)
+		}
+	})
+}
+
+func TestLocationErrorsAreDistinctFromRefusals(t *testing.T) {
+	directory := temporary(t)
+	if _, err := Ingest("bug", filepath.Join(directory, "missing"), nil, nil); !errors.Is(err, ErrLocation) {
+		t.Fatalf("missing repository: %v", err)
+	}
+	if _, err := Ingest("bug", "", []string{filepath.Join(directory, "missing", "x.log")}, nil); !errors.Is(err, ErrLocation) {
+		t.Fatalf("missing file directory: %v", err)
+	}
+	put(t, filepath.Join(directory, "repo", "file"), nil)
+	if _, err := Ingest("bug", filepath.Join(directory, "repo", "file"), nil, nil); !errors.Is(err, ErrLocation) {
+		t.Fatalf("repository that is a file: %v", err)
+	}
+	put(t, filepath.Join(directory, "repo", "capture.log"), []byte("key=AKIA"+strings.Repeat("A", 16)))
+	_, err := Ingest("bug", filepath.Join(directory, "repo"), nil, nil)
+	if err == nil || errors.Is(err, ErrLocation) {
+		t.Fatalf("content refusal classified as a location problem: %v", err)
 	}
 }
 
@@ -164,6 +310,8 @@ func TestCredentialInputsRefused(t *testing.T) {
 		"token=ghp_" + strings.Repeat("A", 36),
 		"key=AKIA" + strings.Repeat("A", 16),
 		"token=sk-proj-" + strings.Repeat("A", 40),
+		"token=github_pat_" + strings.Repeat("A", 40),
+		"token=xoxb-" + strings.Repeat("A", 24),
 	} {
 		directory := temporary(t)
 		put(t, filepath.Join(directory, "capture.log"), []byte(content))

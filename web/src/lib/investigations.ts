@@ -7,6 +7,7 @@ export const getSettings = () => request<Settings>("/api/settings");
 export const listRuns = () => request<{ runs: RunSummary[] }>("/api/runs");
 export const getRun = (id: string) => request<InvestigationReport>(`/api/runs/${encodeURIComponent(id)}`);
 export const cancelRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+export const cleanupRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cleanup`, { method: "POST" });
 
 export const postTicketNote = (id: string, plan: string) =>
   request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });

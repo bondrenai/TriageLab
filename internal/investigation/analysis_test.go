@@ -13,11 +13,12 @@ func validAnalysis() map[string]any {
 		"reproduction_steps": []any{"python3 app.py", "python3 app.py --timeout-ms 5000"}, "next_actions": []any{"Correct configuration"}, "missing_information": []any{},
 	}
 }
-func analysisText() string { data, _ := json.Marshal(validAnalysis()); return string(data) }
-func validExperiments() []map[string]any {
-	return []map[string]any{
-		{"process_id": "failed", "state": "PROCESS_STATE_EXITED", "exit_code": 1, "truncated": false},
-		{"process_id": "corrected", "state": "PROCESS_STATE_EXITED", "exit_code": 0, "truncated": false},
+func analysisText() string   { data, _ := json.Marshal(validAnalysis()); return string(data) }
+func exitCode(code int) *int { return &code }
+func validExperiments() []Experiment {
+	return []Experiment{
+		{ProcessID: "failed", State: "PROCESS_STATE_EXITED", ExitCode: exitCode(1), Output: &Output{}},
+		{ProcessID: "corrected", State: "PROCESS_STATE_EXITED", ExitCode: exitCode(0), Output: &Output{}},
 	}
 }
 
@@ -29,11 +30,14 @@ func TestSupportedAnalysisRetainsReferences(t *testing.T) {
 }
 
 func TestIncompleteExperimentsCannotSupportConclusions(t *testing.T) {
-	for _, change := range []map[string]any{{"truncated": true}, {"timed_out": true}, {"state": "PROCESS_STATE_RUNNING"}, {"exit_code": true}, {"exit_code": 1.5}} {
+	// A non-integral exit code cannot be recorded: observe refuses it (see
+	// TestExitedProcessNeedsAnIntegralExitCode), so here it is simply absent.
+	for _, change := range []func(*Experiment){
+		func(e *Experiment) { e.Output.Truncated = true }, func(e *Experiment) { e.TimedOut = true },
+		func(e *Experiment) { e.State = "PROCESS_STATE_RUNNING" }, func(e *Experiment) { e.ExitCode = nil },
+	} {
 		records := validExperiments()
-		for key, value := range change {
-			records[0][key] = value
-		}
+		change(&records[0])
 		value, warnings, err := ValidateAnalysis(analysisText(), records)
 		if err != nil || value["outcome"] != "inconclusive" || len(warnings) == 0 {
 			t.Fatalf("invalid evidence accepted: value=%v warnings=%v err=%v", value, warnings, err)
@@ -61,7 +65,7 @@ func TestMissingEvidenceDowngradesReproductionAndNonReproduction(t *testing.T) {
 
 func TestZeroExitCanBeEvidenceForLogicalDefect(t *testing.T) {
 	records := validExperiments()
-	records[0]["exit_code"] = 0
+	records[0].ExitCode = exitCode(0)
 	value, _, err := ValidateAnalysis(analysisText(), records)
 	if err != nil || value["outcome"] != "reproduced" {
 		t.Fatalf("logical failures can exit 0: value=%v err=%v", value, err)

@@ -202,9 +202,7 @@ func validOrigin(origin string) error {
 	if host == "*" {
 		return fmt.Errorf("wildcard destinations must name a domain such as https://*.example.com")
 	}
-	if strings.HasPrefix(host, "*.") {
-		host = strings.TrimPrefix(host, "*.")
-	}
+	host = strings.TrimPrefix(host, "*.")
 	if strings.Contains(host, "*") {
 		return fmt.Errorf("a wildcard may replace only the leftmost domain label")
 	}

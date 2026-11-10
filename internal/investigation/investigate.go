@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -48,7 +49,6 @@ func integer(v any) (int, bool) {
 	}
 	return 0, false
 }
-func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 func terminal(s string) bool {
 	return s == "TASK_STATE_COMPLETED" || s == "TASK_STATE_FAILED" || s == "TASK_STATE_CANCELED" || s == "TASK_STATE_REJECTED"
 }
@@ -81,12 +81,59 @@ func (i *Investigator) call(ctx context.Context, name string, args map[string]an
 func (i *Investigator) pause(ctx context.Context) error {
 	return wait(ctx, time.Duration(i.Config.PollInterval)*time.Second)
 }
-func (i *Investigator) persist(dir string, r map[string]any) error {
+
+// readAttempts bounds one read-only KAgent call: it tolerates two consecutive
+// transient failures, pausing one poll interval before each repeat. Uploads,
+// process starts and kills, and the model invocation are never repeated here.
+const readAttempts = 3
+
+// transient reports failures that a read-only call may safely repeat: a lost
+// or timed-out connection, such as a dropped port-forward, or a gateway that
+// reports its upstream temporarily unavailable. Protocol, JSON-RPC, tool, and
+// other HTTP failures are deterministic or unexplained and fail the run.
+func transient(err error) bool {
+	var upstream *kagent.Error
+	if !errors.As(err, &upstream) {
+		return false
+	}
+	switch upstream.Kind {
+	case "timeout", "transport":
+		return true
+	case "http":
+		return upstream.Code == http.StatusBadGateway || upstream.Code == http.StatusServiceUnavailable || upstream.Code == http.StatusGatewayTimeout
+	}
+	return false
+}
+
+// retryRead runs a read-only operation and repeats it after transient failures.
+// The caller's context still bounds every attempt and pause; an interrupted
+// pause returns the last failure for the caller to classify with ctx.
+func retryRead[T any](ctx context.Context, i *Investigator, name string, read func() (T, error)) (T, error) {
+	for attempt := 1; ; attempt++ {
+		value, err := read()
+		if err == nil || !transient(err) {
+			return value, err
+		}
+		if attempt == readAttempts {
+			return value, fmt.Errorf("%s failed %d consecutive times: %w", name, attempt, err)
+		}
+		i.progress(fmt.Sprintf("KAgent %s read failed; retrying (%d of %d)", name, attempt+1, readAttempts))
+		if i.pause(ctx) != nil {
+			return value, err
+		}
+	}
+}
+
+// read calls a read-only KAgent tool with bounded transient-failure tolerance.
+func (i *Investigator) read(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
+	return retryRead(ctx, i, name, func() (map[string]any, error) { return i.call(ctx, name, args) })
+}
+func (i *Investigator) persist(dir string, r *Report) error {
 	return report.Write(dir, r, i.Secrets...)
 }
 
 // Run always attempts cleanup and persists an error report, including interrupted or failed runs.
-func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) (result map[string]any, returnErr error) {
+func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) (result *Report, returnErr error) {
 	if err := i.Config.Validate(); err != nil {
 		return nil, err
 	}
@@ -96,17 +143,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
 	defer cancel()
 	request := map[string]any{"namespace": i.Config.Namespace, "template": i.Config.Template, "request_id": c.ID, "name": "triagelab-" + c.ID, "ttl_seconds": i.Config.SandboxTTL}
-	result = map[string]any{
-		"schema_version": 1, "run_id": c.ID, "case": c, "started_at": stamp(), "finished_at": nil,
-		"status": "running", "outcome": "inconclusive", "sandbox": map[string]any{}, "session": map[string]any{},
-		"agent":            map[string]string{"namespace": i.Config.Namespace, "name": i.Config.Agent},
-		"sandbox_template": i.Config.Template,
-		"sandbox_request":  request, "experiments": []map[string]any{}, "tool_calls": []kagent.ToolCall{}, "analysis": map[string]any{},
-		"warnings": []string{}, "errors": []string{},
-		"connection": map[string]any{"endpoint": i.Config.Endpoint, "user_id": i.Config.UserID, "namespace": i.Config.Namespace},
-		"cleanup":    map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}},
-		"upstream":   map[string]any{"kagent": kagent.Version, "substrate": "v1.0.0"},
-	}
+	result = newReport(c, i.Config, request)
 	if err := i.persist(dir, result); err != nil {
 		return result, err
 	}
@@ -116,38 +153,37 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			if ctx.Err() != nil {
 				returnErr = errors.Join(returnErr, ctx.Err())
 			}
-			status := "error"
+			result.Status = StatusError
 			if errors.Is(returnErr, context.Canceled) {
-				status = "interrupted"
+				result.Status = StatusInterrupted
 			} else if errors.Is(returnErr, context.DeadlineExceeded) {
-				status = "timed_out"
+				result.Status = StatusTimedOut
 			}
-			result["status"] = status
-			result["errors"] = append(result["errors"].([]string), returnErr.Error())
+			result.Errors = append(result.Errors, returnErr.Error())
 		}
 		i.progress("Collecting final evidence and cleaning up")
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		// If invocation timed out, recover its task through the already-journalled Session.
-		session := obj(result["session"])
-		if str(session["id"]) != "" && str(session["task_id"]) == "" {
-			summary, err := i.call(cleanupCtx, "get_session", map[string]any{"session_id": session["id"], "last_turns": 1})
+		if result.sessionID() != "" && result.taskID() == "" {
+			summary, err := i.call(cleanupCtx, "get_session", map[string]any{"session_id": result.Session["id"], "last_turns": 1})
 			if err == nil {
 				turns, _ := summary["turns"].([]any)
 				if len(turns) > 0 {
-					session["task_id"] = obj(turns[len(turns)-1])["task_id"]
+					result.Session["task_id"] = obj(turns[len(turns)-1])["task_id"]
 				}
 			}
 		}
-		if returnErr != nil && str(session["task_id"]) != "" {
+		if returnErr != nil && result.taskID() != "" {
 			captureCtx, cc := context.WithTimeout(cleanupCtx, 20*time.Second)
 			if _, err := i.observe(captureCtx, result, observed); err != nil {
-				result["warnings"] = append(result["warnings"].([]string), "Final evidence capture was incomplete")
+				result.Warnings = append(result.Warnings, "Final evidence capture was incomplete")
 			}
 			cc()
 		}
 		i.Cleanup(cleanupCtx, result)
-		result["finished_at"] = stamp()
+		finished := time.Now().UTC()
+		result.FinishedAt = &finished
 		if err := i.persist(dir, result); err != nil {
 			returnErr = errors.Join(returnErr, fmt.Errorf("save report: %w", err))
 		}
@@ -160,8 +196,8 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if err != nil {
 			var upstream *kagent.Error
 			uncertain := errors.As(err, &upstream) && (upstream.Kind == "timeout" || upstream.Kind == "transport")
-			if uncertain && str(obj(result["sandbox"])["id"]) == "" {
-				result["creation_uncertain"] = true
+			if uncertain && result.sandboxID() == "" {
+				result.CreationUncertain = flag(true)
 			}
 			if attempt == 0 && uncertain {
 				continue
@@ -171,8 +207,8 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if str(sandbox["id"]) == "" {
 			return result, fmt.Errorf("create_sandbox omitted resource ID")
 		}
-		result["sandbox"] = sandbox
-		result["creation_uncertain"] = false
+		result.Sandbox = sandbox
+		result.CreationUncertain = flag(false)
 		if err = i.persist(dir, result); err != nil {
 			return result, err
 		}
@@ -207,7 +243,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	}
 	i.progress("Starting the KAgent investigator")
 	sessionRequest := map[string]any{"agent": map[string]any{"namespace": i.Config.Namespace, "name": i.Config.Agent}, "request_id": c.ID, "name": "triagelab-" + c.ID}
-	result["session_request"] = sessionRequest
+	result.SessionRequest = sessionRequest
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
@@ -222,7 +258,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if !errors.As(err, &upstream) || (upstream.Kind != "timeout" && upstream.Kind != "transport") {
 			return result, err
 		}
-		result["session_creation_uncertain"] = true
+		result.SessionCreationUncertain = flag(true)
 	}
 	if err != nil {
 		return result, fmt.Errorf("create session (request ID retained in report): %w", err)
@@ -231,8 +267,8 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if sessionID == "" {
 		return result, fmt.Errorf("create_session omitted resource ID")
 	}
-	result["session"] = map[string]any{"id": sessionID}
-	result["session_creation_uncertain"] = false
+	result.Session = map[string]any{"id": sessionID}
+	result.SessionCreationUncertain = flag(false)
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
@@ -249,12 +285,12 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if taskID == "" {
 		return result, fmt.Errorf("investigator invocation omitted task ID")
 	}
-	obj(result["session"])["task_id"] = taskID
+	result.Session["task_id"] = taskID
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
 	for {
-		summary, err := i.call(ctx, "get_session", map[string]any{"session_id": sessionID, "last_turns": 1, "max_bytes": 131072})
+		summary, err := i.read(ctx, "get_session", map[string]any{"session_id": sessionID, "last_turns": 1, "max_bytes": 131072})
 		if err != nil {
 			return result, err
 		}
@@ -272,7 +308,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if str(turn["task_id"]) != taskID {
 			return result, fmt.Errorf("unexpected task identity")
 		}
-		result["task_state"] = turn["state"]
+		result.TaskState = str(turn["state"])
 		reply, err := i.observe(ctx, result, observed)
 		if err != nil {
 			return result, err
@@ -284,9 +320,8 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			if turn["state"] != "TASK_STATE_COMPLETED" {
 				return result, fmt.Errorf("investigator stopped with %s", str(turn["state"]))
 			}
-			experiments := result["experiments"].([]map[string]any)
-			for _, e := range experiments {
-				if e["state"] != "PROCESS_STATE_EXITED" {
+			for _, e := range result.Experiments {
+				if !e.exited() {
 					return result, fmt.Errorf("investigator finished with experiments still running")
 				}
 			}
@@ -296,14 +331,14 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 				}
 				reply = str(turn["reply"])
 			}
-			analysis, warnings, err := ValidateAnalysis(reply, experiments)
+			analysis, warnings, err := ValidateAnalysis(reply, result.Experiments)
 			if err != nil {
 				return result, err
 			}
-			result["analysis"] = analysis
-			result["warnings"] = warnings
-			result["outcome"] = analysis["outcome"]
-			result["status"] = "completed"
+			result.Analysis = analysis
+			result.Warnings = warnings
+			result.Outcome = Outcome(str(analysis["outcome"]))
+			result.Status = StatusCompleted
 			return result, nil
 		}
 		if err = i.pause(ctx); err != nil {
@@ -312,13 +347,14 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	}
 }
 
-func (i *Investigator) observe(ctx context.Context, r map[string]any, observed map[string]time.Time) (string, error) {
+func (i *Investigator) observe(ctx context.Context, r *Report, observed map[string]time.Time) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	session := obj(r["session"])
-	sid := str(obj(r["sandbox"])["id"])
-	items, err := i.Client.TaskItems(ctx, str(session["id"]), str(session["task_id"]))
+	sid := r.sandboxID()
+	items, err := retryRead(ctx, i, "get_task", func() ([]map[string]any, error) {
+		return i.Client.TaskItems(ctx, r.sessionID(), r.taskID())
+	})
 	if err != nil {
 		return "", err
 	}
@@ -326,24 +362,22 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 	if err != nil {
 		return "", err
 	}
-	r["tool_calls"] = calls
+	r.ToolCalls = calls
 	starts, err := kagent.ProcessStarts(calls, sid)
 	if err != nil {
 		return "", err
 	}
-	experiments := r["experiments"].([]map[string]any)
 	known := map[string]bool{}
-	for _, e := range experiments {
-		known[str(e["process_id"])] = true
+	for _, e := range r.Experiments {
+		known[e.ProcessID] = true
 	}
 	for _, start := range starts {
 		if !known[start.ProcessID] {
-			experiments = append(experiments, map[string]any{"call_id": start.CallID, "process_id": start.ProcessID, "command": start.Command, "cwd": start.CWD, "env": start.Env})
+			r.Experiments = append(r.Experiments, Experiment{CallID: start.CallID, ProcessID: start.ProcessID, Command: start.Command, CWD: start.CWD, Env: start.Env})
 			known[start.ProcessID] = true
-			i.progress(fmt.Sprintf("Experiment %d started", len(experiments)))
+			i.progress(fmt.Sprintf("Experiment %d started", len(r.Experiments)))
 		}
 	}
-	r["experiments"] = experiments
 	for _, call := range calls {
 		if !agent.IsSandboxTool(call.Name) && !slices.Contains(i.AdditionalTools, call.Name) {
 			return "", fmt.Errorf("investigator used a tool outside the configured tool set")
@@ -358,40 +392,39 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 	if startAttempts > i.Config.MaxExperiments {
 		return "", fmt.Errorf("investigator exceeded the experiment limit")
 	}
-	for _, e := range experiments {
-		if e["state"] == "PROCESS_STATE_EXITED" && e["outputs_complete"] == true {
+	for index := range r.Experiments {
+		e := &r.Experiments[index]
+		if e.exited() && e.OutputsComplete {
 			continue
 		}
-		pid := str(e["process_id"])
+		pid := e.ProcessID
 		if _, ok := observed[pid]; !ok {
 			observed[pid] = time.Now()
 		}
-		state, err := i.call(ctx, "get_sandbox_process", map[string]any{"sandbox_id": sid, "process_id": pid})
+		state, err := i.read(ctx, "get_sandbox_process", map[string]any{"sandbox_id": sid, "process_id": pid})
 		if err != nil {
 			return "", err
 		}
 		if str(state["process_id"]) != pid {
 			return "", fmt.Errorf("process identity mismatch")
 		}
-		e["state"] = state["state"]
-		if state["state"] == "PROCESS_STATE_EXITED" {
+		e.State = str(state["state"])
+		if e.exited() {
 			code, ok := integer(state["exit_code"])
 			if !ok {
 				return "", fmt.Errorf("exited process has no valid exit code")
 			}
-			e["exit_code"] = code
-			outputs, err := i.readOutputs(ctx, sid, pid)
+			e.ExitCode = &code
+			output, err := i.readOutputs(ctx, sid, pid)
 			if err != nil {
 				return "", err
 			}
-			for key, value := range outputs {
-				e[key] = value
-			}
-			e["outputs_complete"] = true
+			e.Output = &output
+			e.OutputsComplete = true
 			i.progress(fmt.Sprintf("Experiment finished: exit %d", code))
 		} else if time.Since(observed[pid]) >= time.Duration(i.Config.ProcessTimeout)*time.Second {
 			_, err := i.call(ctx, "kill_sandbox_process", map[string]any{"sandbox_id": sid, "process_id": pid})
-			e["timed_out"] = true
+			e.TimedOut = true
 			if err != nil {
 				return "", fmt.Errorf("kill timed-out process: %w", err)
 			}
@@ -401,28 +434,29 @@ func (i *Investigator) observe(ctx context.Context, r map[string]any, observed m
 	return kagent.AgentReply(items), nil
 }
 
-func (i *Investigator) readOutputs(ctx context.Context, sid, pid string) (map[string]any, error) {
+func (i *Investigator) readOutputs(ctx context.Context, sid, pid string) (Output, error) {
 	streams := map[string][]byte{"stdout": {}, "stderr": {}}
 	offsets := map[string]int{"stdout": 0, "stderr": 0}
 	truncated := false
 	for {
-		output, err := i.call(ctx, "read_sandbox_outputs", map[string]any{"sandbox_id": sid, "process_id": pid, "stdout_offset": offsets["stdout"], "stderr_offset": offsets["stderr"]})
+		// Offsets advance only after a page is accepted, so a repeated read is identical.
+		output, err := i.read(ctx, "read_sandbox_outputs", map[string]any{"sandbox_id": sid, "process_id": pid, "stdout_offset": offsets["stdout"], "stderr_offset": offsets["stderr"]})
 		if err != nil {
-			return nil, err
+			return Output{}, err
 		}
 		before := offsets["stdout"] + offsets["stderr"]
 		for _, name := range []string{"stdout", "stderr"} {
 			text, ok := output[name+"_base64"].(string)
 			if !ok {
-				return nil, fmt.Errorf("missing process output")
+				return Output{}, fmt.Errorf("missing process output")
 			}
 			data, err := base64.StdEncoding.Strict().DecodeString(text)
 			if err != nil {
-				return nil, fmt.Errorf("invalid process output base64")
+				return Output{}, fmt.Errorf("invalid process output base64")
 			}
 			next, ok := integer(output[name+"_offset"])
 			if !ok || next != offsets[name]+len(data) {
-				return nil, fmt.Errorf("inconsistent process output offsets")
+				return Output{}, fmt.Errorf("inconsistent process output offsets")
 			}
 			offsets[name] = next
 			remaining := i.Config.MaxOutputBytes - len(streams["stdout"]) - len(streams["stderr"])
@@ -436,30 +470,39 @@ func (i *Investigator) readOutputs(ctx context.Context, sid, pid string) (map[st
 			break
 		}
 		if before == offsets["stdout"]+offsets["stderr"] {
-			return nil, fmt.Errorf("process output pagination did not advance")
+			return Output{}, fmt.Errorf("process output pagination did not advance")
 		}
 		if len(streams["stdout"])+len(streams["stderr"]) >= i.Config.MaxOutputBytes {
 			truncated = true
 			break
 		}
 	}
-	return map[string]any{"stdout": strings.ToValidUTF8(string(streams["stdout"]), "�"), "stderr": strings.ToValidUTF8(string(streams["stderr"]), "�"), "truncated": truncated}, nil
+	return Output{Stdout: strings.ToValidUTF8(string(streams["stdout"]), "�"), Stderr: strings.ToValidUTF8(string(streams["stderr"]), "�"), Truncated: truncated}, nil
 }
 
 // Cleanup uses an independent caller-supplied context; get alone does not advance lifecycle work.
-func (i *Investigator) Cleanup(ctx context.Context, r map[string]any) {
-	cleanup := obj(r["cleanup"])
+func (i *Investigator) Cleanup(ctx context.Context, r *Report) {
+	if r.Cleanup == nil {
+		r.Cleanup = &CleanupRecord{}
+	}
 	issues := []string{}
-	for _, resource := range []struct{ kind, marker, request string }{{"session", "session_creation_uncertain", "session_request"}, {"sandbox", "creation_uncertain", "sandbox_request"}} {
-		if r[resource.marker] != true {
+	for _, resource := range []struct {
+		kind      string
+		uncertain **bool
+		request   map[string]any
+		object    *map[string]any
+	}{
+		{"session", &r.SessionCreationUncertain, r.SessionRequest, &r.Session},
+		{"sandbox", &r.CreationUncertain, r.SandboxRequest, &r.Sandbox},
+	} {
+		if !isSet(*resource.uncertain) {
 			continue
 		}
-		request := obj(r[resource.request])
-		if len(request) == 0 {
+		if len(resource.request) == 0 {
 			issues = append(issues, resource.kind+" creation uncertain; original request is unavailable")
 			continue
 		}
-		recovered, err := i.call(ctx, "create_"+resource.kind, request)
+		recovered, err := i.call(ctx, "create_"+resource.kind, resource.request)
 		if resource.kind == "session" {
 			recovered = obj(recovered["session"])
 		}
@@ -467,12 +510,11 @@ func (i *Investigator) Cleanup(ctx context.Context, r map[string]any) {
 			issues = append(issues, resource.kind+" creation remains uncertain; recover using saved idempotency request")
 			continue
 		}
-		r[resource.kind] = recovered
-		r[resource.marker] = false
+		*resource.object = recovered
+		*resource.uncertain = flag(false)
 	}
-	session := obj(r["session"])
-	sid := str(session["id"])
-	tid := str(session["task_id"])
+	sid := r.sessionID()
+	tid := r.taskID()
 	if sid != "" && tid == "" {
 		summary, err := i.call(ctx, "get_session", map[string]any{"session_id": sid, "last_turns": 1})
 		if err == nil {
@@ -480,17 +522,21 @@ func (i *Investigator) Cleanup(ctx context.Context, r map[string]any) {
 			if len(turns) > 0 {
 				turn := obj(turns[len(turns)-1])
 				tid = str(turn["task_id"])
-				session["task_id"] = tid
-				r["task_state"] = turn["state"]
+				r.Session["task_id"] = tid
+				r.TaskState = str(turn["state"])
 			}
 		}
 	}
-	if sid != "" && tid != "" && !terminal(str(r["task_state"])) {
+	if sid != "" && tid != "" && !terminal(r.TaskState) {
 		if err := i.Client.CancelTask(ctx, sid, tid); err != nil {
 			issues = append(issues, fmt.Sprintf("Cancel task: %v", err))
 		}
 	}
-	for _, resource := range []struct{ kind, id string }{{"session", sid}, {"sandbox", str(obj(r["sandbox"])["id"])}} {
+	for _, resource := range []struct {
+		kind    string
+		id      string
+		deleted *bool
+	}{{"session", sid, &r.Cleanup.SessionDeleted}, {"sandbox", r.sandboxID(), &r.Cleanup.SandboxDeleted}} {
 		if resource.id == "" {
 			continue
 		}
@@ -515,10 +561,10 @@ func (i *Investigator) Cleanup(ctx context.Context, r map[string]any) {
 				}
 			}
 		}
-		cleanup[resource.kind+"_deleted"] = deleted
+		*resource.deleted = deleted
 		if !deleted {
 			issues = append(issues, resource.kind+" cleanup: "+lastError+"; retry with saved report IDs")
 		}
 	}
-	cleanup["errors"] = issues
+	r.Cleanup.Errors = issues
 }

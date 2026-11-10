@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowDownToLine, Check, ChevronDown, File, FlaskConical, Square, Terminal } from "lucide-react";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, StatusStamp } from "../components/ui";
-import { useCancelRun, usePostTicketNote, useRun } from "../hooks/use-investigations";
+import { useCancelRun, useCleanupRun, usePostTicketNote, useRun } from "../hooks/use-investigations";
 import { caseTitle, elapsed, exampleReport, fileSize, formatDate, reportURL } from "../lib/investigations";
 import type { Experiment, InvestigationReport, TicketNote } from "../lib/types";
 
@@ -42,7 +42,7 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
     {confirmCancel && active && <div className="notice" role="alert"><strong>Stop this investigation?</strong><p>The current run will end and cleanup will begin. Collected evidence will remain in the report.</p><div className="button-row"><Button onClick={() => { void cancel.mutateAsync().then(() => setConfirmCancel(false)).catch(() => {}); }} disabled={cancel.isPending}>{cancel.isPending ? "Stopping…" : "Stop and clean up"}</Button><Button variant="ghost" onClick={() => setConfirmCancel(false)}>Keep investigating</Button></div></div>}
     {cancel.isError && <ErrorPlate title="The stop request failed" error={cancel.error} />}
     {messages.length > 0 && <ErrorPlate title="This run needs attention" error={[...new Set(messages)].join("\n")} />}
-    {!active && (report.status === "running" || report.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence and use the CLI cleanup command if resources are still present.</p></div>}
+    {!example && !active && (report.status === "running" || report.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence.{report.cleanup ? " Retry cleanup under Resource cleanup if resources may still be present, or run the CLI cleanup command." : " No sandbox or session was recorded, so there is nothing to clean up."}</p></div>}
     {(report.warnings?.length ?? 0) > 0 && <div className="notice"><strong>Investigation notes</strong><ul>{report.warnings?.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
     <div className="report-layout">
       <div className="section-stack">
@@ -58,12 +58,25 @@ function Report({ report, example }: { report: InvestigationReport; example: boo
         {((analysis?.next_actions?.length ?? 0) > 0 || (analysis?.missing_information?.length ?? 0) > 0) && <Panel title="What comes next"><div className="panel-body">{(analysis?.next_actions?.length ?? 0) > 0 && <ul className="prose-list">{analysis?.next_actions?.map((action, index) => <li key={index}>{action}</li>)}</ul>}{(analysis?.missing_information?.length ?? 0) > 0 && <div className="unknowns"><h3>Still unknown</h3><ul className="prose-list">{analysis?.missing_information?.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}</div></Panel>}
       </div>
       <aside className="report-aside section-stack">
-        <Panel title="Run record"><div className="panel-body"><dl className="ledger">{report.agent && <div><dt>Agent</dt><dd className="mono run-agent-name">{report.agent.namespace}/{report.agent.name}</dd></div>}{report.sandbox_template && <div><dt>Sandbox</dt><dd className="mono">{report.sandbox_template}</dd></div>}<div><dt>Started</dt><dd><time dateTime={report.started_at}>{formatDate(report.started_at)}</time></dd></div><div><dt>Duration</dt><dd className="mono">{active ? "In progress" : report.finished_at ? elapsed(report.started_at, report.finished_at) : "Not recorded"}</dd></div><div><dt>Experiments</dt><dd className="mono">{experiments.length}</dd></div><div><dt>Files supplied</dt><dd className="mono">{attachments.length}</dd></div></dl><div className="cleanup-record"><h3>Resource cleanup</h3>{cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : active ? <p>Scheduled when the run ends.</p> : <p>Cleanup is not confirmed. Review the saved report before starting another run.</p>}</div>{!example && <div className="report-downloads"><h3>Download report</h3><a className="button button-secondary" href={reportURL(report.run_id, "json")} download><ArrowDownToLine size={15} aria-hidden="true" />JSON</a><a className="button button-secondary" href={reportURL(report.run_id, "md")} download><ArrowDownToLine size={15} aria-hidden="true" />Markdown</a></div>}</div></Panel>
+        <Panel title="Run record"><div className="panel-body"><dl className="ledger">{report.agent && <div><dt>Agent</dt><dd className="mono run-agent-name">{report.agent.namespace}/{report.agent.name}</dd></div>}{report.sandbox_template && <div><dt>Sandbox</dt><dd className="mono">{report.sandbox_template}</dd></div>}<div><dt>Started</dt><dd><time dateTime={report.started_at}>{formatDate(report.started_at)}</time></dd></div><div><dt>Duration</dt><dd className="mono">{active ? "In progress" : report.finished_at ? elapsed(report.started_at, report.finished_at) : "Not recorded"}</dd></div><div><dt>Experiments</dt><dd className="mono">{experiments.length}</dd></div><div><dt>Files supplied</dt><dd className="mono">{attachments.length}</dd></div></dl><div className="cleanup-record"><h3>Resource cleanup</h3>{cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : active ? <p>Scheduled when the run ends.</p> : <p>Cleanup is not confirmed. Review the saved report before starting another run.</p>}{!example && !active && report.cleanup && <CleanupControl report={report} done={cleanupDone} />}</div>{!example && <div className="report-downloads"><h3>Download report</h3><a className="button button-secondary" href={reportURL(report.run_id, "json")} download><ArrowDownToLine size={15} aria-hidden="true" />JSON</a><a className="button button-secondary" href={reportURL(report.run_id, "md")} download><ArrowDownToLine size={15} aria-hidden="true" />Markdown</a></div>}</div></Panel>
         <Panel title="Original issue"><div className="panel-body"><div className="original-issue" tabIndex={0} role="region" aria-label="Original issue description">{report.case.description.replace(/^#+\s*/, "")}</div></div></Panel>
         <Panel title="Case files" aside={<span className="annotation quiet">{attachments.length}</span>}><div className="panel-body">{attachments.length ? <ul className="attachment-list">{attachments.map(file => <li key={file.path}><File size={15} aria-hidden="true" /><div><span>{file.path}</span><span className="annotation quiet">{fileSize(file.size_bytes)}</span></div></li>)}</ul> : <p className="quiet">No files were supplied.</p>}</div></Panel>
       </aside>
     </div>
   </>;
+}
+
+function CleanupControl({ report, done }: { report: InvestigationReport; done: boolean }) {
+  const cleanup = useCleanupRun(report.run_id);
+  const running = cleanup.isPending || report.cleanup_running === true;
+  return <div className="cleanup-actions">
+    {running && <p role="status">Cleaning up. This can take up to 90 seconds.</p>}
+    {!running && !done && <Button onClick={() => cleanup.mutate()}>Retry cleanup</Button>}
+    {!running && done && cleanup.isSuccess && <p role="status">Cleanup finished.</p>}
+    {!running && !done && cleanup.isSuccess && !report.cleanup_error && <p role="status">Cleanup ran but is still not confirmed. If it keeps failing, use the CLI: <code>triagelab cleanup --report reports/{report.run_id}/report.json</code> with the same configuration.</p>}
+    {report.cleanup_error && <p role="alert">{report.cleanup_error}</p>}
+    {cleanup.isError && <p role="alert">{cleanup.error instanceof Error ? cleanup.error.message : "Cleanup could not be started."}</p>}
+  </div>;
 }
 
 function TicketNotePanel({ runID, note }: { runID: string; note: TicketNote }) {

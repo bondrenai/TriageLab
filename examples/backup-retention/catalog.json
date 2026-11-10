@@ -1,0 +1,41 @@
+{
+  "bucket": "orders-db-backups",
+  "snapshot_taken": "2026-03-04T23:55:00+00:00",
+  "backups": [
+    {
+      "name": "orders-db-2026-03-01.dump",
+      "created": "2026-03-01T02:00:11+00:00",
+      "size_mb": 4810,
+      "source": "nightly",
+      "sha256": "202b0b2458e717f4c7c21b11991a67a33aec23589b014f7a0508a6451eb6675b"
+    },
+    {
+      "name": "orders-db-2026-03-04.dump",
+      "created": "2026-03-04T02:00:09+00:00",
+      "size_mb": 4932,
+      "source": "nightly",
+      "sha256": "6f2254e17dd006356cac5c16df57c7e403e8b69efd7e8d73418eb90e75b58666"
+    },
+    {
+      "name": "orders-db-2026-02-28.dump",
+      "created": "2026-02-28T02:00:07+00:00",
+      "size_mb": 4795,
+      "source": "nightly",
+      "sha256": "077b618f0407bc2f46c1cb2349da8e603fde963af90a301cebe4376c9aa2bdfd"
+    },
+    {
+      "name": "orders-db-2026-03-02-manual.dump",
+      "created": "2026-03-02T16:42:30+00:00",
+      "size_mb": 4850,
+      "source": "manual",
+      "sha256": null
+    },
+    {
+      "name": "orders-db-2026-03-03.dump",
+      "created": "2026-03-03T02:00:12+00:00",
+      "size_mb": 4901,
+      "source": "nightly",
+      "sha256": "14f38ac3021b9ccc0830584c35a1d668160d406a4125b9404bdf82cba4684c15"
+    }
+  ]
+}

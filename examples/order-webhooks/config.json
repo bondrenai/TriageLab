@@ -1,0 +1,9 @@
+{
+  "endpoint": "https://partner-hooks.example.invalid/orders",
+  "event_types": ["order.created", "order.paid", "order.refunded"],
+  "retry": {
+    "max_attempts": 5,
+    "backoff_ms": 250,
+    "retry_on_status": ["429", "502", "503", "504"]
+  }
+}

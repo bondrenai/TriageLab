@@ -47,43 +47,74 @@ type Client struct {
 	endpoint string
 	user     string
 	token    string
+	version  string
 	http     *http.Client
 }
 
-// Option adjusts a development-deployment policy check of New.
-type Option func(*policy)
+// Option adjusts New.
+type Option func(*options)
 
-type policy struct{ allowClusterHTTP bool }
+type options struct {
+	allowClusterHTTP bool
+	version          string
+}
 
 // AllowClusterHTTP permits plain HTTP to in-cluster Kubernetes service
 // endpoints (*.svc, *.svc.cluster.local). It exists for a dedicated
 // single-user deployment whose pod network is the trust boundary.
 func AllowClusterHTTP() Option {
-	return func(p *policy) { p.allowClusterHTTP = true }
+	return func(o *options) { o.allowClusterHTTP = true }
 }
 
-// New creates a bounded, TLS-verifying client. endpoint may be a controller base
-// URL or its complete /mcp URL. Redirects and ambient HTTP proxies are disabled.
-func New(endpoint, user, token string, timeout time.Duration, opts ...Option) (*Client, error) {
-	p := policy{}
-	for _, opt := range opts {
-		opt(&p)
-	}
+// ClientVersion sets the TriageLab build version announced in MCP clientInfo.
+// The composing command supplies it; without it the client announces "unknown".
+func ClientVersion(version string) Option {
+	return func(o *options) { o.version = version }
+}
+
+// CheckEndpoint applies the endpoint policy shared by configuration validation
+// and New: HTTP(S) without credentials, query, or fragment, and plain HTTP only
+// on loopback or, when allowClusterHTTP is set, on in-cluster service names.
+func CheckEndpoint(endpoint string, allowClusterHTTP bool) error {
+	_, err := parseEndpoint(endpoint, allowClusterHTTP)
+	return err
+}
+
+func parseEndpoint(endpoint string, allowClusterHTTP bool) (*url.URL, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
 		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("KAgent endpoint must be HTTP(S) without credentials, query, or fragment")
 	}
-	if u.Scheme == "http" {
-		host := strings.ToLower(u.Hostname())
-		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-			if !p.allowClusterHTTP {
-				return nil, fmt.Errorf("remote KAgent endpoints require HTTPS; use a loopback port-forward")
-			}
-			if !strings.HasSuffix(host, ".svc") && !strings.HasSuffix(host, ".svc.cluster.local") {
-				return nil, fmt.Errorf("cluster HTTP is limited to *.svc and *.svc.cluster.local service endpoints")
-			}
-		}
+	if u.Scheme == "https" {
+		return u, nil
+	}
+	// IP-literal and public names stay excluded so the cluster opt-in cannot
+	// hide a broader network exposure.
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case host == "localhost" || host == "127.0.0.1" || host == "::1":
+	case !allowClusterHTTP:
+		return nil, fmt.Errorf("plain HTTP is allowed only on loopback; use a loopback port-forward or SSH tunnel, or allow_cluster_http inside a dedicated cluster")
+	case !strings.HasSuffix(host, ".svc") && !strings.HasSuffix(host, ".svc.cluster.local"):
+		return nil, fmt.Errorf("allow_cluster_http permits plain HTTP only on *.svc and *.svc.cluster.local service endpoints")
+	}
+	return u, nil
+}
+
+// New creates a bounded, TLS-verifying client. endpoint may be a controller base
+// URL or its complete /mcp URL. Redirects and ambient HTTP proxies are disabled.
+func New(endpoint, user, token string, timeout time.Duration, opts ...Option) (*Client, error) {
+	o := options{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.version == "" {
+		o.version = "unknown"
+	}
+	u, err := parseEndpoint(endpoint, o.allowClusterHTTP)
+	if err != nil {
+		return nil, err
 	}
 	if timeout <= 0 {
 		return nil, fmt.Errorf("HTTP timeout must be positive")
@@ -100,7 +131,7 @@ func New(endpoint, user, token string, timeout time.Duration, opts ...Option) (*
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	return &Client{endpoint: endpoint, user: user, token: token, http: &http.Client{
+	return &Client{endpoint: endpoint, user: user, token: token, version: o.version, http: &http.Client{
 		Timeout: timeout, Transport: transport,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
@@ -133,7 +164,7 @@ func (c *Client) rpc(ctx context.Context, method string, params map[string]any) 
 	}
 	requestParams["_meta"] = map[string]any{
 		"io.modelcontextprotocol/protocolVersion":    MCPVersion,
-		"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "triagelab", "version": "0.1.0"},
+		"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "triagelab", "version": c.version},
 		"io.modelcontextprotocol/clientCapabilities": map[string]any{"extensions": map[string]any{tasksExtension: map[string]any{}}},
 	}
 	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": requestParams})

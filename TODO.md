@@ -1,5 +1,13 @@
 # Roadmap
 
+- [ ] Run the evaluation corpus in `examples/` live and calibrate
+      `examples/corpus.json`. Five of its six cases, including the
+      prompt-injection bait, have never met a model; their expectations are
+      design intent until a scorecard exists.
+- [ ] Move off Go 1.25.12. `make vulncheck` reports 17 standard-library
+      advisories: five are fixed in 1.25.13 and twelve only in 1.26.9 or
+      1.26.10. The CI `vulncheck` job, and the release it gates, stay red until
+      `go.mod`, the workflow and Dockerfile pins, and `docs/upstream.md` move.
 - [ ] Review held drafts and blocked notes from the first pilots and tune the
       input and output sanitizers: deny-list matching thresholds, per-source
       internal terms, and provenance of applied redactions, before widening
@@ -11,6 +19,9 @@
       2026-11-09: install, readiness, doctor, port-forward UI, loopback
       isolation, token rotation, failed-run report on the PVC, and full
       sandbox/session cleanup; the model call was the only unexercised step.)
+      The reworked release workflow has itself never run: the CI gate, the
+      linux/arm64 image, the provenance attestation, and the CLI binaries
+      attached to the GitHub Release are all unexercised.
 - [ ] Repeat the Zendesk pilot with a controlled requester inbox and verify
       internal note delivery. Run a controlled GitHub issue pilot covering
       clarification follow-ups, investigation comments, and uncertain delivery.

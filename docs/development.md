@@ -24,6 +24,8 @@ unchanged (loopback listener, `kubectl port-forward` only).
   its socket is never mounted into an investigator or reproduction sandbox.
 - Go 1.25.12, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
+- A C compiler (`gcc` or `clang`). `make check` runs the tests with the race
+  detector, which needs cgo; the released binary is still built without it.
 - KAgent CLI **1.0.0-rc3**, matching the charts and runtime images.
 - A provider account/key for the real agent. The example uses the upstream
   `gpt-4.1` model, with bounded investigation limits. Model calls incur provider charges.
@@ -150,7 +152,12 @@ Run tests, lint, and formatting on the VM:
 
 ```sh
 make check
+make lint
+make vulncheck
 ```
+
+`make lint` and `make vulncheck` download pinned staticcheck and govulncheck
+builds with `go run`, so they need network access to the Go module proxy.
 
 Inspect template and agent readiness before diagnosing a model problem:
 

@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # Also called by release.yml so a release publishes only after these checks pass.
+  workflow_call:
   push:
   pull_request:
   workflow_dispatch:
@@ -19,7 +21,12 @@ env:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    name: checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -27,6 +34,27 @@ jobs:
           go-version: "1.25.12"
           cache: false # stdlib-only module has no go.sum
       - run: make check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.12"
+          cache: false # stdlib-only module has no go.sum
+      - run: make lint # staticcheck at a pinned version; see staticcheck.conf
+
+  # Separate from lint so a toolchain advisory is not mistaken for a code finding.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.12"
+          cache: false # stdlib-only module has no go.sum
+      - run: make vulncheck # govulncheck at a pinned version
 
   frontend:
     runs-on: ubuntu-latest
@@ -57,7 +85,7 @@ jobs:
   integration:
     if: github.event_name == 'workflow_dispatch' && inputs.run_integration
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

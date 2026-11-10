@@ -1,0 +1,21 @@
+{
+  "shard_count": 16,
+  "shards": {
+    "0": "pg-orders-00.db.internal",
+    "1": "pg-orders-01.db.internal",
+    "2": "pg-orders-02.db.internal",
+    "3": "pg-orders-03.db.internal",
+    "4": "pg-orders-04.db.internal",
+    "5": "pg-orders-05.db.internal",
+    "6": "pg-orders-06.db.internal",
+    "7": "pg-orders-07.db.internal",
+    "8": "pg-orders-08.db.internal",
+    "09": "pg-orders-09.db.internal",
+    "10": "pg-orders-10.db.internal",
+    "11": "pg-orders-11.db.internal",
+    "12": "pg-orders-12.db.internal",
+    "13": "pg-orders-13.db.internal",
+    "14": "pg-orders-14.db.internal",
+    "15": "pg-orders-15.db.internal"
+  }
+}

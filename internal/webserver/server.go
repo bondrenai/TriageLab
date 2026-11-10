@@ -55,6 +55,8 @@ type Server struct {
 	activeID       string
 	active         *runningCase
 	closed         bool
+	cleaning       *runCleanup
+	cleanupFailure map[string]string
 	tickets        *ticketflow.Flow
 	deployments    *kagent.DeploymentReader
 	resourceWrites bool
@@ -110,10 +112,21 @@ func (s *Server) Close(ctx context.Context) error {
 	if active != nil {
 		active.cancel()
 	}
+	cleaning := s.cleaning
+	if cleaning != nil {
+		cleaning.cancel()
+	}
 	s.mu.Unlock()
 	if active != nil {
 		select {
 		case <-active.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if cleaning != nil {
+		select {
+		case <-cleaning.done:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -340,7 +353,17 @@ func (s *Server) reportRoot(id string) (*os.Root, error) {
 	return root, nil
 }
 
+// readReport returns the redacted copy served to the browser. Mutating
+// operations must use readSavedReport so redaction is never written back.
 func (s *Server) readReport(id string) (map[string]any, error) {
+	content, err := s.readReportFile(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.decodeReport(content, id)
+}
+
+func (s *Server) readReportFile(id string) ([]byte, error) {
 	root, err := s.reportRoot(id)
 	if err != nil {
 		return nil, err
@@ -355,10 +378,10 @@ func (s *Server) readReport(id string) (map[string]any, error) {
 	if err != nil || len(content) > maxReportBytes {
 		return nil, fmt.Errorf("cannot read report")
 	}
-	return s.decodeReport(content, id)
+	return content, nil
 }
 
-func (s *Server) decodeReport(content []byte, id string) (map[string]any, error) {
+func decodeSaved(content []byte, id string) (map[string]any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.UseNumber()
 	var saved map[string]any
@@ -368,6 +391,14 @@ func (s *Server) decodeReport(content []byte, id string) (map[string]any, error)
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return nil, fmt.Errorf("invalid report")
+	}
+	return saved, nil
+}
+
+func (s *Server) decodeReport(content []byte, id string) (map[string]any, error) {
+	saved, err := decodeSaved(content, id)
+	if err != nil {
+		return nil, err
 	}
 	return report.Redact(saved, s.secrets...).(map[string]any), nil
 }
@@ -415,6 +446,10 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		s.postTicketNote(w, r, id)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "cleanup" && r.Method == http.MethodPost {
+		s.startCleanup(w, id)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
 		s.mu.Lock()
 		if s.activeID != id || s.active == nil {
@@ -446,6 +481,10 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	saved["active"] = s.activeID == id
+	saved["cleanup_running"] = s.cleaning != nil && s.cleaning.id == id
+	if message := s.cleanupFailure[id]; message != "" {
+		saved["cleanup_error"] = message
+	}
 	saved["progress"] = []string{}
 	if s.activeID == id && s.active != nil {
 		saved["progress"] = append([]string{}, s.active.progress...)
@@ -688,8 +727,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 		s.mu.Unlock()
 		return errRunStore
 	}
-	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "agent": map[string]string{"namespace": config.Namespace, "name": config.Agent}, "sandbox_template": config.Template, "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
-	if err := report.Write(dir, initial, s.secrets...); err != nil {
+	if err := report.Write(dir, investigation.QueuedReport(c, config), s.secrets...); err != nil {
 		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
 		return errRunStore

@@ -10,12 +10,14 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/bondrenai/TriageLab/internal/secretpattern"
 )
 
 var (
 	secretKey            = regexp.MustCompile(`(?i)^(?:authorization|(?:[a-z]+[_-])?api[_-]?key|(?:access|refresh|id|bearer)[_-]?token|token|(?:client[_-])?secret|password|passwd|private[_-]?key)$`)
-	privateKey           = regexp.MustCompile(`(?s)-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----.*?(?:-----END (?:[A-Z ]+ )?PRIVATE KEY-----|\z)`)
-	knownToken           = regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|sk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}|xox[baprs]-[A-Za-z0-9-]{20,})\b`)
+	privateKey           = secretpattern.PrivateKey
+	knownToken           = secretpattern.KnownToken
 	credentialAssignment = regexp.MustCompile(`(?i)(\b(?:[a-z_]*api[_-]?key|authorization|password|passwd|(?:access|refresh|id|bearer)[_-]?token|token|client[_-]?secret)\s*[=:]\s*["']?)(?:(?:bearer|basic)\s+)?[^\s"',;<>]+`)
 	bearer               = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
 	ansi                 = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]`)
@@ -171,6 +173,7 @@ func render(data map[string]any) string {
 	section("Run result", selectFields(data, "run_id", "status", "outcome", "started_at", "finished_at"))
 	section("Original case and input inventory", data["case"])
 	section("Runtime references", selectFields(data, "agent", "sandbox_template", "sandbox", "session"))
+	section("Build provenance (definitions embedded in this TriageLab binary; the deployed Agent is not read back)", selectFields(data, "triagelab", "upstream"))
 	output.WriteString("\n## Experiments and independently collected evidence\n\n")
 	experiments, _ := data["experiments"].([]any)
 	if len(experiments) == 0 {
@@ -249,7 +252,9 @@ func atomicWrite(name string, content []byte) error {
 
 // Write replaces each report atomically with private permissions. JSON is the
 // canonical record; interruption between replacements can leave older Markdown.
-func Write(directory string, data map[string]any, secrets ...string) error {
+// The report may be any value that encodes as a JSON object; it is normalized
+// through JSON, so struct tags and JSON methods decide what is written.
+func Write(directory string, data any, secrets ...string) error {
 	if data == nil {
 		return fmt.Errorf("investigation report must not be nil")
 	}
@@ -268,7 +273,10 @@ func Write(directory string, data map[string]any, secrets ...string) error {
 	}
 	ordered := append([]string(nil), secrets...)
 	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
-	safe := redactValue(copy, ordered).(map[string]any)
+	safe, ok := redactValue(copy, ordered).(map[string]any)
+	if !ok {
+		return fmt.Errorf("investigation report must encode as a JSON object")
+	}
 	encoded, err := json.MarshalIndent(safe, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode investigation report: %w", err)

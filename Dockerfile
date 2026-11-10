@@ -1,11 +1,18 @@
 # TriageLab container image: static CLI plus the built private web UI.
 # The server only ever listens on a loopback address; in Kubernetes the UI is
 # reached through `kubectl port-forward`, never a Service or Ingress.
+#
+# Multi-arch (linux/amd64, linux/arm64) without emulation: both build stages
+# run on the build host's platform ($BUILDPLATFORM) and cross-compile, and the
+# final stage has no RUN instruction, so no foreign-architecture code executes.
+# Base images are pinned by multi-arch index digest; refresh tag and digest
+# together (docker buildx imagetools inspect IMAGE:TAG).
 
 # Build the private web UI (versions match .github/workflows/ci.yml). The UI
 # imports the recorded verification example outside web/, so that one file is
-# copied at the relative path the TypeScript import expects.
-FROM node:24.18.1-alpine AS web
+# copied at the relative path the TypeScript import expects. The output is
+# architecture independent.
+FROM --platform=$BUILDPLATFORM node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c9899119b03f7af7a6b3 AS web
 WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -13,21 +20,28 @@ COPY web/ ./
 COPY docs/verification/agent-demo.json /docs/verification/agent-demo.json
 RUN npm run build
 
-# Build the statically linked CLI from the standard-library-only module.
-FROM golang:1.25.12-alpine AS build
+# Build the statically linked CLI from the standard-library-only module,
+# cross-compiled for the target platform.
+FROM --platform=$BUILDPLATFORM golang:1.25.12-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/ cmd/
 COPY internal/ internal/
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
-RUN go build -o /out/triagelab ./cmd/triagelab
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -ldflags "-X main.version=$VERSION" -o /out/triagelab ./cmd/triagelab \
+    && mkdir -p /out/app
 
 # Busybox wget in Alpine backs the loopback liveness probe; there is no shell
-# access to investigation data because the workspace runs unprivileged.
-FROM alpine:3.22
-RUN addgroup -S -g 10001 triagelab \
-    && adduser -S -u 10001 -G triagelab -h /app triagelab
+# access to investigation data because the workspace runs unprivileged. The
+# unprivileged identity is numeric (matching the chart's runAsUser/runAsGroup),
+# so no adduser step is needed; /app is owned by it.
+FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
 COPY --from=build /out/triagelab /usr/local/bin/triagelab
+COPY --from=build --chown=10001:10001 /out/app /app
 COPY --from=web /app/dist /app/web/dist
 WORKDIR /app
 USER 10001:10001

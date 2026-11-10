@@ -2,7 +2,10 @@ package investigation
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -32,12 +35,41 @@ type fixtureBackend struct {
 	killed         map[string]bool
 	noExperiments  bool
 	summaryReply   bool
-	readError      error
 	additionalTool string
+	// failures queues errors returned, in order, by the named tool's next calls
+	// before it behaves normally. "get_task" addresses transcript reads.
+	failures  map[string][]error
+	taskReads int
+	// exitCode, when set, replaces every reported exit code; absentExitCode omits it.
+	exitCode       any
+	absentExitCode bool
 }
 
 func newFixture() *fixtureBackend {
-	return &fixtureBackend{state: "TASK_STATE_COMPLETED", deleteFailures: map[string]int{}, killed: map[string]bool{}}
+	return &fixtureBackend{state: "TASK_STATE_COMPLETED", deleteFailures: map[string]int{}, killed: map[string]bool{}, failures: map[string][]error{}}
+}
+
+func (f *fixtureBackend) injectedFailure(name string) error {
+	queue := f.failures[name]
+	if len(queue) == 0 {
+		return nil
+	}
+	f.failures[name] = queue[1:]
+	return queue[0]
+}
+
+// callCount counts recorded tool calls, including failed attempts.
+func (f *fixtureBackend) callCount(name string) int {
+	if name == "get_task" {
+		return f.taskReads
+	}
+	count := 0
+	for _, call := range f.calls {
+		if call.name == name {
+			count++
+		}
+	}
+	return count
 }
 
 func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
@@ -46,6 +78,9 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 		copyArgs[k] = v
 	}
 	f.calls = append(f.calls, recordedCall{name, copyArgs})
+	if err := f.injectedFailure(name); err != nil {
+		return nil, err
+	}
 	switch name {
 	case "create_sandbox":
 		if len(f.createErrors) > 0 {
@@ -89,13 +124,15 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 		if f.killed[pid] {
 			code = -9
 		}
-		return map[string]any{"process_id": pid, "state": "PROCESS_STATE_EXITED", "exit_code": float64(code)}, nil
-	case "read_sandbox_outputs":
-		if f.readError != nil {
-			err := f.readError
-			f.readError = nil
-			return nil, err
+		state := map[string]any{"process_id": pid, "state": "PROCESS_STATE_EXITED", "exit_code": float64(code)}
+		if f.exitCode != nil {
+			state["exit_code"] = f.exitCode
 		}
+		if f.absentExitCode {
+			delete(state, "exit_code")
+		}
+		return state, nil
+	case "read_sandbox_outputs":
 		stdout, stderr := "verification passed\n", ""
 		if args["process_id"] == "failed" {
 			stdout, stderr = "", "timeout configuration too small\n"
@@ -121,6 +158,10 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 func (f *fixtureBackend) TaskItems(_ context.Context, session, task string) ([]map[string]any, error) {
 	if session != "session" || task != "task" {
 		return nil, errors.New("unexpected fixture identity")
+	}
+	f.taskReads++
+	if err := f.injectedFailure("get_task"); err != nil {
+		return nil, err
 	}
 	items := []map[string]any{}
 	if !f.noExperiments {
@@ -174,31 +215,30 @@ func fixtureConfig() Config {
 	return c
 }
 
-func runFixture(t *testing.T, f *fixtureBackend) (map[string]any, error, string) {
+func runFixture(t *testing.T, f *fixtureBackend) (*Report, string, error) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "report")
 	i := Investigator{Client: f, Config: fixtureConfig()}
 	c := casefile.Case{ID: "case", Description: "Configured timeout fails", Attachments: []casefile.Attachment{{Path: "app.py", Content: []byte("example"), SizeBytes: 7}}}
 	r, err := i.Run(context.Background(), c, dir)
-	return r, err, dir
+	return r, dir, err
 }
 
 func TestRunKeepsFailureAndCorrectionAndCleansBothResources(t *testing.T) {
 	f := newFixture()
-	r, err, dir := runFixture(t, f)
-	if err != nil || r["status"] != "completed" || r["outcome"] != "reproduced" {
-		t.Fatalf("result=%v err=%v", r, err)
+	r, dir, err := runFixture(t, f)
+	if err != nil || r.Status != StatusCompleted || r.Outcome != OutcomeReproduced {
+		t.Fatalf("result=%+v err=%v", r, err)
 	}
-	experiments := r["experiments"].([]map[string]any)
-	if len(experiments) != 2 || experiments[0]["exit_code"] != 1 || experiments[1]["exit_code"] != 0 {
-		t.Fatalf("lost evidence: %v", experiments)
+	experiments := r.Experiments
+	if len(experiments) != 2 || !exitedWith(experiments[0], 1) || !exitedWith(experiments[1], 0) {
+		t.Fatalf("lost evidence: %+v", experiments)
 	}
-	if !strings.Contains(str(experiments[0]["stderr"]), "too small") || !strings.Contains(str(experiments[1]["stdout"]), "passed") {
+	if !strings.Contains(stderr(experiments[0]), "too small") || !strings.Contains(stdout(experiments[1]), "passed") {
 		t.Fatal("outputs not independently collected")
 	}
-	cleanup := obj(r["cleanup"])
-	if cleanup["sandbox_deleted"] != true || cleanup["session_deleted"] != true {
-		t.Fatalf("cleanup=%v", cleanup)
+	if !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted {
+		t.Fatalf("cleanup=%+v", r.Cleanup)
 	}
 	for _, name := range []string{"report.json", "report.md"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
@@ -207,10 +247,72 @@ func TestRunKeepsFailureAndCorrectionAndCleansBothResources(t *testing.T) {
 	}
 }
 
+// Test helpers read evidence that may be missing without panicking.
+func exitedWith(e Experiment, code int) bool { return e.ExitCode != nil && *e.ExitCode == code }
+func stdout(e Experiment) string {
+	if e.Output == nil {
+		return ""
+	}
+	return e.Output.Stdout
+}
+func stderr(e Experiment) string {
+	if e.Output == nil {
+		return ""
+	}
+	return e.Output.Stderr
+}
+
+func TestReportRecordsBuildVersionAndEmbeddedDefinitionDigests(t *testing.T) {
+	config := fixtureConfig()
+	config.Version = "v9.9.9-test"
+	directory := filepath.Join(t.TempDir(), "report")
+	investigator := Investigator{Client: newFixture(), Config: config}
+	result, err := investigator.Run(context.Background(), casefile.Case{ID: "case", Description: "Timeout"}, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TriageLab == nil || result.TriageLab.Version != "v9.9.9-test" || result.TriageLab.DeployedAgentVerified {
+		t.Fatalf("build provenance=%+v", result.TriageLab)
+	}
+	encoded, err := os.ReadFile(filepath.Join(directory, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(encoded, &saved); err != nil {
+		t.Fatal(err)
+	}
+	build := obj(saved["triagelab"])
+	if build["version"] != "v9.9.9-test" || build["deployed_agent_verified"] != false {
+		t.Fatalf("saved build provenance=%v", build)
+	}
+	markdown, err := os.ReadFile(filepath.Join(directory, "report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Digest the source files independently of the embedding accessors.
+	for file, key := range map[string]string{"prompt.txt": "embedded_prompt_sha256", "schema.json": "embedded_output_schema_sha256"} {
+		data, err := os.ReadFile(filepath.Join("..", "agent", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(data)
+		if build[key] != hex.EncodeToString(sum[:]) {
+			t.Fatalf("%s=%v does not identify %s", key, build[key], file)
+		}
+		if !strings.Contains(string(markdown), hex.EncodeToString(sum[:])) {
+			t.Fatalf("Markdown omits %s", key)
+		}
+	}
+	if !strings.Contains(string(markdown), "the deployed Agent is not read back") || !strings.Contains(string(markdown), "v9.9.9-test") {
+		t.Fatal("Markdown omits labeled build provenance")
+	}
+}
+
 func TestAmbiguousCreateRetriesIdenticalStableKey(t *testing.T) {
 	f := newFixture()
 	f.createErrors = []error{&kagent.Error{Kind: "timeout", Message: "uncertain"}}
-	r, err, _ := runFixture(t, f)
+	r, _, err := runFixture(t, f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +322,7 @@ func TestAmbiguousCreateRetriesIdenticalStableKey(t *testing.T) {
 			requests = append(requests, call.args)
 		}
 	}
-	if len(requests) != 2 || !reflect.DeepEqual(requests[0], requests[1]) || requests[0]["request_id"] != r["run_id"] {
+	if len(requests) != 2 || !reflect.DeepEqual(requests[0], requests[1]) || requests[0]["request_id"] != r.RunID {
 		t.Fatalf("unstable retry: %v", requests)
 	}
 }
@@ -228,9 +330,9 @@ func TestAmbiguousCreateRetriesIdenticalStableKey(t *testing.T) {
 func TestUnavailableSandboxPreservesInconclusiveReport(t *testing.T) {
 	f := newFixture()
 	f.createErrors = []error{&kagent.Error{Kind: "tool", Message: "template unavailable"}}
-	r, err, dir := runFixture(t, f)
-	if err == nil || r["status"] != "error" || r["outcome"] != "inconclusive" {
-		t.Fatalf("result=%v err=%v", r, err)
+	r, dir, err := runFixture(t, f)
+	if err == nil || r.Status != StatusError || r.Outcome != OutcomeInconclusive {
+		t.Fatalf("result=%+v err=%v", r, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "report.json")); err != nil {
 		t.Fatal(err)
@@ -248,7 +350,7 @@ func TestEmptySessionCreationRetriesAndInvocationTimeoutRecoversTask(t *testing.
 			f := newFixture()
 			f.sessionError = &kagent.Error{Kind: "timeout", Message: "uncertain"}
 			f.errorOnMessage = onMessage
-			r, err, _ := runFixture(t, f)
+			r, _, err := runFixture(t, f)
 			if onMessage {
 				if err == nil || !f.canceled {
 					t.Fatalf("uncertain invocation not canceled: err=%v canceled=%v", err, f.canceled)
@@ -256,8 +358,8 @@ func TestEmptySessionCreationRetriesAndInvocationTimeoutRecoversTask(t *testing.
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			if obj(r["cleanup"])["session_deleted"] != true || obj(r["cleanup"])["sandbox_deleted"] != true {
-				t.Fatalf("leaked resources: %v", r["cleanup"])
+			if !r.Cleanup.SessionDeleted || !r.Cleanup.SandboxDeleted {
+				t.Fatalf("leaked resources: %+v", r.Cleanup)
 			}
 		})
 	}
@@ -275,9 +377,9 @@ func TestParkedTasksCanceledBeforeDeletion(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			f := newFixture()
 			f.state = state
-			r, err, _ := runFixture(t, f)
-			if err == nil || !f.canceled || obj(r["cleanup"])["session_deleted"] != true {
-				t.Fatalf("err=%v canceled=%v cleanup=%v", err, f.canceled, r["cleanup"])
+			r, _, err := runFixture(t, f)
+			if err == nil || !f.canceled || !r.Cleanup.SessionDeleted {
+				t.Fatalf("err=%v canceled=%v cleanup=%+v", err, f.canceled, r.Cleanup)
 			}
 		})
 	}
@@ -287,9 +389,9 @@ func TestModelFailureStillDeletesSandbox(t *testing.T) {
 	f := newFixture()
 	f.state = "TASK_STATE_FAILED"
 	f.noExperiments = true
-	r, err, _ := runFixture(t, f)
-	if err == nil || r["outcome"] != "inconclusive" || obj(r["cleanup"])["sandbox_deleted"] != true {
-		t.Fatalf("result=%v err=%v", r, err)
+	r, _, err := runFixture(t, f)
+	if err == nil || r.Outcome != OutcomeInconclusive || !r.Cleanup.SandboxDeleted {
+		t.Fatalf("result=%+v err=%v", r, err)
 	}
 }
 
@@ -298,13 +400,13 @@ func TestProcessTimeoutRequestsKill(t *testing.T) {
 	f.state = "TASK_STATE_WORKING"
 	f.running = true
 	i := Investigator{Client: f, Config: fixtureConfig()}
-	r := map[string]any{"session": map[string]any{"id": "session", "task_id": "task"}, "sandbox": map[string]any{"id": "sandbox"}, "experiments": []map[string]any{}}
+	r := &Report{Session: map[string]any{"id": "session", "task_id": "task"}, Sandbox: map[string]any{"id": "sandbox"}, Experiments: []Experiment{}}
 	observed := map[string]time.Time{"failed": time.Now().Add(-2 * time.Second)}
 	_, err := i.observe(context.Background(), r, observed)
 	if !errors.Is(err, context.DeadlineExceeded) || !f.killed["failed"] {
 		t.Fatalf("err=%v killed=%v", err, f.killed)
 	}
-	if r["experiments"].([]map[string]any)[0]["timed_out"] != true {
+	if !r.Experiments[0].TimedOut {
 		t.Fatal("timeout not preserved")
 	}
 }
@@ -315,8 +417,8 @@ func TestParentCancellationClassifiedAndReportPreserved(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	r, err := i.Run(ctx, casefile.Case{ID: "case", Description: "case"}, t.TempDir())
-	if !errors.Is(err, context.Canceled) || r["status"] != "interrupted" {
-		t.Fatalf("result=%v err=%v", r, err)
+	if !errors.Is(err, context.Canceled) || r.Status != StatusInterrupted {
+		t.Fatalf("result=%+v err=%v", r, err)
 	}
 }
 
@@ -363,7 +465,7 @@ func TestOutputPaginationLimitsAndIntegrity(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || got["stdout"] != test.want || got["truncated"] != test.truncated {
+			if err != nil || got.Stdout != test.want || got.Truncated != test.truncated {
 				t.Fatalf("got=%v err=%v", got, err)
 			}
 		})
@@ -373,13 +475,12 @@ func TestOutputPaginationLimitsAndIntegrity(t *testing.T) {
 func TestCleanupExhaustionIsVisible(t *testing.T) {
 	f := newFixture()
 	f.deleteFailures["delete_sandbox"] = 3
-	r, err, _ := runFixture(t, f)
+	r, _, err := runFixture(t, f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cleanup := obj(r["cleanup"])
-	if cleanup["sandbox_deleted"] != false || cleanup["session_deleted"] != true || len(cleanup["errors"].([]string)) == 0 {
-		t.Fatalf("cleanup=%v", cleanup)
+	if r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted || len(r.Cleanup.Errors) == 0 {
+		t.Fatalf("cleanup=%+v", r.Cleanup)
 	}
 }
 
@@ -394,16 +495,42 @@ func TestAdditionalMCPToolRequiresManualRunAllowance(t *testing.T) {
 			}
 			r, err := i.Run(context.Background(), casefile.Case{ID: "case", Description: "Timeout"}, t.TempDir())
 			if name == "unlisted" {
-				if err == nil || !strings.Contains(err.Error(), "outside the configured tool set") || r["status"] == "completed" {
+				if err == nil || !strings.Contains(err.Error(), "outside the configured tool set") || r.Status == StatusCompleted {
 					t.Fatalf("unlisted call did not stop the run: %v", err)
 				}
 				return
 			}
-			if err != nil || r["status"] != "completed" {
+			if err != nil || r.Status != StatusCompleted {
 				t.Fatalf("configured call did not complete: %v", err)
 			}
-			if experiments := r["experiments"].([]map[string]any); len(experiments) != 2 || experiments[0]["exit_code"] != 1 {
-				t.Fatalf("MCP activity displaced sandbox evidence: %v", experiments)
+			if experiments := r.Experiments; len(experiments) != 2 || !exitedWith(experiments[0], 1) {
+				t.Fatalf("MCP activity displaced sandbox evidence: %+v", experiments)
+			}
+		})
+	}
+}
+
+// An exit code is evidence only when it is an integer. Observation refuses
+// anything else, so a malformed code never reaches the report or the analysis.
+func TestExitedProcessNeedsAnIntegralExitCode(t *testing.T) {
+	for name, setup := range map[string]func(*fixtureBackend){
+		"boolean": func(f *fixtureBackend) { f.exitCode = true }, "fraction": func(f *fixtureBackend) { f.exitCode = 1.5 },
+		"text": func(f *fixtureBackend) { f.exitCode = "1" }, "absent": func(f *fixtureBackend) { f.absentExitCode = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture()
+			setup(f)
+			r, _, err := runFixture(t, f)
+			if err == nil || !strings.Contains(err.Error(), "no valid exit code") || r.Status != StatusError || r.Outcome != OutcomeInconclusive {
+				t.Fatalf("status=%v outcome=%v err=%v", r.Status, r.Outcome, err)
+			}
+			for _, e := range r.Experiments {
+				if e.ExitCode != nil || e.OutputsComplete {
+					t.Fatalf("recorded unverified evidence: %+v", e)
+				}
+			}
+			if !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted {
+				t.Fatalf("cleanup=%+v", r.Cleanup)
 			}
 		})
 	}

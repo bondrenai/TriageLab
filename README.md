@@ -12,6 +12,15 @@ error. A useful investigation reproduces the error, identifies the units mismatc
 and verifies an explicit corrected timeout. The application itself needs no network
 or dependencies. There is no simulated agent or local command-execution backend.
 
+That example is the first of six evaluation cases in `examples/`. The others
+cover a report that does not reproduce, missing information, an unrelated
+nonzero exit, a deterministic failure that looks intermittent, and
+prompt-injection bait beside a real bug. Expected results live in
+`examples/corpus.json`, outside the uploaded case directories.
+`make test-integration` scores a live run of every case, or the subset named in
+`TRIAGELAB_CASES`. Only the timeout example has run against a model so far;
+see [verification](docs/verification.md#evaluation-corpus-authored-not-run-live).
+
 ## Architecture
 
 ```text
@@ -78,8 +87,10 @@ For your own case:
 ```
 
 Files are copied into `/data/workspace`, never mounted from the host. Inputs are
-bounded to 64 files, 1 MiB per file and 4 MiB total. Symlinks, special files,
-traversal, and common credential files/content are rejected. Keep submitted
+bounded to 64 files, 1 MiB per file and 4 MiB total. Symlinks inside inputs
+(including a named repository or file that is itself a link), special files,
+traversal, and common credential files/content are rejected. Links in the path
+leading to an input, such as macOS `/tmp`, are followed. Keep submitted
 repositories small and sanitized. Obvious-secret detection is not a substitute
 for reviewing support data before sending it to a model provider.
 
@@ -154,12 +165,20 @@ Run these commands on the development VM:
 
 ```bash
 make fmt
-make check                    # gofmt check, go vet, unit and HTTP protocol tests
-make build
+make check                    # gofmt check, go vet, unit and HTTP protocol tests (-race)
+make lint                     # staticcheck, pinned via go run (see staticcheck.conf)
+make vulncheck                # govulncheck, pinned via go run
+make build                    # VERSION defaults to git describe, else "dev"
+make dist                     # static linux/darwin amd64/arm64 binaries + SHA256SUMS in dist/
 make check-ui                 # TypeScript check (after make install-ui)
 make build-ui                 # production browser assets
 TRIAGELAB_CONFIG=triagelab.example.json make test-integration
 ```
+
+CI runs `make check` on Ubuntu and macOS, and `make lint` and `make vulncheck` on Ubuntu. A `v*` tag
+release repeats those checks, then publishes the multi-arch image, the chart,
+and static CLI binaries with checksums (the binaries do not include the web UI
+that `serve` needs); see [Helm deployment](docs/helm.md#publishing-maintainers).
 
 The opt-in integration test requires the actual deployment and model. It does
 not substitute a mock if infrastructure is unavailable. Unit tests use test

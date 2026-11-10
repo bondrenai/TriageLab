@@ -58,8 +58,15 @@ make check
 The API is a local single-user interface, not a hosted service. It accepts one
 investigation at a time. Closing a tab leaves the investigation running; use
 Cancel to stop it. Server shutdown also cancels active work and allows bounded
-cleanup. After an abrupt crash, inspect the report and use the CLI cleanup
-command if resources remain. A recorded outcome does not override cleanup errors.
+cleanup. After an abrupt crash, inspect the report. If resources may remain,
+use Retry cleanup on its report page; it runs the same recorded-resource cleanup
+as `triagelab cleanup --report`, in the background (up to 90 seconds), and the
+page shows progress and the result. It needs the server's KAgent endpoint, user
+and namespace to match the report, is refused while that run is active, and
+runs one cleanup at a time. A report that never recorded a sandbox or session
+has nothing to clean. The CLI command remains the fallback. A recorded outcome
+does not override cleanup errors, and retrying cleanup does not change the
+report's status.
 
 ## Data flow
 

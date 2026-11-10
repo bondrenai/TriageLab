@@ -130,6 +130,57 @@ func TestUnsafeEndpointsRejected(t *testing.T) {
 	}
 }
 
+// Configuration validation and the client must apply one endpoint policy.
+func TestCheckEndpointMatchesClientPolicy(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://127.0.0.1:8083/mcp", "http://LOCALHOST:8083", "http://[::1]:8083/mcp", "https://kagent.example.com/mcp",
+		"http://remote.example", "http://10.0.0.7:8083", "http://triagelab-tools.kagent.svc:8083/mcp",
+		"http://triagelab-tools.kagent.svc.cluster.local:8083/mcp", "http://triagelab-tools.kagent.svc.example.net",
+		"https://user:password@example.com", "https://host/?secret=1", "https://host/#fragment", "file:///tmp/controller", "",
+	} {
+		for _, allow := range []bool{false, true} {
+			var opts []Option
+			if allow {
+				opts = append(opts, AllowClusterHTTP())
+			}
+			_, clientErr := New(endpoint, "user", "", time.Second, opts...)
+			checkErr := CheckEndpoint(endpoint, allow)
+			if (clientErr == nil) != (checkErr == nil) {
+				t.Errorf("%q allow=%v: client=%v check=%v", endpoint, allow, clientErr, checkErr)
+			}
+		}
+	}
+}
+
+func TestClientInfoAnnouncesSuppliedBuildVersion(t *testing.T) {
+	for _, test := range []struct {
+		options []Option
+		want    string
+	}{{nil, "unknown"}, {[]Option{ClientVersion("v9.9.9")}, "v9.9.9"}} {
+		t.Run(test.want, func(t *testing.T) {
+			var announced atomic.Value
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				request := testRequest(t, r)
+				info, _ := request["params"].(map[string]any)["_meta"].(map[string]any)["io.modelcontextprotocol/clientInfo"].(map[string]any)
+				announced.Store(fmt.Sprint(info["name"], " ", info["version"]))
+				testResponse(w, request, map[string]any{"structuredContent": map[string]any{}})
+			}))
+			defer server.Close()
+			client, err := New(server.URL+"/mcp", "user", "", time.Second, test.options...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			if _, err := client.CallTool(context.Background(), "list_sandbox_templates", nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := announced.Load(); got != "triagelab "+test.want {
+				t.Fatalf("clientInfo=%v, want triagelab %s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestUncertainRequestNotRetried(t *testing.T) {
 	var calls atomic.Int32
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
