@@ -9,7 +9,7 @@ does not provision or bill cloud resources.
 
 The setup below is a **private, single-user development environment**. Do not
 install it in a production cluster or publish its controller port. The released
-KAgent controller defaults to a no-op application authorizer. Even with the
+kagent controller defaults to a no-op application authorizer. Even with the
 service-account verifier enabled, the development authentication mode still has
 other identity paths. An authenticated gateway and a real application authorizer
 are prerequisites for shared or exposed use. See [SECURITY.md](../SECURITY.md).
@@ -24,13 +24,13 @@ unchanged (loopback listener, `kubectl port-forward` only).
   its socket is never mounted into an investigator or reproduction sandbox.
 - Go 1.27.3, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
-- KAgent CLI **1.0.0-rc3**, matching the charts and runtime images.
+- kagent CLI **1.0.0-rc3**, matching the charts and runtime images.
 - A provider account/key for the real agent. The example uses the upstream
   `gpt-4.1` model, with bounded investigation limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
-Install the released KAgent binary rather than compiling the large upstream
+Install the released kagent binary rather than compiling the large upstream
 project. For Linux amd64:
 
 ```sh
@@ -44,7 +44,7 @@ export PATH="$PWD/.tools:$PATH"
 ```
 
 For other architectures, use the matching release asset and verify its published
-checksum. Never substitute a different KAgent version without rechecking the
+checksum. Never substitute a different kagent version without rechecking the
 interfaces in [upstream.md](upstream.md).
 
 ## Install the dedicated cluster
@@ -66,16 +66,16 @@ bash scripts/install-dev.sh
 unset OPENAI_API_KEY
 ```
 
-This uses KAgent's installer to install the pinned Substrate Helm distribution,
+This uses kagent's installer to install the pinned Substrate Helm distribution,
 its pod certificate controller, Atelet, the development PostgreSQL database,
-RustFS snapshot store, and KAgent. It also configures Substrate's ingress
+RustFS snapshot store, and kagent. It also configures Substrate's ingress
 identity, controller access grants, and required preview gates. TriageLab adds
-only ordinary KAgent resources, rendered by `triagelab manifest`. The script
+only ordinary kagent resources, rendered by `triagelab manifest`. The script
 refuses any Kubernetes context except `kind-triagelab`.
 
 The rendered `triagelab-tools` ClusterIP Service sends investigator MCP calls to
 the same controller through a separate hostname. Keep that hostname distinct
-from KAgent's control-plane URL: rc3 replaces credentials at the control-plane
+from kagent's control-plane URL: rc3 replaces credentials at the control-plane
 origin with an actor token, which has no sandbox ownership. The tools Service
 preserves the short-lived caller token and the existing owner checks. It is
 internal only and selects the `kagent` Helm release's controller.
@@ -136,7 +136,7 @@ unset TRIAGELAB_TOKEN
 
 Run the CLI on the VM to keep compute remote. If using the CLI on your laptop,
 connect its loopback endpoint through an SSH local port forward; never bind the
-KAgent endpoint to `0.0.0.0`. The CLI sends the selected case and files to KAgent,
+kagent endpoint to `0.0.0.0`. The CLI sends the selected case and files to kagent,
 so use only material you are authorized to disclose to that model provider.
 
 The investigator should inspect the fixture, run the failing application, and
@@ -176,7 +176,7 @@ default controller hostname changes the outgoing identity to an actor token.
 Keep `config.runtimeDefaults.tokenPropagation.enabled` set to `false` so the Go
 ADK runtime forwards the token only to tools with explicit passthrough.
 
-KAgent's sandbox TTL expires even if the CLI disappears. Normal and interrupted
+kagent's sandbox TTL expires even if the CLI disappears. Normal and interrupted
 runs also explicitly delete their sandbox. A process-kill acknowledgment is not
 proof it exited; the CLI observes completion and records cleanup failures. If a
 controller outage prevents cleanup, retain the report's IDs and retry against
@@ -202,7 +202,7 @@ TRIAGELAB_OTLP_HEADERS= triagelab investigate --telemetry triagelab.telemetry.ex
 `triagelab.telemetry.example.json` targets `http://127.0.0.1:4318`. The
 collector's default config logs received traces, metrics, and logs to stdout,
 which is enough to eyeball run spans (`investigation.run` and its phases),
-KAgent RPC spans, HTTP server spans, and the run/cleanup metrics. For a
+kagent RPC spans, HTTP server spans, and the run/cleanup metrics. For a
 collector that requires authentication, put the header lines in the
 environment variable named by `headers_env` (never in the file). The unit
 tests assert the exported OTLP payloads without a live collector; live export

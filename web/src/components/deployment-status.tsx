@@ -29,7 +29,7 @@ export function DeploymentPanel({ status, resource, previewed, onEdit, editing }
   return <Panel title="Deployment status" aside={status.data?.enabled || status.isError ?
     <Button type="button" variant="ghost" disabled={status.isFetching} onClick={() => void status.refetch()}>Refresh</Button> : undefined}>
     <div className="panel-body agent-fields" aria-busy={status.isPending}>
-      {status.isPending ? <p className="field-help">Checking KAgent…</p>
+      {status.isPending ? <p className="field-help">Checking kagent…</p>
         : status.isError ? <p className="field-help" role="status">{status.error.message}</p>
         : !status.data?.enabled ? <p className="field-help">Live status is off. Configure read-only cluster access to see deployments{resource === "mcp-servers" ? " and discovered tools" : ""}.</p>
         : deployed.length === 0 && missing.length === 0 ? <p className="field-help">No deployments in this namespace.</p>

@@ -7,12 +7,12 @@ a multi-tenant service or a production incident-remediation tool.
 ## Execution boundary
 
 The CLI never executes imported application code or agent-generated commands on
-its host. It uploads selected files into a standalone KAgent Sandbox. Agent Substrate
+its host. It uploads selected files into a standalone kagent Sandbox. Agent Substrate
 provides the gVisor boundary; a configured microVM worker pool is an optional stronger
 isolation backend. The demonstration requires no host Docker socket, filesystem
 mount, privileged interface, or production credential inside that sandbox.
 
-The supplied SandboxTemplate has no egress policy references. KAgent/Substrate deny
+The supplied SandboxTemplate has no egress policy references. kagent/Substrate deny
 outbound connections by default, including package downloads. Preinstall dependencies
 in a reviewed, digest-pinned tools image, or explicitly review and grant narrowly
 scoped egress through upstream policies; the workspace's Egress and Sandboxes editors
@@ -30,7 +30,7 @@ the backstop if the CLI crashes, loses connectivity, or is killed without cleanu
 
 ## Identity and credentials
 
-The example installation deliberately uses KAgent's development authentication mode.
+The example installation deliberately uses kagent's development authentication mode.
 Keep it private behind loopback port forwarding or an SSH tunnel. A development
 `user_id` is an ownership partition, not an authentication credential; never expose
 this endpoint to an untrusted network. For shared deployments, configure upstream
@@ -43,7 +43,7 @@ read/write/edit tools remain available inside the investigator's own runtime.
 The supplied configuration disables Bash and file-search tools; disabling file
 search removes list/grep, not all local file access. Do not place sensitive files
 in that investigator runtime or treat the MCP allowlist as its complete capability
-inventory. Provider credentials belong to KAgent's model/egress configuration, not uploaded files or
+inventory. Provider credentials belong to kagent's model/egress configuration, not uploaded files or
 SandboxTemplate environment variables. TriageLab reads its API token from a named
 environment variable and does not place it in the reproduction environment. The
 trusted sandbox MCP binding forwards the verified invocation token to preserve
@@ -68,7 +68,7 @@ resource limits, and cleanup are the effective boundaries. Do not add production
 tools, ticket-writing tools, or privileged operations to the investigator. External
 mutations or privileged access require explicit authorization and a separate design.
 
-The CLI retrieves process state and output independently from KAgent. This confirms
+The CLI retrieves process state and output independently from kagent. This confirms
 the recorded execution results came from the service, not that arbitrary output is
 true or that a model's causal explanation is correct. Reports distinguish observed
 experiments from hypotheses, retain failures, and do not assert confirmed root cause.
@@ -129,7 +129,7 @@ The optional [Helm chart](docs/helm.md) runs the same workspace as one pod in
 a dedicated cluster. The loopback rule is unchanged: the UI is reached through
 `kubectl port-forward`, and the chart creates no Service or Ingress. Its
 `allow_cluster_http` setting additionally permits plain HTTP only to
-`*.svc`/`*.svc.cluster.local` KAgent endpoints inside that cluster's pod
+`*.svc`/`*.svc.cluster.local` kagent endpoints inside that cluster's pod
 network; every other host still requires HTTPS or loopback.
 
 With the optional [Zendesk procedure](docs/tickets.md), the server can add
@@ -204,7 +204,7 @@ leave Markdown one revision behind JSON.
 Use GitHub's private vulnerability reporting for the repository when available.
 If it is unavailable, open a public issue containing only a request for a private
 contact channel. Do not publish exploit details, credentials, or customer material.
-Include the TriageLab revision, pinned KAgent/Substrate versions, a sanitized minimal
+Include the TriageLab revision, pinned kagent/Substrate versions, a sanitized minimal
 reproduction, and the security boundary affected when reporting privately.
 
 Evidence byte limits cap downloaded report content, not the amount a process can

@@ -10,9 +10,9 @@ cluster work happens there; your laptop only needs an SSH tunnel and a browser.
 
 - Go **1.27.3** or later in the supported 1.27 line, and Node.js 24 for the UI.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
-  **KAgent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
-- KAgent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
-- A model credential configured in KAgent (the example uses `gpt-4.1`).
+  **kagent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
+- kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
+- A model credential configured in kagent (the example uses `gpt-4.1`).
 
 The exact installation, port-forwarding, credential, and teardown steps are in
 [development setup](https://github.com/bondrenai/TriageLab/blob/main/docs/development.md)
@@ -36,7 +36,7 @@ export TRIAGELAB_TOKEN="$(kubectl -n kagent create token triagelab \
   --description-file examples/config-bug/issue.md --repo examples/config-bug
 ```
 
-`doctor` verifies the KAgent sandbox API is reachable. `investigate` runs the
+`doctor` verifies the kagent sandbox API is reachable. `investigate` runs the
 included Python timeout example end to end and prints the report location.
 
 ## Run your own case

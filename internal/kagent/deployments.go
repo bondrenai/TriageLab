@@ -28,7 +28,7 @@ var (
 	ErrAgentNotReady = errors.New("The saved agent is not ready. Check Deployment status on the Agents tab.")
 )
 
-// DeploymentReader reads the pinned KAgent resources in one explicitly configured namespace.
+// DeploymentReader reads the pinned kagent resources in one explicitly configured namespace.
 type DeploymentReader struct {
 	kubectl, kubeconfig, kubeContext, namespace string
 }
@@ -111,11 +111,11 @@ func (d *DeploymentReader) List(ctx context.Context, resource string) ([]Deploym
 			Items    []deploymentResource
 		}
 		if json.Unmarshal(data, &page) != nil || page.Items == nil {
-			return nil, errors.New("invalid KAgent deployment status response")
+			return nil, errors.New("invalid kagent deployment status response")
 		}
 		for _, item := range page.Items {
 			if item.Metadata.Namespace != d.namespace || item.Metadata.Name == "" {
-				return nil, errors.New("unexpected KAgent deployment metadata")
+				return nil, errors.New("unexpected kagent deployment metadata")
 			}
 			result = append(result, item.deployment(checks, resource))
 		}
@@ -125,7 +125,7 @@ func (d *DeploymentReader) List(ctx context.Context, resource string) ([]Deploym
 		}
 		query.Set("continue", page.Metadata.Continue)
 	}
-	return nil, errors.New("KAgent deployment status exceeds page limit")
+	return nil, errors.New("kagent deployment status exceeds page limit")
 }
 
 // ReadyAgent reads the saved definition and readiness from the same resource snapshot.
@@ -219,7 +219,7 @@ func (d *DeploymentReader) execKubectl(ctx context.Context, verb, path string, b
 	_ = stdout.Close()
 	waitErr := cmd.Wait()
 	if int64(len(data)) > limit {
-		return nil, errors.New("KAgent deployment status exceeds size limit")
+		return nil, errors.New("kagent deployment status exceeds size limit")
 	}
 	if err != nil || waitErr != nil {
 		for _, known := range []struct {

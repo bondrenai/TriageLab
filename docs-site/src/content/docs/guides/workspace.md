@@ -32,7 +32,7 @@ selected output directory, including a separately labelled example bundled
 from the repository's recorded verification report. Viewing history or the
 example does not require a running model provider.
 
-To investigate, configure KAgent and its model credential as in the
+To investigate, configure kagent and its model credential as in the
 [quickstart](/TriageLab/start/quickstart/), forward the controller port on the VM, and
 set `TRIAGELAB_TOKEN` in the server's environment before starting it. Neither
 that token nor the model key belongs in browser configuration. Model and cloud
@@ -45,7 +45,7 @@ usage can incur charges even though TriageLab is free.
 - Server shutdown cancels active work and allows bounded cleanup. After an
   abrupt crash, inspect the report and use `triagelab cleanup` if resources
   remain.
-- The workspace can also show live KAgent deployment status and save KAgent
+- The workspace can also show live kagent deployment status and save kagent
   resources — see [defining agents](/TriageLab/guides/agents/).
 
 ## Iterate on the UI

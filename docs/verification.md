@@ -2,7 +2,7 @@
 
 Verified on November 8, 2026 (America/New_York) on a dedicated Linux development
 VM: 4 vCPU, 16 GiB RAM, Ubuntu 24.04, kind Kubernetes 1.35.0, Go 1.25.12,
-KAgent v1.0.0-rc3, its matching Substrate v1.0.0 distribution, and gVisor.
+kagent v1.0.0-rc3, its matching Substrate v1.0.0 distribution, and gVisor.
 The investigator used OpenAI `gpt-4.1`. No agent output or sandbox was mocked in
 these live checks.
 
@@ -14,7 +14,7 @@ these live checks.
 - Generated resources passed Kubernetes server-side dry-run and applied
   successfully. Agent and SandboxTemplate reached Ready.
 - `make test-integration` with the real deployment, caller token and model:
-  **PASS**, 22.6 seconds. It verified ingestion, actual KAgent invocation,
+  **PASS**, 22.6 seconds. It verified ingestion, actual kagent invocation,
   independently collected sandbox evidence, supported diagnosis, both failure
   and correction, report generation, and deletion of both runtimes.
 - Separate real sandbox checks verified nested uploads, DNS denial, direct-IP
@@ -87,7 +87,7 @@ that VM, not on the resource-constrained development laptop.
 - Chromium exercised empty history, the saved real example, experiment
   disclosures, required description validation, file add/remove, report
   downloads, and navigation to a newly submitted run.
-- With KAgent absent, an actual UI submission saved an infrastructure-error
+- With kagent absent, an actual UI submission saved an infrastructure-error
   report and appeared in history. This checks error handling, not model access.
 - A browser response fixture verified that a partial report with missing process
   state/output remains readable. No agent execution is claimed for this fixture.
@@ -100,7 +100,7 @@ that VM, not on the resource-constrained development laptop.
 
 No new live model investigation was run for the UI work. The bundled example
 is the preserved live run documented above; current new runs still require a
-configured private KAgent/Substrate deployment and model credential.
+configured private kagent/Substrate deployment and model credential.
 
 ## Zendesk ticket procedure verification
 
@@ -111,7 +111,7 @@ recovery across a restart, unconfirmed writes, requester replies, changed
 attachments, stale approval, and a busy run slot. A Chromium walkthrough
 using fixture API responses checked the queue, approval, run link, and
 desktop/mobile accessibility. These checks did not call a Zendesk account,
-send customer messages, or start a live KAgent investigation.
+send customer messages, or start a live kagent investigation.
 
 ## Zendesk OAuth verification
 
@@ -150,7 +150,7 @@ overflow or browser runtime error. The test made no external request and did
 not click run approval. Its server and temporary fixture state were removed.
 
 These are fixture and build checks. No private GitHub account integration,
-GitHub-to-KAgent investigation, model call, or sandbox run was performed for
+GitHub-to-kagent investigation, model call, or sandbox run was performed for
 this change. The public attachment transport observation is recorded separately
 in [upstream compatibility](upstream.md#github-issue-integration).
 
@@ -185,7 +185,7 @@ there was no horizontal overflow or browser runtime error. All mutation
 requests were intercepted; the browser made no external request or run
 approval. Its temporary server and fixture state were removed.
 
-No live GitHub write or GitHub-to-KAgent investigation was performed. HTTP and
+No live GitHub write or GitHub-to-kagent investigation was performed. HTTP and
 workflow fixtures demonstrate the tested request and persistence behavior, not
 provider permissions, real notification delivery, or an atomic GitHub
 compare-and-send guarantee.
@@ -198,7 +198,7 @@ and `make build-ui` with Go 1.25.12 and Node 24.18.1. Unit and HTTP fixtures
 covered native manifest generation, input restrictions, manual agent routing,
 ticket-default separation, and the watchdog's treatment of added MCP calls.
 Both agent types passed offline structural validation against the pinned
-KAgent rc3 CRD schemas. Kubernetes CEL rules and controller reconciliation
+kagent rc3 CRD schemas. Kubernetes CEL rules and controller reconciliation
 require a deployment.
 
 Remote Chromium exercised the built workspace and real manifest preview API
@@ -228,7 +228,7 @@ configured credentials in facts, files, filenames, and attachment URLs remains
 covered by the existing evidence tests. The full ticketflow suite also fails
 on this macOS laptop at HEAD regardless of these changes, because fixture
 evidence directories sit under the symlinked `/var` temp prefix that
-`casefile.Ingest` refuses; the VM remains the check environment. Live KAgent
+`casefile.Ingest` refuses; the VM remains the check environment. Live kagent
 integration, a real Zendesk or GitHub send, and the blocked-note browser UI
 were not exercised end to end and stay open with the roadmap item.
 
@@ -258,7 +258,7 @@ settings, malformed keys, and Zendesk OAuth actions in a Linear workspace.
 Existing Zendesk and GitHub tests also pass.
 
 These are fixture and build checks. No Linear account was connected, and no
-live Linear clarification, summary send, or Linear-to-KAgent investigation
+live Linear clarification, summary send, or Linear-to-kagent investigation
 was performed. The GraphQL document shapes were pinned against the published
 Linear API documentation; a controlled live pilot remains to be run.
 
@@ -270,14 +270,14 @@ verified on the shared bondren-build VM against `otel/opentelemetry-collector:0.
 (Go 1.27.3 toolchain) and `triagelab.telemetry.example.json` plus the
 `headers_env` indirection.
 
-- `triagelab doctor --telemetry` against the live KAgent controller
+- `triagelab doctor --telemetry` against the live kagent controller
   (kind cluster, `triagelab-tools` port-forward, short-lived
   `kagent-invocation` token): exported the `triagelab doctor` command span and
   a child `kagent.rpc` span (`mcp.call=list_sandbox_templates`) under one
   trace, plus the `triagelab.kagent.rpc.duration` data point.
 - `triagelab investigate --telemetry` with the scripted `triagelab-demo-runtime`
   agent on the standard config-bug fixture: a real sandbox was created,
-  populated, and deleted through KAgent. The task ended `TASK_STATE_FAILED`
+  populated, and deleted through kagent. The task ended `TASK_STATE_FAILED`
   (the scripted demo model does not drive this agent's investigation to a
   completed analysis), so the run completed on the **failure path** with
   `status=error`, `outcome=inconclusive`, exit code 4, and complete cleanup

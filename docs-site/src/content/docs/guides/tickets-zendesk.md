@@ -6,7 +6,7 @@ description: Prepare Zendesk tickets for investigation with policy-checked clari
 The Zendesk source handles a small, dependency-free Python 3.12 timeout
 reproduction. It checks what the requester has already provided, drafts or
 sends a clarification under policy, and hands approved evidence to the
-existing KAgent investigator. Zendesk remains the ticket and conversation
+existing kagent investigator. Zendesk remains the ticket and conversation
 record; TriageLab keeps preparation decisions and the linked investigation
 report.
 

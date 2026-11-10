@@ -10,14 +10,14 @@ what evidence is still missing, and — after a human approves the exact
 evidence and run settings — investigates the issue in a secure, disposable
 sandbox. The outcome returns to the ticket with the full evidence trail.
 
-It runs beside KAgent and Agent Substrate on a dedicated cluster: KAgent owns
+It runs beside kagent and Agent Substrate on a dedicated cluster: kagent owns
 the investigator agent and its model; Agent Substrate owns the isolated
 sandbox (gVisor or microVM, egress denied by default). TriageLab owns
 everything between the ticket and the report.
 
 ```text
 Ticket or issue → route → classify → clarify → approve → investigate → report
-                                                    └─ KAgent investigator
+                                                    └─ kagent investigator
                                                        └─ Substrate sandbox
 ```
 
@@ -31,7 +31,7 @@ Ticket or issue → route → classify → clarify → approve → investigate �
    redacted, provenance recorded — and missing items become reviewed
    clarification questions, sent only under an approved policy.
 3. **Investigate.** One standalone sandbox is created per run, the bounded
-   case files are copied in, and one KAgent investigator proposes and revises
+   case files are copied in, and one kagent investigator proposes and revises
    experiments. TriageLab records every process independently: state, exit
    code, and output are fetched from the sandbox itself, never taken on the
    model's word.

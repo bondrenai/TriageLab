@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       run_integration:
-        description: Run against the dedicated KAgent/Substrate test deployment
+        description: Run against the dedicated kagent/Substrate test deployment
         required: false
         type: boolean
         default: false

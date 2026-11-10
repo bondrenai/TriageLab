@@ -1,11 +1,11 @@
 ---
 title: Helm deployment
-description: Install the single-pod workspace beside an existing KAgent/Substrate installation from the public chart.
+description: Install the single-pod workspace beside an existing kagent/Substrate installation from the public chart.
 ---
 
 The public Helm chart installs the TriageLab workspace — the `serve` process
 with the built web UI — as a single-pod Deployment beside an existing
-KAgent/Substrate installation. It does **not** install or replace KAgent;
+kagent/Substrate installation. It does **not** install or replace kagent;
 start from a working dedicated installation first.
 
 This is the same private workspace as the local CLI, now with required
@@ -24,8 +24,8 @@ helm install triagelab oci://ghcr.io/bondrenai/charts/triagelab \
 
 Prerequisites:
 
-1. **KAgent workspace resources.** The agent, sandbox template, and internal
-   `triagelab-tools` Service must exist in the configured KAgent namespace.
+1. **kagent workspace resources.** The agent, sandbox template, and internal
+   `triagelab-tools` Service must exist in the configured kagent namespace.
    Render them from the deployed image if they are not installed:
 
    ```sh
@@ -34,7 +34,7 @@ Prerequisites:
    ```
 
 2. **Invocation credential.** Mint a short-lived token in the cluster that
-   runs KAgent and store it as a Secret (preferred over
+   runs kagent and store it as a Secret (preferred over
    `--set token.value=`, which is retained in Helm release metadata):
 
    ```sh
@@ -83,7 +83,7 @@ provider roles mapping; register the exact redirect URI with the provider.
 
 ## Cluster HTTP endpoints
 
-The workspace reaches KAgent through the internal ClusterIP Service over
+The workspace reaches kagent through the internal ClusterIP Service over
 plain HTTP, `http://triagelab-tools.kagent.svc.cluster.local:8083/mcp` by
 default. The CLI otherwise requires HTTPS off-loopback, because a laptop's
 network cannot be trusted with a plaintext bearer token.

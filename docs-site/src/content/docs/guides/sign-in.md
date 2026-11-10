@@ -58,7 +58,7 @@ Three roles are enforced server-side on every API route:
 | --- | --- | --- |
 | viewer | Read reports, cases, deployment status | Change anything |
 | user | Everything a viewer can, plus launching and steering investigations and ticket actions | Define agents, sandbox templates, egress policies, procedures, or accounts |
-| admin | Everything, including saving KAgent definitions, ticket procedures, and account management | |
+| admin | Everything, including saving kagent definitions, ticket procedures, and account management | |
 
 Each report records `started_by`. Sign-in attempts are rate-limited per
 account. There is no per-user action audit log yet, and roles do not isolate

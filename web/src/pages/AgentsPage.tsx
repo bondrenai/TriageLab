@@ -11,9 +11,9 @@ import { roleAtLeast } from "../lib/auth";
 import { MCPServerEditor, ModelEditor } from "./AgentDependencies";
 import { EgressPolicyEditor, SandboxTemplateEditor } from "./SandboxTemplates";
 import { parseToolNames } from "../lib/agents";
-import type { AgentDefinition, Deployment, DiscoveredTool, KAgentManifest } from "../lib/types/agent";
+import type { AgentDefinition, Deployment, DiscoveredTool, kagentManifest } from "../lib/types/agent";
 
-type ResourceChoice = NonNullable<KAgentManifest["metadata"]> & { tools?: string[] };
+type ResourceChoice = NonNullable<kagentManifest["metadata"]> & { tools?: string[] };
 
 function loadResourceChoices(storageKey: string): ResourceChoice[] {
   try {
@@ -37,7 +37,7 @@ function usePreviewedResources(storageKey: string, kind: string, namespace?: str
     } catch { /* Suggestions still work while this editor is open. */ }
   }, [choices, storageKey]);
 
-  function remember(manifest: KAgentManifest, tools?: string[]) {
+  function remember(manifest: kagentManifest, tools?: string[]) {
     const resource = manifest.metadata;
     if (manifest.kind !== kind || !resource) return;
     setChoices(previous => [
@@ -127,7 +127,7 @@ export function AgentsPage() {
 function AgentEditor({ modelNames, mcpServers, onPreview, mcpStatus, deployment, editor }: {
   modelNames: string[];
   mcpServers: ResourceChoice[];
-  onPreview: (manifest: KAgentManifest) => void;
+  onPreview: (manifest: kagentManifest) => void;
   mcpStatus: ReturnType<typeof useDeploymentStatus>;
   deployment: ReactNode;
   editor: DefinitionEditor<"agents">;
@@ -166,7 +166,7 @@ function AgentEditor({ modelNames, mcpServers, onPreview, mcpStatus, deployment,
     workspaceConfig={definition => ({ manual_agents: { [definition.name]: (definition.mcp_servers ?? []).flatMap(server => server.tools) } })}
     guidance={<>
       <p>Save models and MCP servers in their respective tabs before saving an agent that uses them.</p>
-      <p>Saved agents appear in the New investigation picker and can run once KAgent marks them ready.</p>
+      <p>Saved agents appear in the New investigation picker and can run once kagent marks them ready.</p>
     </>}>
     <Panel title="Agent definition"><div className="panel-body agent-fields">
       <div className="agent-field-grid">
@@ -192,7 +192,7 @@ function AgentEditor({ modelNames, mcpServers, onPreview, mcpStatus, deployment,
         <Field label="Description (optional)"><input name="description" defaultValue={saved?.description} className="field" maxLength={1024} /></Field>
       </div>
       {byImage && <div className="agent-fields agent-inset">
-        <p className="field-help">Use a trusted image that implements KAgent’s private A2A runtime contract and emits TriageLab’s report format.</p>
+        <p className="field-help">Use a trusted image that implements kagent’s private A2A runtime contract and emits TriageLab’s report format.</p>
         <Field label="Agent image"><input name="image" defaultValue={saved?.runtime?.image} className="field mono" placeholder="registry.example/agent@sha256:…" required maxLength={512} /></Field>
         <Field label="Executable"><input name="command" defaultValue={saved?.runtime?.command[0]} className="field mono" placeholder="/app/agent" required maxLength={4096} /></Field>
         <Field label="Arguments (one per line)"><Textarea name="args" defaultValue={saved?.runtime?.args?.join("\n")} rows={3} maxLength={32768} /></Field>
@@ -250,7 +250,7 @@ function MCPAttachment({ id, index, servers, deployments, statusUnavailable, ini
     </Field>
     {serverName && (tools?.length ? <fieldset key={serverName} className="agent-tool-list">
       <legend className="field-label">Tools to expose</legend>
-      <p className="field-help">{discovered ? statusUnavailable ? "Last tools discovered by KAgent. Live status is unavailable." : "Discovered by KAgent." : "Tool names saved on the MCP servers tab."}</p>
+      <p className="field-help">{discovered ? statusUnavailable ? "Last tools discovered by kagent. Live status is unavailable." : "Discovered by kagent." : "Tool names saved on the MCP servers tab."}</p>
       {tools.map(tool => <label key={tool.name} className="agent-tool-option">
         <input type="checkbox" name={toolField} value={tool.name} disabled={Boolean(tool.selection_error)} checked={selected.includes(tool.name)}
           onChange={e => {
@@ -263,7 +263,7 @@ function MCPAttachment({ id, index, servers, deployments, statusUnavailable, ini
           {tool.selection_error && <span className="agent-tool-description field-help">{tool.selection_error}</span>}
         </span>
       </label>)}
-    </fieldset> : discovered ? <p className="field-help">KAgent discovered no tools on this server.</p> : <Field label="Tool names">
+    </fieldset> : discovered ? <p className="field-help">kagent discovered no tools on this server.</p> : <Field label="Tool names">
       <input key={serverName} name={`manual-tools-${id}`} value={manualInput} onChange={e => {
         setManualInput(e.target.value);
         setSelected(parseToolNames(e.target.value));

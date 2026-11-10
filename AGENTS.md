@@ -11,7 +11,7 @@ or one OIDC provider) of the same workflow, reached over loopback.
 - `internal/casefile` treats descriptions, repositories, files, and logs as untrusted data.
   It collects bounded inputs without running repository programs on the host.
 - The agent package contains trusted investigator instructions and its output schema.
-  KAgent executes the agent and its tools; TriageLab does not simulate its answers.
+  kagent executes the agent and its tools; TriageLab does not simulate its answers.
 - `internal/kagent` isolates the pinned upstream MCP protocol and API shapes.
 - The investigation workflow owns sandbox/session creation, input transfer,
   watchdog limits, evidence retrieval, reporting, and cleanup.
@@ -35,7 +35,7 @@ or one OIDC provider) of the same workflow, reached over loopback.
   config struct, and the example JSON files; a golden test under `make check`
   fails on drift. Internal links must carry the `/TriageLab` base prefix to
   pass build-time validation. Contributor-facing notes stay in `docs/`.
-- `deploy/` configures KAgent and Agent Substrate. KAgent owns Sandbox lifecycle;
+- `deploy/` configures kagent and Agent Substrate. kagent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
 - `chart/` and the root `Dockerfile` package the single-user workspace for a
   dedicated cluster. Keep the loopback-only UI and port-forward access model;
@@ -53,7 +53,7 @@ Do not read ambient Kubernetes contexts or mutate a production cluster by defaul
 Prefer the existing upstream security mechanisms to local approximations.
 
 Research the pinned upstream source before changing an integration. Read
-`docs/upstream.md` and `docs/development.md`; current KAgent 1.x alpha schemas differ
+`docs/upstream.md` and `docs/development.md`; current kagent 1.x alpha schemas differ
 from older examples. SandboxTemplate is a Kubernetes CRD; a standalone Sandbox is
 an API/database resource. Preserve that distinction.
 
@@ -72,7 +72,7 @@ compatibility shims, source-scanning guards, and abstractions without a concrete
 Add meaningful tests for lifecycle, parsing, evidence provenance, errors, cleanup,
 and security boundaries when modifying those behaviors. Unit-test fixtures are
 allowed; never claim a mocked agent or sandbox proves the live integration works.
-Live tests require an explicitly configured disposable KAgent/Substrate deployment
+Live tests require an explicitly configured disposable kagent/Substrate deployment
 and model credentials. Describe the exact checks run and any unavailable checks.
 
 Respect user-specified compute constraints. If the user requests remote execution,

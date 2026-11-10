@@ -1,6 +1,6 @@
 ---
 title: Upstream compatibility
-description: Source-reviewed pins for KAgent, Agent Substrate, images, and the OpenTelemetry SDK.
+description: Source-reviewed pins for kagent, Agent Substrate, images, and the OpenTelemetry SDK.
 ---
 
 Research date: 2026-11-08. These are **source-reviewed integration pins**, not
@@ -13,40 +13,40 @@ Do not use a live `main` branch as a dependency.
 
 | Component | Pin | Identity |
 | --- | --- | --- |
-| KAgent CLI/charts/controller/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
-| KAgent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
+| kagent CLI/charts/controller/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| kagent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
 | Agent Substrate core reviewed | `v1.0.0` | `agent-substrate/substrate`, `b34fbee742906494b5eb4f1f36987176bf8770a4` |
 | Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
-| Development Kubernetes | `kindest/node:v1.35.0` | KAgent rc3's development configuration |
+| Development Kubernetes | `kindest/node:v1.35.0` | kagent rc3's development configuration |
 | TriageLab Go toolchain | `go1.27.3` | verified against the official release SHA-256 |
 | OpenTelemetry Go SDK | `v1.47.0` line | `sdk`, `sdk/metric`, `sdk/log`, OTLP/HTTP exporters, `otelslog` bridge, vendored |
 
-The two Substrate repositories are intentionally distinguished. KAgent
+The two Substrate repositories are intentionally distinguished. kagent
 requires `go.ate.dev/substrate v1.0.0` and replaces it with
 `github.com/kagent-dev/substrate v1.0.0`, whose installer consumes that
 project's Helm charts and worker images. Installing the core project's source
-installer alongside KAgent's Helm installer would duplicate infrastructure;
-TriageLab uses only the supported KAgent installation path.
+installer alongside kagent's Helm installer would duplicate infrastructure;
+TriageLab uses only the supported kagent installation path.
 
 ## Interfaces used
 
 1. Kubernetes configuration uses **`api.kagent.dev/v1alpha3`**: `Harness`,
    `AgentTemplate`, `Agent`, `RemoteMCPServer`, `SandboxTemplate`, and
    TriageLab's `ModelConfig`. `Agent.spec.template` selects behavior and
-   `harnessRef` selects its Go ADK runtime. This differs from KAgent 0.x
+   `harnessRef` selects its Go ADK runtime. This differs from kagent 0.x
    examples.
 2. A standalone **Sandbox is an owner-scoped service object**, not a
-   Kubernetes Sandbox CRD. KAgent persists its lifecycle and maps it to a
+   Kubernetes Sandbox CRD. kagent persists its lifecycle and maps it to a
    Substrate Actor. TriageLab calls the controller's existing `/mcp` tools
    and implements no sandbox operator or process execution service.
-3. KAgent's core MCP session/invocation tools start the real investigator.
+3. kagent's core MCP session/invocation tools start the real investigator.
    The investigator's remote binding selects six existing process/file tools;
    it cannot create other sandboxes or invoke infrastructure administration
    tools through that binding. Built-in runtime bash and file search are
    disabled.
-4. The investigator returns KAgent structured output (`outputSchema`) backed
-   by its Go ADK harness. KAgent validates the terminal JSON; TriageLab
+4. The investigator returns kagent structured output (`outputSchema`) backed
+   by its Go ADK harness. kagent validates the terminal JSON; TriageLab
    additionally reconciles process references with observed upstream
    execution records.
 5. Agent Substrate owns worker placement, gVisor/microVM isolation, network
@@ -56,7 +56,7 @@ TriageLab uses only the supported KAgent installation path.
 
 ## Constraints that affect TriageLab
 
-- KAgent requires digest-pinned workload and guest images. Sandbox lifetime
+- kagent requires digest-pinned workload and guest images. Sandbox lifetime
   is fixed at creation; activity does not renew it. Creation has a stable
   request ID, but process start has **no idempotency receipt** — never
   blindly replay a process start after an uncertain response.
@@ -71,8 +71,8 @@ TriageLab uses only the supported KAgent installation path.
 - Global runtime token propagation would forward the caller credential to
   every MCP server; keep `config.runtimeDefaults.tokenPropagation.enabled`
   disabled. The trusted sandbox server uses its own `tokenPassthrough: true`
-  binding with KAgent re-verifying the service-account token.
-- KAgent's shipped authorizer is not a production tenant policy. TriageLab's
+  binding with kagent re-verifying the service-account token.
+- kagent's shipped authorizer is not a production tenant policy. TriageLab's
   private development setup does not claim a multi-tenant perimeter.
   Prompt-injection instructions reduce risk but are not a security boundary.
 

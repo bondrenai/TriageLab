@@ -2,7 +2,7 @@
 
 The public Helm chart installs the TriageLab workspace — the `serve` process
 with the built web UI — as a single-pod Deployment beside an existing
-KAgent/Substrate installation. It does **not** install or replace KAgent;
+kagent/Substrate installation. It does **not** install or replace kagent;
 follow [development](development.md) first for the pinned upstream stack, or
 point the chart at an equivalent dedicated installation you already run.
 
@@ -24,8 +24,8 @@ helm install triagelab oci://ghcr.io/bondrenai/charts/triagelab \
 
 Prerequisites:
 
-1. **KAgent workspace resources.** The agent, sandbox template, and the
-   internal `triagelab-tools` Service must exist in the configured KAgent
+1. **kagent workspace resources.** The agent, sandbox template, and the
+   internal `triagelab-tools` Service must exist in the configured kagent
    namespace. Render them from the deployed image if they are not installed:
 
    ```sh
@@ -34,7 +34,7 @@ Prerequisites:
    ```
 
 2. **Invocation credential.** Mint a short-lived token in the cluster that
-   runs KAgent and store it as a Secret (preferred over `--set token.value=`,
+   runs kagent and store it as a Secret (preferred over `--set token.value=`,
    which is retained in Helm release metadata):
 
    ```sh
@@ -46,7 +46,7 @@ Prerequisites:
 
    Then install with `--set token.create=false --set token.secretName=triagelab-token`.
 
-   The token is read once at container start and KAgent tokens are
+   The token is read once at container start and kagent tokens are
    short-lived. Rotating the Secret does not refresh the running process:
    re-mint, update the Secret, and `kubectl -n triagelab rollout restart
    deploy/triagelab`. Automating rotation is deliberately out of scope.
@@ -106,7 +106,7 @@ in-cluster collector Service; anything else must be HTTPS.
 
 ## Cluster HTTP endpoints
 
-The workspace reaches KAgent through the internal ClusterIP Service over
+The workspace reaches kagent through the internal ClusterIP Service over
 plain HTTP, `http://triagelab-tools.kagent.svc.cluster.local:8083/mcp` by
 default. The CLI otherwise requires HTTPS off-loopback, because a laptop's
 network cannot be trusted with a plaintext bearer token.

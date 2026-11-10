@@ -71,10 +71,10 @@ export interface SavedDefinition<K extends keyof ManifestDefinitions> {
   revision: string;
 }
 
-export interface KAgentManifest {
+export interface kagentManifest {
   kind: string;
   metadata?: { name: string; namespace: string };
-  items?: Omit<KAgentManifest, "items">[];
+  items?: Omit<kagentManifest, "items">[];
 }
 
 export interface DiscoveredTool {

@@ -210,13 +210,13 @@ func TestInfrastructureFailureIsInconclusive(t *testing.T) {
 	data := sample()
 	data["status"], data["outcome"] = "error", "inconclusive"
 	data["experiments"], data["analysis"] = []any{}, map[string]any{}
-	data["errors"] = []string{"Cannot connect to KAgent"}
+	data["errors"] = []string{"Cannot connect to kagent"}
 	data["cleanup"] = map[string]any{"sandbox_deleted": false, "errors": []string{"Deletion unavailable; TTL remains"}}
 	if err := Write(directory, data); err != nil {
 		t.Fatal(err)
 	}
 	markdown := read(t, filepath.Join(directory, "report.md"))
-	for _, text := range []string{"No experiment evidence was collected", "Cannot connect to KAgent", "Deletion unavailable; TTL remains"} {
+	for _, text := range []string{"No experiment evidence was collected", "Cannot connect to kagent", "Deletion unavailable; TTL remains"} {
 		if !strings.Contains(markdown, text) {
 			t.Errorf("missing %q", text)
 		}

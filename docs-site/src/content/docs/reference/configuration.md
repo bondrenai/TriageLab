@@ -9,12 +9,12 @@ One JSON object, decoded with unknown fields rejected. Omitted fields take the d
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `endpoint` | string | `http://127.0.0.1:8083/mcp` | KAgent MCP API endpoint. HTTPS off-loopback; plain HTTP only on loopback or, with allow_cluster_http, on cluster-internal service names. |
-| `namespace` | string | kagent | Kubernetes namespace of the KAgent installation. |
-| `agent` | string | triagelab-investigator | KAgent agent invoked as the investigator. |
+| `endpoint` | string | `http://127.0.0.1:8083/mcp` | kagent MCP API endpoint. HTTPS off-loopback; plain HTTP only on loopback or, with allow_cluster_http, on cluster-internal service names. |
+| `namespace` | string | kagent | Kubernetes namespace of the kagent installation. |
+| `agent` | string | triagelab-investigator | kagent agent invoked as the investigator. |
 | `template` | string | triagelab-python | Standalone sandbox template used for the run's sandbox. |
-| `user_id` | string | triagelab@localhost | KAgent user identity that owns sessions and sandboxes. |
-| `token_env` | string | TRIAGELAB_TOKEN | Environment variable holding the KAgent invocation token; the token itself never goes in the file. |
+| `user_id` | string | triagelab@localhost | kagent user identity that owns sessions and sandboxes. |
+| `token_env` | string | TRIAGELAB_TOKEN | Environment variable holding the kagent invocation token; the token itself never goes in the file. |
 | `investigation_timeout` | integer | 600 | Overall investigation budget in seconds (at most 3000). |
 | `process_timeout` | integer | 60 | Per-process watchdog in seconds; cannot exceed investigation_timeout. |
 | `sandbox_ttl` | integer | 900 | Sandbox TTL in seconds, fixed at creation; must cover the investigation plus request and cleanup budgets (at most 3600). |

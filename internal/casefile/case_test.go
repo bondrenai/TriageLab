@@ -243,7 +243,7 @@ func TestDuplicatesAndUnsafeNamesRefused(t *testing.T) {
 }
 
 func TestDeterministicFixture(t *testing.T) {
-	// This verifies only the fixture, not KAgent or sandbox integration.
+	// This verifies only the fixture, not kagent or sandbox integration.
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is required for the fixture-only check")
