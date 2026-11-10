@@ -6,10 +6,9 @@ import HairlineFigure from "./HairlineFigure.astro";
   <section class="audience" aria-label="Who TriageLab is for">
     <p class="overline">Who it&rsquo;s for</p>
     <p class="audience-lead">
-      Platform, SRE, and support engineers who answer the same technical
-      tickets week after week, from timeouts and misconfigurations to failed
-      deploys, and want the evidence attached to every answer, not just a
-      confident reply.
+      Platform, SRE, and support engineers who see the same technical tickets
+      week after week (timeouts, misconfigurations, failed deploys) and want
+      every answer backed by evidence, not just a confident reply.
     </p>
     <ul class="chips">
       <li>On-call &amp; platform teams</li>
@@ -30,9 +29,9 @@ import HairlineFigure from "./HairlineFigure.astro";
         <p class="stage-num">01</p>
         <h3>Route</h3>
         <p>
-          Ticket tags and labels map to a procedure: the checklist,
-          clarification policy, agent, and sandbox template the case will
-          use.
+          Ticket tags and labels select a procedure, which sets the
+          checklist, clarification policy, agent, and sandbox template for
+          the case.
         </p>
       </li>
       <li class="stage">
@@ -43,9 +42,9 @@ import HairlineFigure from "./HairlineFigure.astro";
         <p class="stage-num">02</p>
         <h3>Classify</h3>
         <p>
-          The procedure checklist decides which facts and files the case
-          needs. Facts are sanitized into evidence; missing items become
-          clarification questions.
+          The procedure&rsquo;s checklist names the facts and files the case
+          needs. Facts found in the ticket are sanitized into evidence, and
+          anything missing becomes a clarification question.
         </p>
       </li>
       <li class="stage">
@@ -56,8 +55,9 @@ import HairlineFigure from "./HairlineFigure.astro";
         <p class="stage-num">03</p>
         <h3>Approve</h3>
         <p>
-          A human approves the exact sanitized facts, file hashes, agent,
-          and limits. Approvals expire quickly and are rechecked at launch.
+          A person approves the exact sanitized facts, file hashes, agent,
+          and limits. The approval expires quickly and is checked again at
+          launch.
         </p>
       </li>
       <li class="stage">
@@ -68,9 +68,9 @@ import HairlineFigure from "./HairlineFigure.astro";
         <p class="stage-num">04</p>
         <h3>Investigate</h3>
         <p>
-          One disposable gVisor or microVM sandbox per run, with egress
-          denied. A kagent investigator runs experiments; TriageLab records
-          every process from the sandbox itself.
+          Each run gets its own disposable gVisor or microVM sandbox with
+          egress denied. A kagent investigator runs the experiments, and
+          TriageLab records every process directly from the sandbox.
         </p>
       </li>
       <li class="stage">
@@ -81,16 +81,16 @@ import HairlineFigure from "./HairlineFigure.astro";
         <p class="stage-num">05</p>
         <h3>Report</h3>
         <p>
-          JSON and Markdown reports separate observed evidence from the
-          model&rsquo;s hypothesis. A reviewed summary returns to the ticket
-          with the full trail.
+          JSON and Markdown reports keep what was observed separate from the
+          model&rsquo;s hypothesis. A reviewed summary can go back to the
+          ticket with the full evidence trail.
         </p>
       </li>
     </ol>
     <p class="pipeline-note">
-      Untrusted ticket content never reaches the sandbox before a person has
-      seen exactly what will run. Inside it, the hard boundaries come from
-      upstream isolation and egress policy, never from prompting.
+      No untrusted ticket content reaches the sandbox until a person has seen
+      exactly what will run. Once a run starts, upstream isolation and egress
+      policy enforce the hard limits, not the prompt.
     </p>
   </section>
 
@@ -101,9 +101,9 @@ import HairlineFigure from "./HairlineFigure.astro";
       <div class="feature">
         <h3>Evidence, not answers</h3>
         <p>
-          Process state, exit codes, and output are fetched from the sandbox
-          itself, never taken on the model&rsquo;s word. Causal
-          interpretation stays labeled a hypothesis.
+          Process state, exit codes, and output come straight from the
+          sandbox, never from the model&rsquo;s say-so. Any explanation of
+          the cause is labeled as a hypothesis.
         </p>
         <a class="feature-link" href="/TriageLab/articles/evidence-not-answers/"
           >Read the article &rarr;</a
@@ -112,9 +112,10 @@ import HairlineFigure from "./HairlineFigure.astro";
       <div class="feature">
         <h3>Sandboxed by default</h3>
         <p>
-          One disposable gVisor or microVM sandbox per run, egress denied by
-          default, with watchdog limits on time and size. kagent owns the
-          investigator; Agent Substrate owns the isolation.
+          Every run uses a disposable gVisor or microVM sandbox. Egress is
+          denied by default, and watchdogs enforce time and size limits.
+          kagent runs the investigator; Agent Substrate provides the
+          isolation.
         </p>
         <a class="feature-link" href="/TriageLab/reference/architecture/"
           >Architecture &rarr;</a
@@ -123,17 +124,16 @@ import HairlineFigure from "./HairlineFigure.astro";
       <div class="feature">
         <h3>A human approves every run</h3>
         <p>
-          Approval is bound to the exact evidence and run settings. It
-          expires quickly and is rechecked at launch, so a stale plan cannot
-          start work.
+          Approval covers the exact evidence and run settings. It expires
+          quickly and is checked again at launch, so an outdated plan cannot
+          start.
         </p>
       </div>
       <div class="feature">
         <h3>Your tracker stays the record</h3>
         <p>
-          Zendesk, GitHub, Linear, and Bondren feed the same workflow through
-          policy-checked sources. The helpdesk remains the conversation
-          record.
+          Zendesk, GitHub, and Linear tickets enter the same workflow through
+          policy-checked sources. The conversation stays in your tracker.
         </p>
         <a class="feature-link" href="/TriageLab/guides/tickets-zendesk/"
           >Ticket guides &rarr;</a
@@ -150,13 +150,16 @@ import HairlineFigure from "./HairlineFigure.astro";
         <h3>A good fit today</h3>
         <ul class="fit-list yes">
           <li>
-            You field repetitive technical tickets on a small team: timeouts,
+            Your small team handles repetitive technical tickets: timeouts,
             misconfigurations, failed deploys.
           </li>
-          <li>You already run Kubernetes and can dedicate a cluster to it.</li>
           <li>
-            You want AI assistance that shows its work: every claim traces
-            to a recorded process.
+            You already run Kubernetes and can dedicate a cluster to
+            TriageLab.
+          </li>
+          <li>
+            You want AI help that shows its work, with every claim traced to
+            a recorded process.
           </li>
         </ul>
       </div>
@@ -168,13 +171,10 @@ import HairlineFigure from "./HairlineFigure.astro";
             platform.
           </li>
           <li>
-            All sources currently use the Python 3.12 timeout procedure; the
-            workflow is general, the procedure catalog is not.
+            The workflow is general, but every source currently uses the same
+            Python 3.12 timeout procedure.
           </li>
-          <li>
-            No database, operator, or multi-tenant deployment, and nothing is
-            simulated: what runs is real.
-          </li>
+          <li>There is no database, operator, or multi-tenant deployment.</li>
         </ul>
       </div>
     </div>
@@ -184,9 +184,9 @@ import HairlineFigure from "./HairlineFigure.astro";
     <div class="cta-copy">
       <h2>Start with the included example</h2>
       <p>
-        The quickstart investigates a small Python application with a
-        timeout configuration error: reproduce it, find the units mismatch,
-        and verify the fix, end to end.
+        The quickstart runs a full investigation of a small Python
+        application with a timeout configuration error: it reproduces the
+        error, finds the units mismatch, and verifies the fix.
       </p>
     </div>
     <div class="cta-actions">

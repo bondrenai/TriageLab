@@ -18,7 +18,7 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       description:
-        "A Kubernetes-based tool that automates technical investigations for tickets and issues — routing, classification, and sandboxed investigation with recorded evidence.",
+        "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an approved investigation in a disposable sandbox.",
       sidebar: [
         {
           label: "Start",

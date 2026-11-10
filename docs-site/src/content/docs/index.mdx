@@ -1,11 +1,11 @@
 ---
 title: What is TriageLab
-description: "A Kubernetes-based tool that automates technical investigations for tickets and issues: routing, classification, and sandboxed investigation."
+description: "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an approved investigation in a disposable sandbox."
 template: splash
 tableOfContents: false
 hero:
   title: 'Every ticket gets a <span class="hero-accent">real investigation.</span>'
-  tagline: "TriageLab automates technical investigations for tickets and issues on Kubernetes: route the case to a procedure, collect the missing evidence, approve the run, then investigate in a disposable sandbox and report back with the full evidence trail."
+  tagline: "TriageLab routes each ticket to a procedure, gathers the evidence it is missing, and waits for a person to approve the run. Then it investigates in a disposable sandbox on Kubernetes and reports what it found, with the evidence behind every finding."
   actions:
     - text: Start the quickstart
       link: /TriageLab/start/quickstart/
@@ -24,34 +24,33 @@ import LandingSections from "../../components/LandingSections.astro";
 
 <LandingSections />
 
-## Why the extra steps
+## How the pieces fit
 
-TriageLab runs beside kagent and Agent Substrate on a dedicated cluster:
-kagent owns the investigator agent and its model; Agent Substrate owns the
-isolated sandbox (gVisor or microVM, egress denied by default). TriageLab
-owns everything between the ticket and the report. The same workflow backs
-the Go CLI and the browser workspace: submit a description and files
-directly, or let a ticket source drive it. Inputs are bounded (64 files,
-1 MiB each, 4 MiB total) and dangerous inputs are rejected before any bytes
-move.
+TriageLab runs beside kagent and Agent Substrate on a dedicated cluster.
+kagent runs the investigator agent and its model, Agent Substrate provides the
+isolated sandbox (gVisor or microVM, with egress denied by default), and
+TriageLab handles everything between the ticket and the report. The Go CLI and
+the browser workspace share one workflow: you can submit a description and
+files yourself, or let a ticket source start the case. Inputs are capped at 64
+files, 1 MiB per file and 4 MiB in total, and unsafe inputs are rejected before
+anything is transferred.
 
-Every stage in front of the sandbox exists to keep untrusted ticket content
-away from the model until a person has seen exactly what will run: sanitized
-facts, file hashes, chosen agent, run limits. Approval expires quickly and is
-rechecked at launch, so a stale plan cannot start work. Inside the sandbox,
-hard boundaries come from upstream isolation and egress policy, not from
-prompting.
+## Why approval comes first
+
+The steps before the sandbox keep untrusted ticket content away from the model
+until a person has seen exactly what will run: the sanitized facts, file
+hashes, chosen agent, and run limits. Approval expires quickly and is checked
+again at launch, so an outdated plan cannot start. Inside the sandbox, the hard
+limits come from upstream isolation and egress policy, not from the prompt.
 
 ## Status and scope
 
 TriageLab is an early, single-user pilot, not a production support platform.
-Today all sources use the Python 3.12 timeout procedure; the workflow is
-general, the procedure catalog is not yet. There is no database, operator,
-custom sandbox runtime, or agent framework, and nothing is simulated: a
-failed run keeps its partial report, a nonzero exit code never means the
-report should be discarded, and infrastructure failures are never reported as
-"not reproduced."
+The workflow is general, but every source currently uses the same Python 3.12
+timeout procedure. There is no database, operator, custom sandbox runtime, or
+agent framework, and nothing is simulated. A failed run keeps its partial
+report, so a nonzero exit code is no reason to discard it. Infrastructure
+failures are never reported as "not reproduced."
 
-Continue with the [quickstart](/TriageLab/start/quickstart/) to run the
-included example, or read the [CLI reference](/TriageLab/reference/cli/) for
-the full command surface.
+Next, run the included example with the [quickstart](/TriageLab/start/quickstart/),
+or see every command in the [CLI reference](/TriageLab/reference/cli/).
