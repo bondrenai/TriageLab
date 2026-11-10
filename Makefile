@@ -8,17 +8,16 @@ export GOFLAGS := -trimpath
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-# Linters run as pinned `go run module@version` so go.mod stays dependency-free.
-# Both versions are the newest that still build with the pinned Go 1.25
-# toolchain; newer releases require Go 1.26.
-STATICCHECK ?= honnef.co/go/tools/cmd/staticcheck@v0.7.0
-GOVULNCHECK ?= golang.org/x/vuln/cmd/govulncheck@v1.7.0
+# Linters run as pinned `go run module@version`, which keeps them out of go.mod
+# and vendor/. Unlike the vendored build, they download from the module proxy.
+STATICCHECK ?= honnef.co/go/tools/cmd/staticcheck@v0.8.2
+GOVULNCHECK ?= golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
 # Static CLI binaries published to the GitHub Release (they do not embed the web UI).
 DIST ?= dist
 DIST_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: build fmt check test lint vulncheck dist test-integration demo manifest install-ui dev-ui build-ui check-ui chart-lint
+.PHONY: build fmt check test race lint vulncheck dist test-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o bin/triagelab ./cmd/triagelab
 dist:
@@ -39,14 +38,28 @@ build-ui:
 	$(NPM) --prefix web run build
 check-ui:
 	$(NPM) --prefix web run check
+install-docs:
+	$(NPM) --prefix docs-site ci
+dev-docs:
+	$(NPM) --prefix docs-site run dev
+build-docs:
+	$(NPM) --prefix docs-site run build
+docs-generate:
+	$(GO) run ./cmd/triagelab docs --out docs-site/src/content/docs/reference
+docs-check:
+	$(GO) run ./cmd/triagelab docs --check docs-site/src/content/docs/reference
 fmt:
 	gofmt -w cmd internal
 check:
 	@test -z "$$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
 	$(GO) vet ./...
-	$(GO) test -race ./...
+	$(GO) test ./...
 test:
-	$(GO) test -race ./...
+	$(GO) test ./...
+# Separate from check: the race detector slows the password-hashing sign-in
+# tests about tenfold, past the default per-package timeout on small runners.
+race:
+	$(GO) test -race -timeout 30m ./...
 lint:
 	$(GO) run $(STATICCHECK) ./...
 vulncheck:

@@ -12,13 +12,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/report"
 )
+
+// sessionCookies caches one admin session per server so request() stays
+// authenticated; tests needing other roles call requestAs directly.
+var sessionCookies sync.Map
 
 type testBackend struct {
 	call func(context.Context, string, map[string]any) (map[string]any, error)
@@ -54,6 +60,8 @@ func newTestServer(t *testing.T, backend investigation.Backend) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sessionCookies.Store(s, addAuth(t, s))
+	t.Cleanup(func() { sessionCookies.Delete(s) })
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -62,17 +70,77 @@ func newTestServer(t *testing.T, backend investigation.Backend) *Server {
 	return s
 }
 
+// addAuth enables sign-in with the three role accounts used across tests and
+// returns the admin session cookie.
+func addAuth(t *testing.T, s *Server) *http.Cookie {
+	t.Helper()
+	users, err := auth.OpenStore(filepath.Join(t.TempDir(), "users.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for account, password := range map[string]struct {
+		password string
+		role     auth.Role
+	}{
+		"admin":    {"admin-password-1", auth.RoleAdmin},
+		"observer": {"viewer-password-1", auth.RoleViewer},
+		"worker":   {"user-password-1", auth.RoleUser},
+	} {
+		if err := users.Create(account, password.password, password.role); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.EnableAuth(users, nil); err != nil {
+		t.Fatal(err)
+	}
+	return loginAs(t, s, "admin", "admin-password-1")
+}
+
+// loginAs signs in a test account and returns the session cookie.
+func loginAs(t *testing.T, s *Server, username, password string) *http.Cookie {
+	t.Helper()
+	body := strings.NewReader(`{"username":"` + username + `","password":"` + password + `"}`)
+	r := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/auth/login", body)
+	r.Header.Set("X-TriageLab-Request", "1")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("login %s: %d %s", username, w.Code, w.Body)
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != auth.SessionCookie {
+		t.Fatalf("login %s: unexpected cookies %v", username, cookies)
+	}
+	return cookies[0]
+}
+
 func request(s *Server, method, path string, body io.Reader) *httptest.ResponseRecorder {
+	return requestAs(s, adminCookie(s), method, path, body)
+}
+
+// requestAs performs a request for a specific session cookie; cookie may be
+// nil for unauthenticated requests.
+func requestAs(s *Server, cookie *http.Cookie, method, path string, body io.Reader) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://localhost:8080"+path, body)
 	r.Header.Set("X-TriageLab-Request", "1")
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	return w
 }
 
+func adminCookie(s *Server) *http.Cookie {
+	if cookie, ok := sessionCookies.Load(s); ok {
+		return cookie.(*http.Cookie)
+	}
+	return nil
+}
+
 type upload struct{ name, content string }
 
-func formRequest(t *testing.T, description string, files ...upload) *http.Request {
+func formRequest(t *testing.T, s *Server, description string, files ...upload) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
@@ -94,6 +162,9 @@ func formRequest(t *testing.T, description string, files ...upload) *http.Reques
 	r := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/runs", &body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	r.Header.Set("X-TriageLab-Request", "1")
+	if cookie := adminCookie(s); cookie != nil {
+		r.AddCookie(cookie)
+	}
 	return r
 }
 
@@ -131,7 +202,7 @@ func TestHTTPRejectsForeignHostsOriginsAndUnmarkedMutations(t *testing.T) {
 
 func TestUploadKeepsRelativePathsAndUsesExistingInputValidation(t *testing.T) {
 	s := newTestServer(t, nil)
-	c, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, "An issue", upload{"nested/app.py", "print('ok')"}, upload{"config.json", "{}"}))
+	c, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, s, "An issue", upload{"nested/app.py", "print('ok')"}, upload{"config.json", "{}"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,12 +219,12 @@ func TestUploadKeepsRelativePathsAndUsesExistingInputValidation(t *testing.T) {
 		{{"large.txt", strings.Repeat("x", casefile.MaxFileBytes+1)}},
 	} {
 		t.Run(files[0].name, func(t *testing.T) {
-			if _, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, "An issue", files...)); err == nil {
+			if _, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, s, "An issue", files...)); err == nil {
 				t.Fatal("unsafe input accepted")
 			}
 		})
 	}
-	if _, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, "")); err == nil {
+	if _, err := s.ingestUpload(httptest.NewRecorder(), formRequest(t, s, "")); err == nil {
 		t.Fatal("empty description accepted")
 	}
 	entries, err := os.ReadDir(s.directory)
@@ -177,7 +248,7 @@ func TestRunSerializesWorkCancelsAndPersistsHistory(t *testing.T) {
 	}}
 	s := newTestServer(t, backend)
 	w := httptest.NewRecorder()
-	s.ServeHTTP(w, formRequest(t, "The fixture fails", upload{"app.py", "raise Exception('fixture')"}))
+	s.ServeHTTP(w, formRequest(t, s, "The fixture fails", upload{"app.py", "raise Exception('fixture')"}))
 	if w.Code != 202 {
 		t.Fatalf("start %d: %s", w.Code, w.Body)
 	}
@@ -192,7 +263,7 @@ func TestRunSerializesWorkCancelsAndPersistsHistory(t *testing.T) {
 		t.Fatal("investigation did not start")
 	}
 	w = httptest.NewRecorder()
-	s.ServeHTTP(w, formRequest(t, "Second issue"))
+	s.ServeHTTP(w, formRequest(t, s, "Second issue"))
 	if w.Code != 409 {
 		t.Fatalf("parallel run accepted: %d", w.Code)
 	}
@@ -246,6 +317,8 @@ func TestRunSerializesWorkCancelsAndPersistsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close(context.Background())
+	sessionCookies.Store(reopened, addAuth(t, reopened))
+	t.Cleanup(func() { sessionCookies.Delete(reopened) })
 	w = request(reopened, "GET", "/api/runs", nil)
 	if !strings.Contains(w.Body.String(), id) {
 		t.Fatalf("history missing after restart: %s", w.Body)
@@ -261,7 +334,7 @@ func TestShutdownWaitsForInvestigationCancellation(t *testing.T) {
 	}}
 	s := newTestServer(t, backend)
 	w := httptest.NewRecorder()
-	s.ServeHTTP(w, formRequest(t, "Cancel during shutdown"))
+	s.ServeHTTP(w, formRequest(t, s, "Cancel during shutdown"))
 	if w.Code != 202 {
 		t.Fatalf("start %d", w.Code)
 	}
@@ -286,7 +359,7 @@ func TestShutdownWaitsForInvestigationCancellation(t *testing.T) {
 		t.Fatalf("report did not finish before close: %s", content)
 	}
 	w = httptest.NewRecorder()
-	s.ServeHTTP(w, formRequest(t, "No more work"))
+	s.ServeHTTP(w, formRequest(t, s, "No more work"))
 	if w.Code != 503 {
 		t.Fatalf("accepted after shutdown: %d", w.Code)
 	}

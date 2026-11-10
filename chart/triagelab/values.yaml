@@ -70,6 +70,38 @@ tickets:
     key: ""    # defaults to tickets.config.token_env
     value: ""
 
+# Optional web sign-in (docs/ui.md). auth.config renders verbatim to
+# auth.json; an `oidc` section enables single sign-on and its
+# client_secret_env names the environment variable holding the client
+# secret. Local accounts live in <output>/.auth/users.json on the reports
+# volume. Bootstrap the first admin inside the pod:
+#   kubectl exec -it deploy/triagelab -- /triagelab user add \
+#     --username admin --role admin --password-stdin --output /data/reports
+auth:
+  enabled: false
+  config: {}
+  secret:
+    create: true
+    secretName: ""
+    key: ""    # defaults to auth.config.oidc.client_secret_env
+    value: ""
+
+# Optional OpenTelemetry export over OTLP/HTTP (traces, metrics, logs).
+# telemetry.config is rendered verbatim to telemetry.json; field names must
+# match internal/telemetry.Config exactly (unknown fields are rejected at
+# startup). headers_env names an environment variable holding newline
+# separated "Name: value" collector headers, supplied through the Secret
+# below rather than values. OTLP is a new outbound network path from the
+# workspace pod; no Service or Ingress is created for it.
+telemetry:
+  enabled: false
+  config: {}
+  headers:
+    create: true
+    secretName: ""
+    key: ""    # defaults to "headers"
+    value: ""
+
 # Reports and private ticket state. EmptyDir when disabled (lost on restart).
 persistence:
   enabled: true

@@ -46,12 +46,15 @@ certify root causes. Both failed and successful experiments are preserved.
 
 Go uses a conventional `cmd/` entrypoint, `internal/`
 packages, explicit configuration, context cancellation, standard-library HTTP,
-and Makefile checks. TriageLab has no third-party Go dependencies. The Python
+and Makefile checks. The vendored OpenTelemetry SDK is the only third-party Go
+dependency: it exports traces, metrics, and logs over OTLP/HTTP when the
+optional `--telemetry` configuration is supplied, and stays a no-op otherwise.
+See `triagelab.telemetry.example.json` and docs/upstream.md. The Python
 example is only a reproduction fixture.
 
 ## Prerequisites
 
-- Go **1.25.12** or later in the supported 1.25 line.
+- Go **1.27.3** or later in the supported 1.27 line.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
   **KAgent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
   work and verification should run remotely on resource-constrained laptops.
@@ -145,8 +148,11 @@ selection and clarification, and approval before the existing investigation run.
 reviewed clarifications with bounded follow-ups, and reviewed investigation
 comments to one configured repository through the same workflow. GitHub comments
 are visible to everyone with repository access and public in public repositories.
-Both sources currently use the Python 3.12 timeout procedure; select the source
-with the configuration passed to `serve --tickets`.
+[Linear issue support](docs/linear-issues.md) brings the same workflow to one
+configured team through a server-side API key. Linear comments are visible to
+everyone with workspace access. All sources currently use the Python 3.12
+timeout procedure; select the source with the configuration passed to
+`serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.
@@ -159,13 +165,24 @@ KAgent/Substrate installation, installed from the public chart
 inside the pod and is reached through `kubectl port-forward`; the chart
 creates no Service or Ingress by design. See [Helm deployment](docs/helm.md).
 
+### Documentation site
+
+The public documentation lives in `docs-site/` (Astro/Starlight) and publishes
+to GitHub Pages at <https://bondrenai.github.io/TriageLab/> on pushes to main.
+Its CLI and configuration reference pages are generated from the actual flag
+registrations and config structs by `triagelab docs`; a golden test under
+`make check` fails if they drift, and the build validates internal links.
+See `docs-site/README.md` for the workflow (`make dev-docs`, `build-docs`,
+`docs-generate`). Contributor-facing notes stay in `docs/`.
+
 ### Checks
 
 Run these commands on the development VM:
 
 ```bash
 make fmt
-make check                    # gofmt check, go vet, unit and HTTP protocol tests (-race)
+make check                    # gofmt check, go vet, unit and HTTP protocol tests
+make race                     # the same tests under the race detector (several minutes)
 make lint                     # staticcheck, pinned via go run (see staticcheck.conf)
 make vulncheck                # govulncheck, pinned via go run
 make build                    # VERSION defaults to git describe, else "dev"

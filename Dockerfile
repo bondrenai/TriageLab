@@ -20,19 +20,20 @@ COPY web/ ./
 COPY docs/verification/agent-demo.json /docs/verification/agent-demo.json
 RUN npm run build
 
-# Build the statically linked CLI from the standard-library-only module,
-# cross-compiled for the target platform.
-FROM --platform=$BUILDPLATFORM golang:1.25.12-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS build
+# Build the statically linked CLI, cross-compiled for the target platform. The
+# OpenTelemetry SDK is vendored, so the image build never reaches the network.
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY internal/ internal/
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -ldflags "-X main.version=$VERSION" -o /out/triagelab ./cmd/triagelab \
+    go build -mod=vendor -ldflags "-X main.version=$VERSION" -o /out/triagelab ./cmd/triagelab \
     && mkdir -p /out/app
 
 # Busybox wget in Alpine backs the loopback liveness probe; there is no shell

@@ -76,13 +76,13 @@ func cloneProcedure(p Procedure) Procedure {
 
 // Additional procedures are checked in priority order. The final procedure
 // still needs to match its own admission criteria.
-func (v ProcedureVersion) match(t ticket) (Procedure, string) {
+func (v ProcedureVersion) match(provider string, t ticket) (Procedure, string) {
 	for _, p := range v.Additional {
-		if p.Policy.exclusion(t) == "" {
+		if p.Policy.exclusion(provider, t) == "" {
 			return p, ""
 		}
 	}
-	reason := v.Procedure.Policy.exclusion(t)
+	reason := v.Procedure.Policy.exclusion(provider, t)
 	if reason != "" && len(v.Additional) > 0 {
 		reason = "This case does not match any saved procedure."
 	}
@@ -135,7 +135,7 @@ func (f *Flow) validateProcedure(p Procedure) error {
 		len(p.Routes) > 20 {
 		return ErrInvalidProcedure
 	}
-	if f.provider == "github" && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
+	if (f.provider == "github" || f.provider == "linear") && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
 		return ErrInvalidProcedure
 	}
 	for _, priority := range policy.Priorities {
@@ -243,6 +243,13 @@ func (s *store) loadProcedure(account string) error {
 }
 
 func (f *Flow) PreviewProcedure(ctx context.Context, id int64, p Procedure) (Case, error) {
+	ctx, finish := traced(ctx, "procedure_preview")
+	c, err := f.previewProcedure(ctx, id, p)
+	finish(err)
+	return c, err
+}
+
+func (f *Flow) previewProcedure(ctx context.Context, id int64, p Procedure) (Case, error) {
 	if err := f.begin(); err != nil {
 		return Case{}, err
 	}
@@ -290,6 +297,13 @@ func routeKey(p Procedure, matches []RouteRule) string {
 }
 
 func (f *Flow) ChooseRoute(ctx context.Context, id int64, revision, agent string) (Case, error) {
+	ctx, finish := traced(ctx, "choose_route")
+	c, err := f.chooseRoute(ctx, id, revision, agent)
+	finish(err)
+	return c, err
+}
+
+func (f *Flow) chooseRoute(ctx context.Context, id int64, revision, agent string) (Case, error) {
 	if err := f.begin(); err != nil {
 		return Case{}, err
 	}

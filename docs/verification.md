@@ -232,6 +232,84 @@ evidence directories sit under the symlinked `/var` temp prefix that
 integration, a real Zendesk or GitHub send, and the blocked-note browser UI
 were not exercised end to end and stay open with the roadmap item.
 
+## Linear issue connector verification
+
+On 2026-11-09, the shared bondren-build VM passed `make check` (gofmt, `go
+vet`, `go test` with `GOFLAGS=-trimpath`) and `make check-ui` (`tsc -b`) over
+the combined workspace snapshot, which also carried in-flight sign-in and
+telemetry work from a concurrent session. No build or test ran on the
+development laptop except the symlink-free `TMPDIR` ticketflow run used to
+confirm the local `/var` artifact.
+
+Linear GraphQL fixtures cover the pinned endpoint and raw Authorization
+header, the signed-URL request header, issue lookup scoped to the configured
+team key and per-team number, identifier/UUID/state/timestamp validation,
+label and creator identity, description-as-first-comment provenance, comment
+anchors, the 100-comment bound, and freshness receipts that detect edited or
+deleted comments. Attachment parsing accepts only Linear upload hosts with
+Markdown link names; downloads reject other hosts and fragments, never send
+the API key to the storage host, and enforce text and size bounds. Workflow
+tests cover author-only evidence, workspace investigation comments with
+durable receipts and restart persistence, the token account's own outgoing
+comments never counting as creator replies, team-scoped state, and refusal of
+configured credentials in facts, files, filenames, and attachment URLs.
+Configuration and HTTP tests reject unconfigured Linear writes, Zendesk-only
+settings, malformed keys, and Zendesk OAuth actions in a Linear workspace.
+Existing Zendesk and GitHub tests also pass.
+
+These are fixture and build checks. No Linear account was connected, and no
+live Linear clarification, summary send, or Linear-to-KAgent investigation
+was performed. The GraphQL document shapes were pinned against the published
+Linear API documentation; a controlled live pilot remains to be run.
+
+## OpenTelemetry export verification
+
+On 2026-11-09, live OTLP/HTTP export from real TriageLab processes was
+verified on the shared bondren-build VM against `otel/opentelemetry-collector:0.165.0`
+(loopback 4318, debug exporter), using the binary built at commit `4543e4c`
+(Go 1.27.3 toolchain) and `triagelab.telemetry.example.json` plus the
+`headers_env` indirection.
+
+- `triagelab doctor --telemetry` against the live KAgent controller
+  (kind cluster, `triagelab-tools` port-forward, short-lived
+  `kagent-invocation` token): exported the `triagelab doctor` command span and
+  a child `kagent.rpc` span (`mcp.call=list_sandbox_templates`) under one
+  trace, plus the `triagelab.kagent.rpc.duration` data point.
+- `triagelab investigate --telemetry` with the scripted `triagelab-demo-runtime`
+  agent on the standard config-bug fixture: a real sandbox was created,
+  populated, and deleted through KAgent. The task ended `TASK_STATE_FAILED`
+  (the scripted demo model does not drive this agent's investigation to a
+  completed analysis), so the run completed on the **failure path** with
+  `status=error`, `outcome=inconclusive`, exit code 4, and complete cleanup
+  (`sandbox_deleted=true`, `session_deleted=true`, no cleanup errors). The
+  collector received the full tree: `investigation.run` (attrs: run_id,
+  trigger=cli, agent, sandbox_template, status, outcome) with child spans
+  `investigation.sandbox.create`, `inputs.upload`, `session.create`,
+  `session.invoke`, two `session.poll`, three `evidence.observe`, and
+  `investigation.cleanup` (attrs: sandbox_deleted, session_deleted, errors=0),
+  alongside 14 `kagent.rpc` spans. The `triagelab.investigation.runs`,
+  `duration`, `experiments`, and `cleanup` metrics were exported.
+- `triagelab serve --telemetry` (loopback 8099, local-account sign-in):
+  exported `server started`/`server stopped` log records and `http` spans for
+  `/api/settings` (both the 401 before login and the 200 after), the login
+  POST, and an unknown deep API path collapsed to `http /api/other`;
+  `triagelab.http.requests`/`http.duration` arrived with route/method/status
+  attributes. `/healthz` correctly produced a metric without a span, and a
+  serve start that failed on an occupied port exported its command span with
+  the error status on shutdown flush.
+- Log correlation: the phase log records ("Creating an isolated sandbox",
+  "Uploading 3 files") carried the run span's exact trace and span IDs. The
+  final-cleanup message is uncorrelated by design because cleanup runs on its
+  independent bounded context.
+
+Not exercised live: a **successful** model-backed investigation outcome
+(the scripted demo model cannot produce one; no provider credential was used),
+ticketflow action spans against a live helpdesk, and collector header
+authentication (the wire behavior is covered by unit tests decoding real OTLP
+protobuf in `internal/telemetry/telemetry_test.go`). Resource attributes were
+`service.name=triagelab`, `service.version=0.1.0`; no case content, prompts,
+credentials, or account names appeared in the exported telemetry.
+
 ## Evaluation corpus (authored, not run live)
 
 On November 9, 2026, five evaluation cases were added beside `config-bug`,
@@ -372,5 +450,33 @@ Not verified: any live investigation, retry behaviour over a real dropped
 port-forward, deletion of a real sandbox or session through Retry cleanup, and
 every GitHub workflow change (the macOS job, the lint and vulncheck jobs, the
 release gate, the multi-architecture publish, the provenance attestation, and
-the release binaries). The linux/amd64 image was cross-built once before these
-changes were merged and has never been run.
+the release binaries).
+
+### After merging `main`
+
+Later on November 9, 2026, these changes were merged with `main`'s Linear
+connector, workspace sign-in, telemetry export, and documentation site. That
+moved the tree to Go 1.27.3 with vendored dependencies. The merged tree was
+checked on the Linux build VM (linux/amd64, Go 1.27.3), again without a KAgent
+deployment, a model, or a GitHub workflow run:
+
+- `make check`, `make check-ui`, `make build-ui`, and `make build-docs` (with
+  its link validation) pass. The generated CLI reference was regenerated,
+  because each command now lists only its own flags.
+- The race detector moved out of `make check` into `make race`. It slows the
+  password-hashing sign-in tests about tenfold: `internal/webserver` took 272
+  seconds under it against 35 without. `make race` passes.
+- `make build`, `make dist`, and `docker build` succeed with the vendored
+  module. The linux/amd64 image ran `version` as uid 10001, so both image
+  architectures have now run that one command and nothing else.
+- `actionlint` and `make chart-lint` pass on the laptop.
+- **`make vulncheck` fails.** Go 1.27.3 clears the standard-library advisories
+  above, but the scan reports five HTTP/2 advisories in the vendored
+  `golang.org/x/net` v0.59.0, all fixed in v0.60.0.
+- **`make lint` fails** with seven findings in code that arrived from `main`:
+  deprecated `ecdsa.PublicKey` coordinates in the OIDC key parsing and its
+  test, a deprecated OpenTelemetry call in a test, and a self-comparison in a
+  Linear test. staticcheck moved to v0.8.2 and govulncheck to v1.9.0.
+- Retry cleanup requires the user role, like the other actions that steer a
+  run. Fixture tests cover a viewer being refused and a user passing the role
+  check. The page was not reopened in a browser after sign-in was merged in.

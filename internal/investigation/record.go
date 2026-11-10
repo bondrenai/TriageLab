@@ -70,6 +70,9 @@ type Report struct {
 	FinishedAt      *time.Time    `json:"finished_at"`
 	Agent           *AgentRef     `json:"agent,omitempty"`
 	SandboxTemplate string        `json:"sandbox_template"`
+	// StartedBy is the signed-in workspace account that started the run. It is
+	// absent for CLI runs.
+	StartedBy string `json:"started_by,omitempty"`
 
 	// Sandbox is KAgent's sandbox resource as last returned. Session starts as
 	// TriageLab's journal of the session ID and task ID; recovery can replace it

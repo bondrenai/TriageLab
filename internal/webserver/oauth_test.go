@@ -44,11 +44,11 @@ func TestZendeskOAuthRoutes(t *testing.T) {
 		{host, "cross-site", true, 403},
 		{"localhost:8080", "same-origin", true, 409},
 	} {
-		if w := call("POST", attempt.host, start, attempt.site, attempt.header, nil); w.Code != attempt.code {
+		if w := call("POST", attempt.host, start, attempt.site, attempt.header, adminCookie(s)); w.Code != attempt.code {
 			t.Fatalf("authorize returned %d, want %d", w.Code, attempt.code)
 		}
 	}
-	w := call("POST", host, start, "same-origin", true, nil)
+	w := call("POST", host, start, "same-origin", true, adminCookie(s))
 	if w.Code != 200 {
 		t.Fatalf("authorize: %d %s", w.Code, w.Body)
 	}

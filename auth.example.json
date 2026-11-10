@@ -1,0 +1,15 @@
+{
+  "oidc": {
+    "issuer": "https://sso.example.com/realms/triagelab",
+    "client_id": "triagelab",
+    "client_secret_env": "TRIAGELAB_OIDC_CLIENT_SECRET",
+    "scopes": ["openid", "profile", "email"],
+    "username_claim": "preferred_username",
+    "groups_claim": "groups",
+    "role_map": {
+      "triagelab-admins": "admin",
+      "triagelab-users": "user"
+    },
+    "default_role": "viewer"
+  }
+}

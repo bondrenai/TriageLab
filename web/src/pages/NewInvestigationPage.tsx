@@ -4,9 +4,22 @@ import { File, FlaskConical, Paperclip, X } from "lucide-react";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Textarea } from "../components/ui";
 import { useDeploymentStatus } from "../hooks/use-agents";
 import { useCreateRun, useRuns, useSettings } from "../hooks/use-investigations";
+import { useSession } from "../hooks/use-auth";
+import { roleAtLeast } from "../lib/auth";
 import { fileSize } from "../lib/investigations";
 
 export function NewInvestigationPage() {
+  const session = useSession();
+  if (!roleAtLeast(session.data?.role, "user")) {
+    return <>
+      <PageTitle title="New investigation" description="Starting investigations requires the user role." />
+      <Panel title="Read-only access"><div className="panel-body"><p>Your account can review reports and cases but not launch investigations. Ask an administrator for the user role.</p></div></Panel>
+    </>;
+  }
+  return <NewInvestigationForm />;
+}
+
+function NewInvestigationForm() {
   const settings = useSettings();
   const savedAgentsEnabled = settings.data?.resource_writes === true;
   const deployments = useDeploymentStatus("agents", savedAgentsEnabled);

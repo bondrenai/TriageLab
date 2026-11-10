@@ -17,7 +17,8 @@ and [verification record](verification.md) document the completed real agent dem
 | Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
 | Development Kubernetes | `kindest/node:v1.35.0` | KAgent rc3's development configuration |
-| TriageLab Go toolchain | `go1.25.12` | Development VM installation verified against the official release SHA-256 |
+| TriageLab Go toolchain | `go1.27.3` | Development VM installation verified against the official release SHA-256 |
+| OpenTelemetry Go SDK | `v1.47.0` line | `otel`/`sdk`/`sdk/metric` `v1.47.0`, `sdk/log` `v1.47.0`, OTLP/HTTP exporters `v1.47.0`/`v0.23.0`, `contrib/bridges/otelslog` `v0.21.0`, vendored in `vendor/` |
 
 The two Substrate repositories are intentionally distinguished. KAgent's
 [go.mod](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/go.mod)
@@ -143,6 +144,45 @@ run unit/error-path tests, then run the real demo on a fresh disposable cluster.
 Inspect failure and corrective outputs, network denial, timeouts and deletion;
 record precisely which versions and checks ran. Preserve reports before deleting
 the cluster. Do not infer compatibility from unchanged tool names.
+
+## OpenTelemetry SDK integration
+
+Added 2026-11-09. TriageLab uses the official OpenTelemetry Go SDK (the
+module's first third-party dependency, vendored so builds stay offline and
+reproducible) to export **traces, metrics, and logs over OTLP/HTTP** when a
+telemetry configuration file is supplied (`--telemetry`, chart values under
+`telemetry:`). Without configuration every provider stays a no-op and nothing
+leaves the process.
+
+Interfaces used:
+
+- `sdk/trace` with `ParentBased(TraceIDRatioBased)` sampling, batch span
+  processor, and `otlptracehttp`; `sdk/metric` with a periodic reader and
+  `otlpmetrichttp`; `sdk/log` with a batch processor and `otlploghttp`; the
+  `otelslog` bridge for structured logs; W3C `traceparent` injection into
+  KAgent MCP requests.
+- `otelhttp` transports are **not** used; outbound propagation is a direct
+  propagator call and server spans are hand-wrapped so the loopback and
+  origin checks stay ahead of instrumentation.
+- `WithEndpointURL` maps the configured URL path verbatim, so TriageLab
+  appends `/v1/{traces,metrics,logs}` itself; a base path prefix is honored.
+
+Constraints that affect TriageLab:
+
+- Export is best effort. Collector failures surface on stderr and never
+  change investigation outcomes; the shutdown flush is bounded to five
+  seconds.
+- Attributes are limited to fixed vocabularies (statuses, outcomes, trigger,
+  MCP method/tool names, error kinds, collapsed route patterns) and
+  identifiers (run IDs). Case descriptions, attachments, model prompts, tool
+  outputs, credentials, and account names are never instrumented; phase log
+  messages pass through the report redactor first.
+- The pinned line requires Go >= 1.26.0; the toolchain pin is `go1.27.3`.
+  The logs SDK stable (`sdk/log v1.47.0`) line exists only from v1.47 onward.
+- Verified by unit tests against an in-process OTLP/HTTP collector decoding
+  the exported protobuf for all three signals (see
+  `internal/telemetry/telemetry_test.go`). Live export to a real collector is
+  exercised only to the extent recorded in `docs/verification.md`.
 
 ## GitHub issue integration
 

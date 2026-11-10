@@ -110,10 +110,10 @@ var flagName = regexp.MustCompile(`(?m)^  -(\S+)`)
 // Each subcommand accepts exactly its own options; shared names keep their defaults.
 func TestSubcommandsDefineOnlyTheirOwnFlags(t *testing.T) {
 	for command, want := range map[string][]string{
-		"investigate":    {"agent", "config", "description", "description-file", "file", "log", "output", "repo"},
-		"serve":          {"allow-resource-writes", "assets", "config", "listen", "output", "status-context", "status-kubeconfig", "tickets"},
-		"doctor":         {"config"},
-		"cleanup":        {"config", "report"},
+		"investigate":    {"agent", "config", "description", "description-file", "file", "log", "output", "repo", "telemetry"},
+		"serve":          {"allow-resource-writes", "assets", "auth", "config", "listen", "output", "status-context", "status-kubeconfig", "telemetry", "tickets", "users"},
+		"doctor":         {"config", "telemetry"},
+		"cleanup":        {"config", "report", "telemetry"},
 		"manifest":       {"workload-image"},
 		"agent-manifest": {"definition", "namespace"},
 		"version":        nil,
@@ -137,6 +137,7 @@ func TestSubcommandsDefineOnlyTheirOwnFlags(t *testing.T) {
 		{"serve", "--repo", "x"}, {"serve", "--report", "x"}, {"investigate", "--listen", "x"},
 		{"investigate", "--report", "x"}, {"investigate", "--status-context", "x"}, {"manifest", "--config", "x"},
 		{"agent-manifest", "--output", "x"}, {"version", "--repo", "x"}, {"version", "extra"},
+		{"doctor", "--auth", "x"}, {"investigate", "--users", "x"}, {"cleanup", "--tickets", "x"},
 	} {
 		var out, stderr bytes.Buffer
 		if code := run(context.Background(), args, &out, &stderr); code != 2 || out.Len() != 0 {

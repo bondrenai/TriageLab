@@ -1,0 +1,6 @@
+{
+  "endpoint": "http://127.0.0.1:4318",
+  "headers_env": "TRIAGELAB_OTLP_HEADERS",
+  "sample_ratio": 1.0,
+  "export_interval_seconds": 30
+}

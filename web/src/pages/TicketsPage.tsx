@@ -2,9 +2,13 @@ import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, type StampHue } from "../components/ui";
 import { useTicketAction, useTicketWorkspace, useZendeskOAuth } from "../hooks/use-tickets";
+import { useSession } from "../hooks/use-auth";
+import { roleAtLeast } from "../lib/auth";
 import { orderedProcedures } from "../lib/tickets";
-import type { TicketAction, TicketCase, TicketSettings } from "../lib/types/ticket";
+import type { TicketAction, TicketCase, TicketSettings, TicketSource } from "../lib/types/ticket";
 import { TicketProcedureEditor } from "./TicketProcedureEditor";
+
+const providerName = (source?: TicketSource) => source === "github" ? "GitHub" : source === "linear" ? "Linear" : "Zendesk";
 
 const states: Record<TicketCase["state"], [string, StampHue]> = {
   excluded: ["Outside policy", "gray"],
@@ -20,24 +24,26 @@ function CaseStamp({ ticket }: { ticket: TicketCase }) {
   return <Stamp hue={hue}>{label}</Stamp>;
 }
 
-function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform }: {
+function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform, canAct }: {
   ticket: TicketCase;
   settings: TicketSettings;
   mode: "tracked" | "preview" | "draft";
   procedureRevision?: string;
   busy: boolean;
   perform: (input: TicketAction) => void;
+  canAct?: boolean;
 }) {
   const id = ticket.ticket_id;
-  const github = ticket.source === "github";
-  const provider = github ? "GitHub" : "Zendesk";
-  const kind = github ? "issue" : "ticket";
+  const source = ticket.source ?? "zendesk";
+  const provider = providerName(source);
+  const issue = source !== "zendesk";
+  const kind = issue ? "issue" : "ticket";
   const sourceURL = ticket.url || `${ticket.account}/agent/tickets/${id}`;
-  const requesterURL = ticket.requester?.url || (!github && ticket.requester ? `${ticket.account}/agent/users/${ticket.requester.id}` : undefined);
+  const requesterURL = ticket.requester?.url || (source === "zendesk" && ticket.requester ? `${ticket.account}/agent/users/${ticket.requester.id}` : undefined);
   const action = (kind: TicketAction["action"]) => perform({ id, action: kind, revision: ticket.revision, plan: ticket.plan });
   const planCurrent = ticket.plan && Date.parse(ticket.plan_expires) > Date.now();
   const stale = mode !== "draft" && Boolean(procedureRevision && ticket.procedure_revision !== procedureRevision);
-  return <Panel title={mode === "draft" ? `Draft preview for ${kind} #${id}` : ticket.title || `${github ? "Issue" : "Ticket"} #${id}`}>
+  return <Panel title={mode === "draft" ? `Draft preview for ${kind} #${id}` : ticket.title || `${issue ? "Issue" : "Ticket"} #${id}`}>
     <div className="panel-body ticket-detail">
       <div className="button-row ticket-meta">
         <CaseStamp ticket={ticket} />
@@ -53,7 +59,7 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         </dd></div>
         {ticket.sandbox && <div><dt>Sandbox</dt><dd><code>{ticket.sandbox}</code></dd></div>}
       </dl>}
-      {!stale && mode === "tracked" && !ticket.paused && !ticket.run_id && (ticket.agent_choices?.length ?? 0) > 1 && <div className="button-row">
+      {!stale && mode === "tracked" && !ticket.paused && !ticket.run_id && canAct !== false && (ticket.agent_choices?.length ?? 0) > 1 && <div className="button-row">
         {ticket.agent_choices?.filter(agent => agent !== ticket.agent).map(agent => <Button key={agent} type="button" disabled={busy}
           onClick={() => perform({ id, action: "route", revision: ticket.revision, agent })}>Use {agent}</Button>)}
       </div>}
@@ -76,28 +82,30 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         </ul>
       </div>}
       {ticket.draft && <div className="ticket-plan">
-        <p><strong>{ticket.state === "waiting" ? "Clarification" : github ? "Suggested issue clarification" : "Suggested public clarification"}</strong></p>
-        {ticket.requester && <p>{github ? "Issue author" : "Requester"} {requesterURL
+        <p><strong>{ticket.state === "waiting" ? "Clarification" : issue ? "Suggested issue clarification" : "Suggested public clarification"}</strong></p>
+        {ticket.requester && <p>{issue ? "Issue author" : "Requester"} {requesterURL
           ? <a className="ticket-source" href={requesterURL} target="_blank" rel="noreferrer">{ticket.requester.name || `${provider} user #${ticket.requester.id}`} ↗</a>
-          : ticket.requester.name || `${provider} user #${ticket.requester.id}`}{ticket.requester.email ? ` · ${ticket.requester.email}` : !github && " · Verify the address in Zendesk"}</p>}
-        {ticket.state === "ask" && <p>Matched open {kind} with {github ? "label" : "tag"} <code>{settings.policy.tag}</code>{settings.policy.priorities?.length ? ` and priority ${settings.policy.priorities.join(" or ")}` : ""}{settings.policy.field_id ? ` and custom field ${settings.policy.field_id} set to ${settings.policy.field_value}` : ""}.</p>}
+          : ticket.requester.name || `${provider} user #${ticket.requester.id}`}{ticket.requester.email ? ` · ${ticket.requester.email}` : source === "zendesk" && " · Verify the address in Zendesk"}</p>}
+        {ticket.state === "ask" && <p>Matched open {kind} with {issue ? "label" : "tag"} <code>{settings.policy.tag}</code>{settings.policy.priorities?.length ? ` and priority ${settings.policy.priorities.join(" or ")}` : ""}{settings.policy.field_id ? ` and custom field ${settings.policy.field_id} set to ${settings.policy.field_value}` : ""}.</p>}
         <p className="ticket-draft">{ticket.draft}</p>
-        {github && !settings.policy.auto_questions && <p>Review and post this clarification in GitHub, then refresh the issue after the author replies.</p>}
+        {issue && !settings.policy.auto_questions && <p>Review and post this clarification in {provider}, then refresh the issue after the author replies.</p>}
         {ticket.state === "ask" && <>
-          {github && <p>This clarification is visible to everyone with access to the repository. In a public repository, it is public.</p>}
-          <p>Approval sends this {github ? "issue comment" : "public reply"} and allows up to {settings.policy.max_questions} total clarification attempts on this {kind} under the current policy.</p>
+          {source === "github" && <p>This clarification is visible to everyone with access to the repository. In a public repository, it is public.</p>}
+          {source === "linear" && <p>This clarification is visible to everyone with access to the workspace.</p>}
+          <p>Approval sends this {issue ? "issue comment" : "public reply"} and allows up to {settings.policy.max_questions} total clarification attempts on this {kind} under the current policy.</p>
         </>}
       </div>}
       {!!ticket.questions?.length && <div>
         <p><strong>Question history</strong></p>
         <ul className="prose-list">
           {ticket.questions.map((question, index) => <li key={index}>
-            {new Date(question.at).toLocaleString()} · {question.status === "conflict" ? `${github ? "Issue" : "Ticket"} changed; no send` : question.status}
+            {new Date(question.at).toLocaleString()} · {question.status === "conflict" ? `${issue ? "Issue" : "Ticket"} changed; no send` : question.status}
             <details><summary>Read question</summary><p className="ticket-draft">{question.body}</p></details>
           </li>)}
         </ul>
       </div>}
-      {mode !== "draft" && <div className="button-row">
+      {mode !== "draft" && canAct === false && <p className="quiet">Acting on {kind}s requires the user role.</p>}
+      {mode !== "draft" && canAct !== false && <div className="button-row">
         {mode === "preview" ? ticket.state !== "excluded" &&
           <Button variant="primary" disabled={busy || stale} onClick={() => action("track")}>Track {kind}</Button>
         : ticket.run_id ? <ButtonLink variant="primary" to={`/runs/${ticket.run_id}`}>Open investigation</ButtonLink>
@@ -120,6 +128,9 @@ export function TicketsPage() {
   const workspace = useTicketWorkspace();
   const mutation = useTicketAction();
   const connect = useZendeskOAuth();
+  const session = useSession();
+  const canAct = roleAtLeast(session.data?.role, "user");
+  const isAdmin = roleAtLeast(session.data?.role, "admin");
   const [params] = useSearchParams();
   const oauthResult = params.get("zendesk");
   const [id, setID] = useState("");
@@ -127,8 +138,11 @@ export function TicketsPage() {
   const [preview, setPreview] = useState<TicketCase>();
   const [editProcedure, setEditProcedure] = useState(false);
   const data = workspace.data;
-  const github = data?.enabled && data.source === "github";
-  const kind = github ? "issue" : "ticket";
+  const source = data?.enabled ? data.source : undefined;
+  const github = source === "github";
+  const linear = source === "linear";
+  const issue = github || linear;
+  const kind = issue ? "issue" : "ticket";
   const oauth = data?.enabled ? data.oauth : undefined;
   const atCallbackOrigin = oauth && new URL(oauth.workspace_url).origin === window.location.origin;
   const active = data?.enabled ? data.cases.find(ticket => ticket.ticket_id === selected) : undefined;
@@ -155,20 +169,28 @@ export function TicketsPage() {
   }
 
   return <>
-    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub issues for a useful investigation." />
+    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub or Linear issues for a useful investigation." />
     {workspace.isPending && <Loading label="Loading ticket cases" />}
     {workspace.isError && <ErrorPlate title="Could not load ticket cases" error={workspace.error} action={<Button onClick={() => void workspace.refetch()}>Try again</Button>} />}
     {data && !data.enabled && <Panel title="Connect a case source">
       <div className="panel-body ticket-detail">
-        <p>Choose a Zendesk account or GitHub repository and configure a ticket procedure to prepare cases here.</p>
+        <p>Choose a Zendesk account, GitHub repository, or Linear team and configure a ticket procedure to prepare cases here.</p>
         <div className="button-row">
           <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/tickets.md" target="_blank" rel="noreferrer">Zendesk setup ↗</a>
           <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/github-issues.md" target="_blank" rel="noreferrer">GitHub setup ↗</a>
+          <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/linear-issues.md" target="_blank" rel="noreferrer">Linear setup ↗</a>
         </div>
       </div>
     </Panel>}
     {data?.enabled && <div className="section-stack">
-      {github ? <Panel title="GitHub repository" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
+      {linear ? <Panel title="Linear team" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
+        <div className="panel-body ticket-detail">
+          <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.account.replace("https://", "")} ↗</a></p>
+          <p>Import issue descriptions, author comments and supported text attachments from this team in the configured workspace. Linear always requires an API key configured on the server.</p>
+          {commentsEnabled && <p>Posting requires the configured API key. Comments are visible to everyone with access to the workspace.</p>}
+          {data.settings.investigation_comments && <p>Completed investigations offer a comment preview for you to review before posting to the issue.</p>}
+        </div>
+      </Panel> : github ? <Panel title="GitHub repository" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
         <div className="panel-body ticket-detail">
           <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.repository} ↗</a></p>
           <p>Import issue bodies, author comments and supported text attachments from this repository. Private repository access requires a token configured on the server.</p>
@@ -182,32 +204,33 @@ export function TicketsPage() {
           {oauthResult === "failed" && <ErrorPlate title="Zendesk authorization failed" error="Check the client identifier, redirect URL and allowed scopes, then connect again." />}
           {connect.isError && <ErrorPlate title="Could not start Zendesk authorization" error={connect.error} />}
           <div className="button-row">
-            {atCallbackOrigin ? <Button variant={oauth.connected ? "secondary" : "primary"} disabled={connect.isPending || mutation.isPending} onClick={() => connect.mutate()}>
+            {!isAdmin && oauth.connected && <p className="quiet">Reconnecting Zendesk requires the admin role.</p>}
+            {atCallbackOrigin ? isAdmin && <Button variant={oauth.connected ? "secondary" : "primary"} disabled={connect.isPending || mutation.isPending} onClick={() => connect.mutate()}>
               {connect.isPending ? "Opening Zendesk…" : oauth.connected ? "Reconnect Zendesk" : "Connect Zendesk"}
             </Button> : <a className="button button-secondary" href={oauth.workspace_url}>Open the workspace at the OAuth origin</a>}
           </div>
         </div>
       </Panel>}
-      <Panel title="Ticket procedures" aside={data.procedure && <Button type="button"
+      <Panel title="Ticket procedures" aside={data.procedure && isAdmin && <Button type="button"
         onClick={() => setEditProcedure(editing => !editing)} aria-expanded={editProcedure}>
         {editProcedure ? "Close editor" : "Edit procedures"}
       </Button>}>
         <div className="panel-body ticket-detail">
-          <p>Open {github ? "issues" : "tickets"} use the first procedure whose match rules fit. Every run requires approval.</p>
+          <p>Open {issue ? "issues" : "tickets"} use the first procedure whose match rules fit. Every run requires approval.</p>
           <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}><code>{p.policy.tag}</code></li>)}</ol>
-          {data.connected && <form className="ticket-form" onSubmit={inspect}>
-            <div><label className="field-label" htmlFor="ticket-id">{github ? "GitHub issue number" : "Zendesk ticket ID"}</label>
+          {data.connected && canAct && <form className="ticket-form" onSubmit={inspect}>
+            <div><label className="field-label" htmlFor="ticket-id">{linear ? "Linear issue number" : github ? "GitHub issue number" : "Zendesk ticket ID"}</label>
               <input className="field" id="ticket-id" inputMode="numeric" pattern="[1-9][0-9]{0,18}" maxLength={19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} /></div>
             <Button type="submit" variant="primary" disabled={mutation.isPending}>Preview {kind}</Button>
           </form>}
         </div>
       </Panel>
       {editProcedure && data.procedure && <TicketProcedureEditor key={data.account} version={data.procedure}
-        github={data.source === "github"} connected={data.connected} template={data.settings.template} clarificationLimit={data.settings.clarification_limit}
+        source={data.source} connected={data.connected} template={data.settings.template} clarificationLimit={data.settings.clarification_limit}
         renderPreview={(ticket, draft) => <TicketDetail ticket={ticket} settings={{ ...data.settings, policy: draft.policy }}
-          mode="draft" busy={false} perform={perform} />} />}
+          mode="draft" busy={false} perform={perform} canAct={canAct} />} />}
       {mutation.isPending && <p role="status" className="quiet">Checking {kind}…</p>}
-      {mutation.isError && <ErrorPlate title={`${github ? "Issue" : "Ticket"} action could not complete`} error={mutation.error} />}
+      {mutation.isError && <ErrorPlate title={`${issue ? "Issue" : "Ticket"} action could not complete`} error={mutation.error} />}
       {data.cases.length > 0 && <Panel title={`Tracked ${kind}s`}>
         <div className="panel-body ticket-queue">
           {data.cases.map(ticket => <div key={ticket.ticket_id}>
@@ -220,7 +243,7 @@ export function TicketsPage() {
       </Panel>}
       {data.connected && (active || preview) && <TicketDetail ticket={active || preview!} settings={caseSettings ?? data.settings} mode={active ? "tracked" : "preview"}
         procedureRevision={data.procedure?.revision}
-        busy={mutation.isPending} perform={perform} />}
+        busy={mutation.isPending} perform={perform} canAct={canAct} />}
     </div>}
   </>;
 }

@@ -13,6 +13,10 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const deploymentReadLimit = 4 << 20
@@ -181,6 +185,18 @@ func (d *DeploymentReader) read(ctx context.Context, path string, limit int64) (
 }
 
 func (d *DeploymentReader) raw(ctx context.Context, verb, path string, body []byte, limit int64) ([]byte, error) {
+	start := time.Now()
+	ctx, span := tracer().Start(ctx, "kagent.kubectl", trace.WithAttributes(attribute.String("verb", verb)))
+	data, err := d.execKubectl(ctx, verb, path, body, limit)
+	if err != nil {
+		span.SetStatus(codes.Error, "kubectl "+verb+" failed")
+	}
+	span.End()
+	loadInstruments().kubectlEnded(verb, time.Since(start).Seconds())
+	return data, err
+}
+
+func (d *DeploymentReader) execKubectl(ctx context.Context, verb, path string, body []byte, limit int64) ([]byte, error) {
 	args := []string{"--kubeconfig", d.kubeconfig, "--context", d.kubeContext, verb, "--raw", path}
 	if body != nil {
 		args = append(args, "-f", "-")

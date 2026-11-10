@@ -51,6 +51,8 @@ type ticket struct {
 	RequesterProfile Requester `json:"-"`
 	Kind             string    `json:"-"`
 	URL              string    `json:"-"`
+	// uuid carries the Linear issue UUID to comment writes; it never serializes.
+	uuid string
 }
 
 type attachment struct {

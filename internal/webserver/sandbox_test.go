@@ -155,7 +155,7 @@ func TestManualRunsSelectAllowedSandboxTemplates(t *testing.T) {
 		}
 	}}
 	s := newTestServer(t, backend)
-	r := formRequest(t, "An issue")
+	r := formRequest(t, s, "An issue")
 	r.Header.Add("X-TriageLab-Sandbox", "one")
 	r.Header.Add("X-TriageLab-Sandbox", "two")
 	w := httptest.NewRecorder()
@@ -163,14 +163,14 @@ func TestManualRunsSelectAllowedSandboxTemplates(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatalf("ambiguous sandbox header accepted: %d %s", w.Code, w.Body)
 	}
-	r = formRequest(t, "An issue")
+	r = formRequest(t, s, "An issue")
 	r.Header.Set("X-TriageLab-Sandbox", "network-lab")
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	if w.Code != 403 {
 		t.Fatalf("non-default template without resource writes accepted: %d %s", w.Code, w.Body)
 	}
-	r = formRequest(t, "An issue")
+	r = formRequest(t, s, "An issue")
 	r.Header.Set("X-TriageLab-Sandbox", "triagelab-python")
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, r)
@@ -212,7 +212,7 @@ esac
 	}{
 		{"ghost-box", 400}, {"pending-box", 400},
 	} {
-		r := formRequest(t, "An issue")
+		r := formRequest(t, saved, "An issue")
 		r.Header.Set("X-TriageLab-Sandbox", tc.sandbox)
 		w := httptest.NewRecorder()
 		saved.ServeHTTP(w, r)
@@ -220,7 +220,7 @@ esac
 			t.Fatalf("%s: expected %d, got %d %s", tc.sandbox, tc.want, w.Code, w.Body)
 		}
 	}
-	r = formRequest(t, "An issue")
+	r = formRequest(t, saved, "An issue")
 	r.Header.Set("X-TriageLab-Sandbox", "ready-box")
 	w = httptest.NewRecorder()
 	saved.ServeHTTP(w, r)

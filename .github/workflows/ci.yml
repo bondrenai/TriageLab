@@ -31,9 +31,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
-          cache: false # stdlib-only module has no go.sum
+          go-version: "1.27.3"
+          cache: false # dependencies are vendored; no module cache is needed
       - run: make check
+
+  # Separate from checks: the race detector slows the sign-in tests about tenfold.
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false # dependencies are vendored; no module cache is needed
+      - run: make race
 
   lint:
     runs-on: ubuntu-latest
@@ -41,8 +53,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
-          cache: false # stdlib-only module has no go.sum
+          go-version: "1.27.3"
+          cache: false # the pinned linter is fetched on each run; the module itself is vendored
       - run: make lint # staticcheck at a pinned version; see staticcheck.conf
 
   # Separate from lint so a toolchain advisory is not mistaken for a code finding.
@@ -52,8 +64,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
-          cache: false # stdlib-only module has no go.sum
+          go-version: "1.27.3"
+          cache: false # the pinned scanner is fetched on each run; the module itself is vendored
       - run: make vulncheck # govulncheck at a pinned version
 
   frontend:
@@ -67,6 +79,18 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: make install-ui
       - run: make build-ui
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.18.1"
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: make install-docs
+      - run: make build-docs # includes starlight-links-validator; generated-page drift is covered by make check
 
   helm:
     runs-on: ubuntu-latest
@@ -90,8 +114,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
-          cache: false # stdlib-only module has no go.sum
+          go-version: "1.27.3"
+          cache: false # dependencies are vendored; no module cache is needed
       - name: Write the dedicated integration configuration privately
         env:
           INTEGRATION_CONFIG: ${{ secrets.TRIAGELAB_CONFIG_JSON }}

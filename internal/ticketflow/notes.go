@@ -41,6 +41,13 @@ func (f *Flow) NotePreview(runID string, saved map[string]any) *NotePreview {
 }
 
 func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any, plan string) (NotePreview, error) {
+	ctx, finish := traced(ctx, "post_note")
+	preview, err := f.postNote(ctx, runID, saved, plan)
+	finish(err)
+	return preview, err
+}
+
+func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any, plan string) (NotePreview, error) {
 	if err := f.begin(); err != nil {
 		return NotePreview{}, err
 	}
@@ -68,7 +75,7 @@ func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any,
 	if err != nil {
 		return NotePreview{}, err
 	}
-	if t.Status == "closed" {
+	if !openForInvestigation(f.provider, t.Status) {
 		return NotePreview{}, ErrBlocked
 	}
 	if err := ctx.Err(); err != nil {
@@ -99,7 +106,8 @@ func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any,
 }
 
 func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
-	enabled := f.provider == "zendesk" && f.settings.InternalNotes || f.provider == "github" && f.settings.InvestigationComments
+	enabled := f.provider == "zendesk" && f.settings.InternalNotes ||
+		(f.provider == "github" || f.provider == "linear") && f.settings.InvestigationComments
 	if !enabled || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
 		return Case{}, false
 	}
@@ -119,14 +127,27 @@ func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
 		source["repository"] != strings.TrimPrefix(f.Account(), "https://github.com/") || source["issue_number"] != rawID) {
 		return Case{}, false
 	}
+	if f.provider == "linear" && (c.Source != "linear" || c.URL != f.ticketURL(id) ||
+		source["linear_team"] != strings.TrimPrefix(f.Account(), "https://linear.app/") ||
+		source["linear_identifier"] != strings.TrimPrefix(f.ticketURL(id), f.Account()+"/issue/")) {
+		return Case{}, false
+	}
 	return c, found && c.RunID == runID && c.State == "launched" && c.Plan != "" &&
 		c.Account == f.Account() && source["approval_plan"] == c.Plan && source["url"] == f.ticketURL(id)
 }
 
 func (f *Flow) ticketURL(id int64) string {
 	path := "/agent/tickets/"
-	if f.provider == "github" {
+	switch f.provider {
+	case "github":
 		path = "/issues/"
+	case "linear":
+		// The identifier is the configured team key plus the issue number.
+		teamKey := strings.TrimPrefix(f.Account(), "https://linear.app/")
+		if _, key, found := strings.Cut(teamKey, "/"); found {
+			teamKey = key
+		}
+		return f.Account() + "/issue/" + teamKey + "-" + strconv.FormatInt(id, 10)
 	}
 	return f.Account() + path + strconv.FormatInt(id, 10)
 }
@@ -136,15 +157,19 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	if f.provider == "github" {
 		preview.Visibility = "repository"
 	}
+	if f.provider == "linear" {
+		preview.Visibility = "workspace"
+	}
 	if c.Note != nil {
 		preview.Status, preview.CommentID = c.Note.Status, c.Note.CommentID
 		return preview
 	}
 	preview.Status = "ready"
 	preview.Body = investigationNote(c.RunID, saved, f.currentSecrets())
-	if f.provider == "github" {
-		// Render imported summaries and commands literally. In GitHub Markdown,
-		// prose could otherwise create mentions, links or embedded images.
+	if f.provider == "github" || f.provider == "linear" {
+		// Render imported summaries and commands literally. In GitHub or Linear
+		// Markdown, prose could otherwise create mentions, links or embedded
+		// images.
 		width, run := 3, 0
 		for _, char := range preview.Body {
 			if char == '`' {
@@ -169,7 +194,7 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	preview.Plan = digest(struct {
 		RunID, TicketURL, Body, Source, Visibility string
 	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
-	if f.provider == "github" {
+	if f.provider == "github" || f.provider == "linear" {
 		preview.CanPost = f.settings.InvestigationComments
 	} else {
 		preview.CanPost = f.oauth != nil && f.oauth.status().Connected

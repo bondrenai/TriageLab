@@ -5,7 +5,7 @@ and reproducible. Read [the architecture](docs/architecture.md),
 [the upstream compatibility notes](docs/upstream.md), and
 [the security model](SECURITY.md) before changing agent or sandbox behavior.
 
-Use the pinned Go 1.25.12 toolchain. Python 3 is needed only to execute the included
+Use the pinned Go 1.27.3 toolchain. Python 3 is needed only to execute the included
 fixture outside its sandbox in the fixture unit test. In a checkout:
 
 ```sh

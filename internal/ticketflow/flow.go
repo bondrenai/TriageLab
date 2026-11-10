@@ -144,6 +144,21 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 		flow := newFlow(config, g, s, runtime, append(slices.Clone(secrets), token))
 		return flow, flow.checkSavedProcedure()
 	}
+	if config.provider() == "linear" {
+		token := os.Getenv(config.TokenEnv)
+		if token == "" || !validOAuthToken(token) {
+			return nil, errors.New("the configured Linear token environment variable is missing or invalid")
+		}
+		l := newLinear(config.Workspace, config.Team, token)
+		l.writable = config.Policy.AutoQuestions || config.InvestigationComments
+		s, err := openStore(dir, l.account())
+		if err != nil {
+			l.client.CloseIdleConnections()
+			return nil, err
+		}
+		flow := newFlow(config, l, s, runtime, append(slices.Clone(secrets), token))
+		return flow, flow.checkSavedProcedure()
+	}
 	z := newZendesk(config.Subdomain)
 	s, err := openStore(dir, z.account())
 	if err != nil {
@@ -183,7 +198,14 @@ func (f *Flow) BeginOAuth(host string) (string, string, error) {
 	}
 	return f.oauth.begin(host)
 }
-func (f *Flow) FinishOAuth(ctx context.Context, host, state, browser, code string, denied bool) error {
+func (f *Flow) FinishOAuth(ctx context.Context, host, state, browser, code string, denied bool) (err error) {
+	ctx, finish := traced(ctx, "oauth_finish")
+	err = f.finishOAuth(ctx, host, state, browser, code, denied)
+	finish(err)
+	return err
+}
+
+func (f *Flow) finishOAuth(ctx context.Context, host, state, browser, code string, denied bool) error {
 	if f.oauth == nil {
 		return ErrBlocked
 	}
@@ -267,6 +289,9 @@ func (f *Flow) Close() error {
 	if g, ok := f.source.(*githubSource); ok {
 		g.client.CloseIdleConnections()
 	}
+	if l, ok := f.source.(*linearSource); ok {
+		l.client.CloseIdleConnections()
+	}
 	return f.store.lock.Close()
 }
 
@@ -290,6 +315,13 @@ func (f *Flow) save(c Case) error {
 }
 
 func (f *Flow) Preview(ctx context.Context, id int64) (Case, error) {
+	ctx, finish := traced(ctx, "preview")
+	c, err := f.preview(ctx, id)
+	finish(err)
+	return c, err
+}
+
+func (f *Flow) preview(ctx context.Context, id int64) (Case, error) {
 	if err := f.begin(); err != nil {
 		return Case{}, err
 	}
@@ -302,15 +334,24 @@ func (f *Flow) Preview(ctx context.Context, id int64) (Case, error) {
 }
 
 func (f *Flow) Track(ctx context.Context, id int64, revision string) (Case, error) {
-	return f.checkTicket(ctx, id, trackTicket, revision)
+	ctx, finish := traced(ctx, "track")
+	c, err := f.checkTicket(ctx, id, trackTicket, revision)
+	finish(err)
+	return c, err
 }
 
 func (f *Flow) Refresh(ctx context.Context, id int64) (Case, error) {
-	return f.checkTicket(ctx, id, refreshTicket, "")
+	ctx, finish := traced(ctx, "refresh")
+	c, err := f.checkTicket(ctx, id, refreshTicket, "")
+	finish(err)
+	return c, err
 }
 
 func (f *Flow) Clarify(ctx context.Context, id int64, revision string) (Case, error) {
-	return f.checkTicket(ctx, id, clarifyTicket, revision)
+	ctx, finish := traced(ctx, "clarify")
+	c, err := f.checkTicket(ctx, id, clarifyTicket, revision)
+	finish(err)
+	return c, err
 }
 
 type ticketAction uint8
@@ -418,6 +459,13 @@ func (f *Flow) Pause(id int64, paused bool) (Case, error) {
 type Launch func(casefile.Case, RunTarget, func() error) error
 
 func (f *Flow) Approve(ctx context.Context, id int64, plan string, launch Launch) (Case, error) {
+	ctx, finish := traced(ctx, "approve")
+	c, err := f.approve(ctx, id, plan, launch)
+	finish(err)
+	return c, err
+}
+
+func (f *Flow) approve(ctx context.Context, id int64, plan string, launch Launch) (Case, error) {
 	if err := f.begin(); err != nil {
 		return Case{}, err
 	}
@@ -480,7 +528,7 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		return Case{}, ticket{}, casefile.Case{}, err
 	}
 	t := s.Ticket
-	p, exclusion := version.match(t)
+	p, exclusion := version.match(f.provider, t)
 	c := previous
 	c.TicketID, c.Account, c.CheckedAt = id, f.source.account(), time.Now().UTC()
 	c.Source, c.URL = f.provider, t.URL
@@ -549,11 +597,16 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		if m.Author != t.Requester {
 			continue
 		}
-		// A GitHub issue can be authored by the same account that posts our
-		// clarifications. A confirmed outgoing comment is not a requester reply.
-		if f.provider == "github" && slices.ContainsFunc(c.Questions, func(q Question) bool {
-			return q.Status == "sent" && q.CommentID > 0 && m.ID == q.CommentID &&
-				m.URL == c.URL+"#issuecomment-"+strconv.FormatInt(q.CommentID, 10)
+		// A GitHub or Linear issue can be authored by the same account that
+		// posts our clarifications. A confirmed outgoing comment is not a
+		// requester reply.
+		if (f.provider == "github" || f.provider == "linear") && slices.ContainsFunc(c.Questions, func(q Question) bool {
+			if q.Status != "sent" || q.CommentID <= 0 || m.ID != q.CommentID {
+				return false
+			}
+			// Linear comment IDs derive from UUIDs; the GitHub check also
+			// pins the reconstructed comment URL.
+			return f.provider == "linear" || m.URL == c.URL+"#issuecomment-"+strconv.FormatInt(q.CommentID, 10)
 		}) {
 			continue
 		}
@@ -672,6 +725,10 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		input.Source["repository"] = strings.TrimPrefix(c.Account, "https://github.com/")
 		input.Source["issue_number"] = strconv.FormatInt(id, 10)
 	}
+	if f.provider == "linear" {
+		input.Source["linear_team"] = strings.TrimPrefix(c.Account, "https://linear.app/")
+		input.Source["linear_identifier"] = strings.TrimPrefix(c.URL, c.Account+"/issue/")
+	}
 	if len(redactions) > 0 {
 		slices.Sort(redactions)
 		input.Source["input_redactions"] = slices.Compact(redactions)
@@ -723,8 +780,11 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 }
 
 func (f *Flow) commentReference(id, url string) string {
-	if f.provider == "github" {
+	switch f.provider {
+	case "github":
 		return "GitHub issue author at " + url
+	case "linear":
+		return "Linear issue author at " + url
 	}
 	return "Zendesk public requester comment " + id
 }
@@ -744,7 +804,8 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 		if f.hasSecret([]byte(a.Name)) || f.hasSecret([]byte(a.URL)) {
 			return casefile.Case{}, errors.New("An attachment reference contains a configured credential.")
 		}
-		unknownSize := f.provider == "github" && a.Size == -1
+		// GitHub and Linear attachments do not state a size before download.
+		unknownSize := (f.provider == "github" || f.provider == "linear") && a.Size == -1
 		if !fileName.MatchString(name) || (!unknownSize && a.Size <= 0) || a.Size > casefile.MaxFileBytes || seen[name] {
 			return casefile.Case{}, errors.New("Attachments must be unique .py, .json, .txt or .log files, each at most 1 MiB.")
 		}
@@ -765,6 +826,9 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 	provider := "Zendesk"
 	if f.provider == "github" {
 		provider = "GitHub"
+	}
+	if f.provider == "linear" {
+		provider = "Linear"
 	}
 	desc := "Investigate this case reported in " + provider + "."
 	if title != "" {

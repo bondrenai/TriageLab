@@ -65,6 +65,48 @@
         }
       }
     },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "config": {"type": "object"},
+        "secret": {
+          "type": "object",
+          "properties": {
+            "create": {"type": "boolean"},
+            "secretName": {"type": "string"},
+            "key": {"type": "string"},
+            "value": {"type": "string"}
+          }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {"type": "string", "minLength": 1},
+            "insecure": {"type": "boolean"},
+            "headers_env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+            "sample_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+            "export_interval_seconds": {"type": "integer", "minimum": 5, "maximum": 300}
+          }
+        },
+        "headers": {
+          "type": "object",
+          "properties": {
+            "create": {"type": "boolean"},
+            "secretName": {"type": "string"},
+            "key": {"type": "string"},
+            "value": {"type": "string"}
+          }
+        }
+      }
+    },
     "persistence": {
       "type": "object",
       "properties": {

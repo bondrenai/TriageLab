@@ -1,9 +1,10 @@
 # Working on TriageLab
 
-TriageLab is a Go 1.25.12 CLI and a React UI for evidence-driven investigations.
+TriageLab is a Go 1.27.3 CLI and a React UI for evidence-driven investigations.
 Keep it small: one investigator, one standalone sandbox per run, local
 JSON/Markdown reports. There is no database, operator, custom sandbox runtime,
-or agent framework. The UI is a private, single-user client of the same workflow.
+or agent framework. The UI is a private, authenticated client (local accounts
+or one OIDC provider) of the same workflow, reached over loopback.
 
 ## Ownership boundaries
 
@@ -21,8 +22,19 @@ or agent framework. The UI is a private, single-user client of the same workflow
   the exact evidence and run settings before admitting a ticket run.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Keep credentials server-side and route new runs through the existing investigator.
+- `internal/auth` owns workspace sign-in: local accounts with PBKDF2 hashes in
+  one JSON file, in-memory sessions, and one optional OIDC provider. Roles are
+  viewer (read), user (run and steer investigations), admin (define agents,
+  procedures, and accounts). Keep enforcement server-side in the webserver and
+  fail closed without a configured login method.
 - `web/` uses React 19, TypeScript, Vite, and the Bondren design language.
   Read `web/AGENTS.md` before changing the frontend.
+- `docs-site/` builds the public documentation site (Astro/Starlight; see
+  `docs-site/README.md`). The reference pages under `reference/` are generated
+  by `triagelab docs` from the real flag registrations, the investigation
+  config struct, and the example JSON files; a golden test under `make check`
+  fails on drift. Internal links must carry the `/TriageLab` base prefix to
+  pass build-time validation. Contributor-facing notes stay in `docs/`.
 - `deploy/` configures KAgent and Agent Substrate. KAgent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
 - `chart/` and the root `Dockerfile` package the single-user workspace for a

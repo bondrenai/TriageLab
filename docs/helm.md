@@ -6,8 +6,8 @@ KAgent/Substrate installation. It does **not** install or replace KAgent;
 follow [development](development.md) first for the pinned upstream stack, or
 point the chart at an equivalent dedicated installation you already run.
 
-This is the same private, single-user workspace as the local CLI, not a
-multi-tenant service. The pod listens only on `127.0.0.1:8080` inside its
+This is the same private workspace as the local CLI, now with required
+sign-in, but not a multi-tenant service. The pod listens only on `127.0.0.1:8080` inside its
 network namespace; the chart creates no Service or Ingress because the server
 refuses non-loopback listeners by design. Reach the UI with
 `kubectl port-forward`, the Kubernetes equivalent of the documented SSH
@@ -60,12 +60,49 @@ Prerequisites:
    Open `http://127.0.0.1:8080` on the same machine. Anyone with this port has
    full workspace access; do not share or proxy it.
 
-Reports and private ticket state persist in a PersistentVolumeClaim mounted at
-`/data/reports` (`persistence.*`; disable for an ephemeral emptyDir). The
-optional ticket procedures ([Zendesk](tickets.md), [GitHub
-issues](github-issues.md)) are enabled with `tickets.enabled` and
-`tickets.config`; their JSON is stored in a Secret, and the credential named
-by `token_env` comes from `tickets.token` or your own Secret.
+Reports, private ticket state, and sign-in accounts persist in a
+PersistentVolumeClaim mounted at `/data/reports` (`persistence.*`; disable for
+an ephemeral emptyDir). The optional ticket procedures ([Zendesk](tickets.md),
+[GitHub issues](github-issues.md), [Linear issues](linear-issues.md)) are
+enabled with `tickets.enabled` and `tickets.config`; their JSON is stored in a
+Secret, and the credential named by `token_env` comes from `tickets.token`
+or your own Secret.
+
+## Sign-in
+
+The UI requires sign-in ([details](ui.md#sign-in-and-roles)). Local accounts
+live in `/data/reports/.auth/users.json` on the reports volume; bootstrap the
+first admin inside the pod:
+
+```sh
+kubectl -n triagelab exec -it deploy/triagelab -- \
+  triagelab user add --username admin --role admin --password-stdin --output /data/reports
+```
+
+Optional single sign-on uses one OpenID Connect provider. Set `auth.enabled`
+with `auth.config` (rendered verbatim to a Secret as `auth.json`, mirroring
+`auth.example.json`); when `auth.config.oidc.client_secret_env` names the
+client-secret environment variable, provide it with `auth.secret.value` or
+point `auth.secret.secretName` at your own Secret. The redirect URI defaults
+to `http://127.0.0.1:8080/api/auth/oidc/callback`; register that exact value
+with the provider.
+
+## Telemetry export (OTLP)
+
+Optional OpenTelemetry export sends traces, metrics, and logs to an OTLP/HTTP
+collector when `telemetry.enabled` is set with `telemetry.config` (rendered
+verbatim to `telemetry.json` in the ConfigMap; field names must match
+`internal/telemetry.Config` — see `triagelab.telemetry.example.json` at the
+repository root). This is an **outbound** connection from the workspace pod to
+your collector; no Service or Ingress is created for it, and the loopback-only
+UI model is unchanged.
+
+Collector authentication headers never go through Helm values: set
+`telemetry.config.headers_env` to an environment variable name and supply the
+newline-separated `Name: value` lines via `telemetry.headers.value` (rendered
+to a Secret, prefer `telemetry.headers.secretName` for pre-created Secrets).
+Plain-HTTP endpoints are accepted on loopback or with `insecure: true`, for an
+in-cluster collector Service; anything else must be HTTPS.
 
 ## Cluster HTTP endpoints
 
@@ -95,8 +132,8 @@ stays unnecessary and can be disabled.
 
 The [release workflow](../.github/workflows/release.yml) runs on a pushed `v*`
 tag (or a manual dispatch with a version input, started from that same tag).
-It first runs the CI workflow's jobs (Go checks on Linux and macOS with
-`-race`, `make lint`, `make vulncheck`, frontend, chart lint, image build); nothing is published
+It first runs the CI workflow's jobs (Go checks on Linux and macOS,
+`make race`, `make lint`, `make vulncheck`, frontend, docs site, chart lint, image build); nothing is published
 unless all of them pass in that run. It then publishes:
 
 - the multi-arch (linux/amd64 and linux/arm64) container image built from the
@@ -135,11 +172,16 @@ so one release updates the image and chart together.
 
 - Single replica only: the workspace keeps its active-run and ticket state in
   memory; the chart refuses `replicaCount > 1`.
-- No Service, Ingress, authentication, or multi-user access; the workspace is
-  reached exclusively through `kubectl port-forward`.
+- No Service or Ingress; the workspace is reached exclusively through
+  `kubectl port-forward`. Sign-in gates the UI (local accounts or one OIDC
+  provider, [roles](ui.md#sign-in-and-roles)), but roles do not isolate
+  accounts from each other's reports on the shared volume.
 - Deployment status and resource writes (`--status-kubeconfig`,
   `--allow-resource-writes`) are not wired into the chart; extend the pod
   arguments explicitly if you accept that scope.
 - Token rotation is manual (see above).
+- Telemetry export ships no collector: bring your own OTLP endpoint and mind
+  that it is a new outbound network path from the workspace pod. Header
+  secrets are only accepted through the `telemetry.headers` Secret path.
 - The published image covers linux/amd64 and linux/arm64. The arm64 variant is
   built but not exercised by any automated test.

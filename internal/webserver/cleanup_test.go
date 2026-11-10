@@ -331,7 +331,7 @@ func TestCleanupRefusesReportSchemaItDoesNotWrite(t *testing.T) {
 func TestQueuedReportIsNotEligibleForCleanup(t *testing.T) {
 	s := newTestServer(t, nil)
 	c := casefile.Case{ID: cleanupRun, Description: "queued", Source: map[string]any{"kind": "upload"}, Environment: map[string]any{}}
-	if err := s.launchRun(c, nil, s.config, []string{"Not A Tool!"}); err != nil {
+	if err := s.launchRun(c, nil, s.config, []string{"Not A Tool!"}, "admin", "ui"); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(3 * time.Second)

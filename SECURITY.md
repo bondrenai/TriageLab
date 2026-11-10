@@ -109,14 +109,24 @@ sandbox does not prove all historical data has been erased.
 
 ## Browser workspace
 
-The browser workspace is a local, single-user interface. Its server refuses
-non-loopback listeners, validates request hosts and origins, and requires a
-custom request header for mutations. These checks reduce cross-site requests;
-they are not user authentication. Anyone with access to the local port can read
-reports, start investigations, and retry cleanup of a saved run. Use an SSH tunnel for a remote VM, never a
-public proxy. The browser receives redacted reports, not the configured API
-token. Selected uploads use the same ingestion limits and credential screening
-as CLI inputs.
+The browser workspace is a local interface that requires sign-in. Its server
+refuses non-loopback listeners, validates request hosts and origins, and
+requires a custom request header for mutations. Sessions are memory-only
+cookies; the server enforces three roles (viewer, user, admin) on every API
+route and fails closed when no login method is configured. Local passwords
+are stored as PBKDF2-SHA256 hashes in a file beside the reports; the optional
+OpenID Connect flow verifies ID-token signatures against the provider's JWKS
+with PKCE, one-time state, and nonce checks. Sign-in attempts are rate-limited
+per account, and each report records who started it.
+
+These are workspace roles, not isolation between accounts: everyone signed in
+reads the same shared report volume. Anyone who can reach the local port can
+attempt sign-in, so keep the port forward private; use an SSH tunnel for a
+remote VM, never a public proxy. The browser receives redacted reports, not
+the configured API token. Selected uploads use the same ingestion limits and
+credential screening as CLI inputs. There is no per-user action audit log
+yet, and a running server does not pick up CLI account changes (manage
+accounts in the UI or restart).
 
 The optional [Helm chart](docs/helm.md) runs the same workspace as one pod in
 a dedicated cluster. The loopback rule is unchanged: the UI is reached through
@@ -164,6 +174,24 @@ Issue and comment contents, attachment references and bytes, policy, and run
 settings bind the investigation approval and are checked again before launch.
 Imported data remains untrusted, and approval does not establish that the
 reproduction is safe. See the [GitHub setup and limits](docs/github-issues.md).
+
+## Telemetry export
+
+Optional OpenTelemetry export (`--telemetry`, chart `telemetry:` values) sends
+traces, metrics, and logs to a configured OTLP/HTTP collector. It is disabled
+by default; nothing leaves the process without it. The export is a new
+outbound path from the workspace: point it at a collector you control, prefer
+HTTPS off-loopback (plain HTTP is loopback-only or an explicit `insecure`
+opt-in for an in-cluster Service), and supply authentication headers through a
+Secret-backed environment variable, never values files.
+
+Instrumentation is restricted to fixed vocabularies and identifiers: run IDs,
+statuses, outcomes, launch triggers, MCP method and tool names, upstream error
+kinds, collapsed route patterns, and durations. Case descriptions, attachments,
+model prompts, tool outputs, credentials, and account names are never
+exported; phase log messages pass through the report redactor first. Export is
+best effort: collector failures are reported on stderr and never alter an
+investigation or its report.
 
 ## Cleanup and failure handling
 

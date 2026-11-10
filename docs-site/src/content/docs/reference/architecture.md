@@ -1,0 +1,89 @@
+---
+title: Architecture
+description: Ownership boundaries, evidence lifecycle, and deliberate non-goals.
+---
+
+TriageLab is deliberately small: one investigator, one standalone sandbox per
+run, local JSON/Markdown reports. There is no database, operator, custom
+sandbox runtime, or agent framework.
+
+## Boundaries
+
+- `cmd/triagelab` is a testable standard-library CLI with injected writers.
+- `internal/casefile` treats descriptions, repositories, files, and logs as
+  untrusted data. It collects bounded inputs and rejects dangerous file
+  inputs before transferring bytes, without running repository programs on
+  the host.
+- `internal/kagent` is the only version-dependent transport layer: stateless
+  MCP JSON-RPC, bounded HTTP, durable A2A event decoding, and the upstream
+  task-cancellation extension. It never executes host commands.
+- `internal/investigation` coordinates one sandbox and one investigator
+  session: input transfer, watchdog limits, evidence retrieval, reporting,
+  and cleanup.
+- `internal/report` persists private reports atomically and keeps
+  independently collected process evidence separate from model hypotheses.
+- `internal/agent` embeds the trusted investigator instructions and output
+  schema. KAgent executes the agent and its tools; TriageLab never simulates
+  answers.
+- `internal/ticketflow` prepares helpdesk and issue-tracker cases. Policy
+  checks and durable clarification reservations stay outside the
+  investigator; human approval binds to exact evidence and run settings
+  before a ticket run is admitted.
+- `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
+  Credentials stay server-side and new runs route through the existing
+  investigator.
+- `internal/auth` owns workspace sign-in: local accounts with PBKDF2 hashes
+  in one JSON file, in-memory sessions, and one optional OIDC provider.
+  Enforcement is server-side and fails closed.
+- `web/` is a React 19 + TypeScript client with API transport, domain types,
+  query hooks, and presentation kept separate. There is no second agent
+  implementation or browser-held model credential.
+
+KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
+Session/Sandbox API, the Go ADK tool loop, authorization, the model gateway,
+and expiry. A standalone Sandbox is a database-backed API resource, **not** a
+Kubernetes CRD. Agent Substrate owns WorkerPools, Actors, gVisor or microVM
+isolation, snapshots, resource enforcement, and the default-deny egress
+gateway.
+
+## Evidence and lifecycle
+
+1. Allocate a case ID and write a private initial report.
+2. Create a standalone sandbox using that stable idempotency key. Repeat only
+   the same lifecycle operation when pending or uncertain; never retry
+   process starts.
+3. Upload bounded files and verify byte counts.
+4. Create an empty investigator session and persist its ID before invoking.
+5. Give the investigator the sandbox ID, limits, and an explicitly untrusted
+   case.
+6. Poll durable task history. Accept canonical runtime tool parts — never
+   ticket prose or user-role parts — as execution evidence. Pair call/result
+   IDs and directly fetch each process's state, exit code, and paginated
+   output.
+7. Validate the structured answer and all evidence references. A failed
+   infrastructure call is inconclusive; missing or truncated evidence cannot
+   support a reproduced claim.
+8. Cancel active tasks, delete session and sandbox, retry pending lifecycle
+   deletion, verify deleted state, and write final reports even on errors.
+
+Process deadlines and experiment counts are client watchdog limits observed
+between API calls — not admission control. Per-request and overall deadlines,
+runtime resource limits, and server TTLs complement them. SIGKILL and network
+partitions may leave a sandbox until its TTL.
+
+## Why Go
+
+Go provides a small deployable binary and fits the Kubernetes ecosystem. The
+project uses `cmd/` + `internal/`, explicit startup configuration, context
+cancellation, and Make-based checks. TriageLab talks to the small pinned MCP
+surface with `net/http` and `encoding/json` directly, avoiding the entire
+upstream control plane or an SDK with a different MCP wire contract. The
+vendored OpenTelemetry SDK is the only third-party Go dependency.
+
+## Non-goals
+
+There is no generic plugin framework, multiagent topology, database, job
+queue, custom Kubernetes operator, or production mutation tool. Additional
+reproduction images belong in upstream SandboxTemplates; egress exceptions
+belong in reviewed upstream EgressPolicy configuration — never in model
+output.
