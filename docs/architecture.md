@@ -28,7 +28,7 @@ authorized Zendesk write. Waiting cases consume no sandbox. An operator
 approves the plan's evidence and limits before the same workspace run slot
 dispatches the existing investigation workflow. See [ticket setup](tickets.md).
 
-KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
+kagent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, Go ADK tool loop, authorization integration, model gateway,
 and expiry. Sandbox is a database-backed API resource, **not** a Kubernetes CRD.
 Substrate owns WorkerPools, Actors, gVisor/optional microVM isolation, snapshots,
@@ -74,14 +74,14 @@ and the model invocation are never repeated.
 
 Each report records the TriageLab version and the SHA-256 digests of the
 investigator prompt and output schema embedded in that binary. TriageLab does
-not read back the deployed Agent's prompt or model (the pinned KAgent session
+not read back the deployed Agent's prompt or model (the pinned kagent session
 tools expose neither), so a report cannot show which model answered or that the
 deployed prompt matches those digests.
 
 `report.json` is the Go type `investigation.Report`. It types the members
 TriageLab defines; the sandbox and session resources, the saved creation
 requests, tool-call arguments and responses, and the schema-validated analysis
-stay generic because KAgent or the model defines their shape. Cleanup of a
+stay generic because kagent or the model defines their shape. Cleanup of a
 saved report (the CLI command or the workspace's Retry cleanup) refuses a
 report whose `schema_version` is missing or is not the version this build
 writes, and otherwise writes back every member it did not change exactly as
@@ -94,7 +94,7 @@ read-only ingestion is the first planned external adapter. Additional reproducti
 images belong in upstream SandboxTemplates; use the manifest image override with
 an OCI digest. Egress exceptions belong in reviewed upstream EgressPolicy
 configuration, not model output. Specialized investigators can use additional
-KAgent AgentTemplates when concrete cases justify them.
+kagent AgentTemplates when concrete cases justify them.
 
 There is no generic plugin framework, multiagent topology, database, job queue,
 custom Kubernetes operator, or production mutation tool in the initial CLI.

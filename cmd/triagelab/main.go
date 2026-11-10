@@ -30,7 +30,7 @@ import (
 )
 
 // version is this build's TriageLab version. Release builds set it with
-// -ldflags "-X main.version=v0.2.0"; run passes it explicitly to the KAgent
+// -ldflags "-X main.version=v0.2.0"; run passes it explicitly to the kagent
 // client and to investigation reports.
 var version = "dev"
 
@@ -86,7 +86,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, or Linear case configuration")
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
-		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save KAgent definitions in the configured namespace")
+		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
 		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
 		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
 	case "cleanup":
@@ -113,7 +113,7 @@ type agentManifestOptions struct {
 func registerAgentManifestFlags(flags *flag.FlagSet) *agentManifestOptions {
 	opts := &agentManifestOptions{}
 	flags.StringVar(&opts.definition, "definition", "", "local agent definition JSON file")
-	flags.StringVar(&opts.namespace, "namespace", investigation.DefaultConfig().Namespace, "KAgent namespace")
+	flags.StringVar(&opts.namespace, "namespace", investigation.DefaultConfig().Namespace, "kagent namespace")
 	return opts
 }
 
@@ -156,7 +156,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		if !parseFlags(flags, args, errout) {
 			return 2
 		}
-		fmt.Fprintf(out, "triagelab %s (KAgent %s / Substrate v1.0.0)\n", version, kagent.Version)
+		fmt.Fprintf(out, "triagelab %s (kagent %s / Substrate v1.0.0)\n", version, kagent.Version)
 		return 0
 	case "manifest":
 		manifestOpts := registerManifestFlags(flags)
@@ -311,7 +311,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 4
 		}
-		fmt.Fprintln(out, "KAgent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
+		fmt.Fprintln(out, "kagent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
 		return 0
 	case "investigate":
 		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(opts.manualAgent)
@@ -492,7 +492,7 @@ func enableSignIn(ctx context.Context, workspace *webserver.Server, authConfigPa
 	return nil
 }
 
-// runUserCommand manages local sign-in accounts without contacting KAgent.
+// runUserCommand manages local sign-in accounts without contacting kagent.
 func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 	if len(args) == 0 {
 		fmt.Fprintln(errout, "Usage: triagelab user <add|list|remove|set-role|set-password> [options]")

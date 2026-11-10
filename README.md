@@ -1,11 +1,17 @@
 # TriageLab
 
-TriageLab is a free, Apache 2.0 tool for evidence-driven technical issue reproduction,
-with a Go CLI and a browser workspace styled by Bondren.
-It submits a case to a real KAgent investigator, gives it a disposable Agent
-Substrate sandbox, records experiments independently, and saves JSON and Markdown
-reports. It is an early, single-user proof of concept—not a production support
-platform.
+TriageLab is a free, Apache 2.0 tool that automates technical investigations
+for tickets and issues on Kubernetes, with a Go CLI and a browser workspace
+styled by Bondren. When a case arrives from Zendesk, GitHub, or Linear,
+TriageLab routes it to a matching procedure, classifies what evidence is
+still missing, and—after a human approves the exact evidence and run
+settings—investigates it in a secure, disposable sandbox: one kagent
+investigator in a gVisor or microVM Agent Substrate sandbox with egress
+denied by default. Experiments are recorded independently of the model and
+saved as JSON and Markdown reports; a reviewed summary can return to the
+ticket with the full evidence trail. It is an early, single-user proof of
+concept—not a production support platform—and all sources currently use the
+Python 3.12 timeout procedure.
 
 The included example is a small Python application with a timeout configuration
 error. A useful investigation reproduces the error, identifies the units mismatch,
@@ -24,21 +30,22 @@ see [verification](docs/verification.md#evaluation-corpus-authored-not-run-live)
 ## Architecture
 
 ```text
-Local issue + files → UI / Go CLI → KAgent MCP API
-                          │          ├─ investigator Session → model provider
-                          │          └─ Sandbox → Agent Substrate → gVisor
-                          └─ tool events + process results → reports
+Ticket/issue or local case → UI / Go CLI → kagent MCP API
+                                │          ├─ investigator Session → model provider
+                                │          └─ Sandbox → Agent Substrate → gVisor
+                                └─ tool events + process results → reports
 ```
 
-TriageLab owns case normalization, input limits, investigation budgets, evidence
-validation, cleanup, and reports. KAgent owns the agent loop, model access, tools,
+TriageLab owns ticket routing, clarification policy, human approval, case
+normalization, input limits, investigation budgets, evidence
+validation, cleanup, and reports. kagent owns the agent loop, model access, tools,
 Sessions, SandboxTemplates, and standalone Sandbox lifecycle. Agent Substrate owns
 isolated execution, resource allocation, snapshots, identity, and egress enforcement.
 There is no custom operator, agent framework, or database. The browser workspace
 uses the same investigation workflow and local report files as the CLI.
 
-The CLI creates one sandbox, uploads the bounded case files, and starts one KAgent
-investigator. The investigator chooses and revises experiments through KAgent's
+The CLI creates one sandbox, uploads the bounded case files, and starts one kagent
+investigator. The investigator chooses and revises experiments through kagent's
 native MCP process/file tools. TriageLab reads durable tool activity and fetches
 actual process status/stdout/stderr separately. Model claims must reference those
 process IDs. Causal interpretation remains a hypothesis; the report does not
@@ -56,10 +63,10 @@ example is only a reproduction fixture.
 
 - Go **1.27.3** or later in the supported 1.27 line.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
-  **KAgent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
+  **kagent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
   work and verification should run remotely on resource-constrained laptops.
-- KAgent **v1.0.0-rc3** plus its matching **Substrate v1.0.0 packaging fork**.
-- A model credential configured in KAgent. The example uses `gpt-4.1`.
+- kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0 packaging fork**.
+- A model credential configured in kagent. The example uses `gpt-4.1`.
 
 See [development setup](docs/development.md) for exact installation, private
 port-forwarding, credential setup, and teardown. The pinned interfaces are
@@ -131,13 +138,13 @@ download JSON or Markdown. Existing reports in `reports/` appear in its history.
 The separately labelled example shows the included, previously recorded live
 investigation; it does not start a model or sandbox.
 
-Starting a new investigation requires the configured KAgent deployment and
+Starting a new investigation requires the configured kagent deployment and
 `TRIAGELAB_TOKEN` in the server environment, as in the CLI quickstart. Model and
 cloud usage can incur charges even though TriageLab is free. The server binds
 only to loopback and accepts one active run at a time. It has no accounts or
 multi-user access control; keep it behind your SSH tunnel.
 
-The **Agents** workspace and `triagelab agent-manifest` render native KAgent
+The **Agents** workspace and `triagelab agent-manifest` render native kagent
 definitions for declarative investigators or compatible custom runtime images.
 Choose a provider and model, attach specific MCP tools, and select the deployed
 agent for a manual run. See [defining agents](docs/agents.md).
@@ -160,7 +167,7 @@ to the Go server; see [UI development](docs/ui.md) for the forwarding setup.
 ### Helm deployment
 
 The same single-user workspace can run as one pod next to an existing
-KAgent/Substrate installation, installed from the public chart
+kagent/Substrate installation, installed from the public chart
 `oci://ghcr.io/bondrenai/charts/triagelab`. The UI still binds to loopback
 inside the pod and is reached through `kubectl port-forward`; the chart
 creates no Service or Ingress by design. See [Helm deployment](docs/helm.md).
@@ -213,12 +220,12 @@ with per-run template selection gated behind `--allow-resource-writes`. MicroVMs
 are an upstream option requiring a suitable WorkerPool and KVM;
 the initial setup uses gVisor.
 
-KAgent's pinned development authentication is not an internet-facing security
+kagent's pinned development authentication is not an internet-facing security
 boundary. Keep the controller private, use a dedicated cluster and identity,
 and read [SECURITY.md](SECURITY.md). Imported content is always untrusted.
 Prompt rules and post-execution tool auditing cannot guarantee that a model
 will resist prompt injection. Hard boundaries come from upstream isolation,
 egress rules, resource limits, and credentials kept outside reproduction sandboxes.
 
-[Architecture](docs/architecture.md) · [Roadmap](TODO.md) ·
+[Documentation](https://bondrenai.github.io/TriageLab/) · [Architecture](docs/architecture.md) · [Roadmap](TODO.md) ·
 [Contributing](CONTRIBUTING.md) · [Apache 2.0 license](LICENSE)

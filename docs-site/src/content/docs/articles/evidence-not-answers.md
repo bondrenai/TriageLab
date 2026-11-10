@@ -12,7 +12,7 @@ and separately, clearly labeled, a hypothesis about what that evidence means.
 ## The separation
 
 During a run, two recorders work side by side. The investigator proposes and
-revises experiments through KAgent's native process and file tools. TriageLab,
+revises experiments through kagent's native process and file tools. TriageLab,
 not the model, reads the durable tool activity, pairs each call with its
 result, and fetches each process's state, exit code, and output directly from
 the sandbox. A claim in the final answer must reference those observed

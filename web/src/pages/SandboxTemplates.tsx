@@ -5,12 +5,12 @@ import { Button, Panel } from "../components/ui";
 import { Field, ResourceEditor, field } from "../components/resource-editor";
 import { useDeploymentStatus, type DefinitionEditor } from "../hooks/use-agents";
 import { parseToolNames } from "../lib/agents";
-import type { EgressDestinationDefinition, EgressPolicyDefinition, KAgentManifest, SandboxTemplateDefinition } from "../lib/types/agent";
+import type { EgressDestinationDefinition, EgressPolicyDefinition, kagentManifest, SandboxTemplateDefinition } from "../lib/types/agent";
 
 export function SandboxTemplateEditor({ egressChoices, egressStatus, onPreview, deployment, editor }: {
   egressChoices: string[];
   egressStatus: ReturnType<typeof useDeploymentStatus>;
-  onPreview: (manifest: KAgentManifest) => void;
+  onPreview: (manifest: kagentManifest) => void;
   deployment: ReactNode;
   editor: DefinitionEditor<"sandboxes">;
 }) {
@@ -37,7 +37,7 @@ export function SandboxTemplateEditor({ egressChoices, egressStatus, onPreview, 
     deployment={deployment} editor={editor} onPreview={onPreview} fromForm={fromForm}
     workspaceConfig={definition => ({ template: definition.name })}
     guidance={<>
-      <p>Saved templates appear in the New investigation picker once KAgent marks them ready.</p>
+      <p>Saved templates appear in the New investigation picker once kagent marks them ready.</p>
       <p>Sandboxes deny all network access, including DNS, unless a template references a granted <Link className="underline" to="/agents/egress-policies">egress policy</Link>.</p>
     </>}>
     <Panel title="Sandbox template"><div className="panel-body agent-fields">
@@ -85,7 +85,7 @@ export function SandboxTemplateEditor({ egressChoices, egressStatus, onPreview, 
 }
 
 export function EgressPolicyEditor({ onPreview, deployment, editor }: {
-  onPreview: (manifest: KAgentManifest) => void;
+  onPreview: (manifest: kagentManifest) => void;
   deployment: ReactNode;
   editor: DefinitionEditor<"egress-policies">;
 }) {

@@ -3,7 +3,7 @@ import { Panel } from "../components/ui";
 import { Field, ResourceEditor, SecretFields, field } from "../components/resource-editor";
 import { parseToolNames } from "../lib/agents";
 import type { DefinitionEditor } from "../hooks/use-agents";
-import type { KAgentManifest } from "../lib/types/agent";
+import type { kagentManifest } from "../lib/types/agent";
 
 const providers = [
   ["OpenAI", "OpenAI or compatible gateway"], ["Anthropic", "Anthropic"],
@@ -11,7 +11,7 @@ const providers = [
 ];
 
 export function ModelEditor({ onPreview, deployment, editor }: {
-  onPreview: (manifest: KAgentManifest) => void; deployment: ReactNode; editor: DefinitionEditor<"models">;
+  onPreview: (manifest: kagentManifest) => void; deployment: ReactNode; editor: DefinitionEditor<"models">;
 }) {
   const model = editor.initial?.model;
   const [provider, setProvider] = useState(model?.provider ?? "OpenAI");
@@ -41,7 +41,7 @@ export function ModelEditor({ onPreview, deployment, editor }: {
 }
 
 export function MCPServerEditor({ onPreview, deployment, editor }: {
-  onPreview: (manifest: KAgentManifest, tools: string[]) => void; deployment: ReactNode; editor: DefinitionEditor<"mcp-servers">;
+  onPreview: (manifest: kagentManifest, tools: string[]) => void; deployment: ReactNode; editor: DefinitionEditor<"mcp-servers">;
 }) {
   const saved = editor.initial;
   return <ResourceEditor resource="mcp-servers" title="MCP servers" description="Define a remote server that agents can share."
@@ -50,7 +50,7 @@ export function MCPServerEditor({ onPreview, deployment, editor }: {
     name: field(data, "name").trim(), url: field(data, "url").trim(), protocol: field(data, "protocol"),
     secret_name: field(data, "secret_name").trim(), secret_key: field(data, "secret_key").trim(),
     manual_tools: [...new Set(parseToolNames(field(data, "tool_catalog")))],
-  })} guidance={<p>Save this server to make it available to agents. Each agent selects the tools it can use. Set KAgent’s global runtime token propagation to off before deploying additional servers.</p>}>
+  })} guidance={<p>Save this server to make it available to agents. Each agent selects the tools it can use. Set kagent’s global runtime token propagation to off before deploying additional servers.</p>}>
     <Panel title="Server definition"><div className="panel-body agent-fields">
       <Field label="MCP server name"><input name="name" defaultValue={saved?.name} readOnly={Boolean(saved)} className="field mono" placeholder="engineering-docs" required maxLength={253} /></Field>
       <div className="agent-field-grid">
@@ -62,7 +62,7 @@ export function MCPServerEditor({ onPreview, deployment, editor }: {
       <Field label="Manual tool names (optional)">
         <input name="tool_catalog" defaultValue={saved?.manual_tools?.join(", ")} className="field mono" placeholder="search_docs, read_document" maxLength={3300} />
       </Field>
-      <p className="field-help">KAgent discovers tools after deployment. Enter tool names here for agents to pick from when discovery is unavailable.</p>
+      <p className="field-help">kagent discovers tools after deployment. Enter tool names here for agents to pick from when discovery is unavailable.</p>
     </div></Panel>
   </ResourceEditor>;
 }

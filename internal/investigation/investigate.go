@@ -1,4 +1,4 @@
-// Package investigation bounds a real KAgent investigation and independently collects evidence.
+// Package investigation bounds a real kagent investigation and independently collects evidence.
 package investigation
 
 import (
@@ -25,7 +25,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Backend is the small upstream seam. Production always supplies a real KAgent client.
+// Backend is the small upstream seam. Production always supplies a real kagent client.
 // Tests may use protocol fixtures; there is deliberately no fake CLI backend.
 type Backend interface {
 	CallTool(context.Context, string, map[string]any) (map[string]any, error)
@@ -97,7 +97,7 @@ func (i *Investigator) pause(ctx context.Context) error {
 	return wait(ctx, time.Duration(i.Config.PollInterval)*time.Second)
 }
 
-// readAttempts bounds one read-only KAgent call: it tolerates two consecutive
+// readAttempts bounds one read-only kagent call: it tolerates two consecutive
 // transient failures, pausing one poll interval before each repeat. Uploads,
 // process starts and kills, and the model invocation are never repeated here.
 const readAttempts = 3
@@ -132,14 +132,14 @@ func retryRead[T any](ctx context.Context, i *Investigator, name string, read fu
 		if attempt == readAttempts {
 			return value, fmt.Errorf("%s failed %d consecutive times: %w", name, attempt, err)
 		}
-		i.progress(ctx, fmt.Sprintf("KAgent %s read failed; retrying (%d of %d)", name, attempt+1, readAttempts))
+		i.progress(ctx, fmt.Sprintf("kagent %s read failed; retrying (%d of %d)", name, attempt+1, readAttempts))
 		if i.pause(ctx) != nil {
 			return value, err
 		}
 	}
 }
 
-// read calls a read-only KAgent tool with bounded transient-failure tolerance.
+// read calls a read-only kagent tool with bounded transient-failure tolerance.
 func (i *Investigator) read(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
 	return retryRead(ctx, i, name, func() (map[string]any, error) { return i.call(ctx, name, args) })
 }
@@ -289,7 +289,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err != nil {
 		return result, err
 	}
-	i.progress(ctx, "Starting the KAgent investigator")
+	i.progress(ctx, "Starting the kagent investigator")
 	sessionRequest := map[string]any{"agent": map[string]any{"namespace": i.Config.Namespace, "name": i.Config.Agent}, "request_id": c.ID, "name": "triagelab-" + c.ID}
 	result.SessionRequest = sessionRequest
 	if err = i.persist(dir, result); err != nil {

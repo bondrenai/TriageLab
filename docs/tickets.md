@@ -3,7 +3,7 @@
 The first ticket procedure handles a small, dependency-free Python 3.12 timeout
 reproduction. It checks what the requester has already provided, drafts or
 sends a clarification under policy, and hands approved evidence to the existing
-KAgent investigator. The helpdesk remains the ticket and conversation record.
+kagent investigator. The helpdesk remains the ticket and conversation record.
 TriageLab keeps preparation decisions and the linked investigation report.
 
 ## Connect a test account
@@ -32,7 +32,7 @@ TriageLab keeps preparation decisions and the linked investigation report.
    consent.
 5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
-   procedure. Configure KAgent separately before approving a lab.
+   procedure. Configure kagent separately before approving a lab.
 
 Configure the source and initial policy in the JSON file. Use **Ticket cases →
 Edit procedures** to add or edit procedures and save them while the workspace
@@ -60,7 +60,7 @@ select agents by exact tag. If matching tags select different agents, track the
 case and choose one of the matching agents. The proposed run displays the agent,
 sandbox, and matching tags. Changes to the procedure, route, or reviewed run
 target require fresh approval. An unavailable target holds the case for review.
-Saved agents and alternative sandbox templates use the workspace's KAgent
+Saved agents and alternative sandbox templates use the workspace's kagent
 deployment connection. Allow `get` and `list` on `sandboxtemplates` in its
 namespace Role. The source's startup policy sets the maximum clarification
 permission available to the editor.

@@ -34,7 +34,7 @@ func (s *Server) EnableResourceWrites() error {
 
 func resourceDefinition[T any](s *Server, w http.ResponseWriter, r *http.Request, resource string, render func(string, T) ([]byte, error), name func(T) string) {
 	if !s.resourceWrites {
-		fail(w, http.StatusForbidden, "Saving to KAgent is disabled for this workspace")
+		fail(w, http.StatusForbidden, "Saving to kagent is disabled for this workspace")
 		return
 	}
 	var saved kagent.SavedDefinition

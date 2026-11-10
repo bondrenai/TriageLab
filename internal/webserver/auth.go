@@ -81,7 +81,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, required auth
 
 // requiredRole reports the minimum role for an authenticated API request.
 // Reads need viewer; interactions that start or steer work need user; the
-// definition surface (saving KAgent resources and ticket procedures, and
+// definition surface (saving kagent resources and ticket procedures, and
 // account management) needs admin.
 func requiredRole(method, path string) auth.Role {
 	if method == http.MethodGet || method == http.MethodHead {

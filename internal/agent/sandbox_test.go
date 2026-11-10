@@ -72,7 +72,7 @@ func TestSandboxTemplateRejectsInvalidConfiguration(t *testing.T) {
 		},
 		"duplicate ref":   func(d *SandboxTemplateDefinition) { d.EgressPolicyRefs = []string{"egress", "egress"} },
 		"invalid ref":     func(d *SandboxTemplateDefinition) { d.EgressPolicyRefs = []string{"Not A Ref"} },
-		"invalid pool":    func(d *SandboxTemplateDefinition) { d.WorkerPool = "KAgent Default" },
+		"invalid pool":    func(d *SandboxTemplateDefinition) { d.WorkerPool = "kagent Default" },
 		"bare location":   func(d *SandboxTemplateDefinition) { d.SnapshotLocation = "ate-snapshots/triagelab" },
 		"spaced location": func(d *SandboxTemplateDefinition) { d.SnapshotLocation = "gs://ate-snapshots/triagelab/ extra" },
 	} {

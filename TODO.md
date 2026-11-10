@@ -51,7 +51,7 @@
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
 - [ ] Extend the opt-in live integration workflow with repeatable, cost-bounded
-      disposable infrastructure across KAgent upgrades and
+      disposable infrastructure across kagent upgrades and
       failure scenarios (connection loss, model errors, TTL expiry, cancellation).
       Exercise a declarative custom investigator and a BYO runtime with a
       reviewed external MCP tool on the pinned release.

@@ -3,7 +3,7 @@ import { ArrowDownToLine, Braces, Save } from "lucide-react";
 import { Button, ErrorPlate, PageTitle, Panel } from "./ui";
 import { useManifest, type DefinitionEditor } from "../hooks/use-agents";
 import { useSettings } from "../hooks/use-investigations";
-import type { KAgentManifest, ManifestDefinitions } from "../lib/types/agent";
+import type { kagentManifest, ManifestDefinitions } from "../lib/types/agent";
 
 export function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) {
   const id = useId();
@@ -33,7 +33,7 @@ interface ResourceEditorProps<K extends keyof ManifestDefinitions> {
   guidance: ReactNode;
   deployment: ReactNode;
   editor: DefinitionEditor<K>;
-  onPreview?: (manifest: KAgentManifest, data: FormData) => void;
+  onPreview?: (manifest: kagentManifest, data: FormData) => void;
   workspaceConfig?: (definition: ManifestDefinitions[K]) => Record<string, unknown>;
 }
 
@@ -109,7 +109,7 @@ export function ResourceEditor<K extends keyof ManifestDefinitions>({
         {editor.load.isError && <ErrorPlate title="Definition could not be opened" error={editor.load.error} />}
         <form id={formID} hidden={Boolean(output)} ref={form} tabIndex={-1} onSubmit={submit} onChange={() => { render.reset(); editor.save.reset(); }}>
           <fieldset className="section-stack agent-form" disabled={busy}>
-            {editor.save.isSuccess && <p role="status" className="field-help">Saved to KAgent. Deployment status updates as KAgent reconciles the change.</p>}
+            {editor.save.isSuccess && <p role="status" className="field-help">Saved to kagent. Deployment status updates as kagent reconciles the change.</p>}
             {render.isError && <ErrorPlate title="Manifest could not be rendered" error={render.error} />}
             {children}
           </fieldset>
@@ -129,9 +129,9 @@ export function ResourceEditor<K extends keyof ManifestDefinitions>({
       </div>
       <aside className="section-stack">
         <div className="intake-aside agent-aside">
-          <h2>{output ? "Deploy to KAgent" : "About this resource"}</h2>
+          <h2>{output ? "Deploy to kagent" : "About this resource"}</h2>
           {settings.data && <p className="agent-namespace">Namespace <code>{settings.data.namespace}</code></p>}
-          {settings.data && !writable && <p>Save requires a workspace connection with write access to KAgent.</p>}
+          {settings.data && !writable && <p>Save requires a workspace connection with write access to kagent.</p>}
           {output && !writable && <p>Apply the downloaded manifest in your development cluster.<code className="resource-command">kubectl --context YOUR_DEV_CONTEXT apply -f {filename}</code></p>}
           {guidance}
         </div>

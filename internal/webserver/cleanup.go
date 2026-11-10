@@ -102,7 +102,7 @@ func (s *Server) startCleanup(w http.ResponseWriter, id string) {
 	}
 	if connection.Endpoint != s.config.Endpoint || connection.UserID != s.config.UserID || connection.Namespace != s.config.Namespace {
 		release()
-		fail(w, http.StatusConflict, "This workspace is configured for a different KAgent endpoint, user or namespace than the one that created the report")
+		fail(w, http.StatusConflict, "This workspace is configured for a different kagent endpoint, user or namespace than the one that created the report")
 		return
 	}
 	dir := filepath.Join(s.directory, id)

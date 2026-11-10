@@ -24,12 +24,12 @@ const (
 
 // TestLiveInvestigation scores the evaluation corpus in examples/corpus.json
 // against a real deployment. It never falls back to a mock. Opt-in requires a
-// dedicated real KAgent/Substrate deployment and a working model credential in
+// dedicated real kagent/Substrate deployment and a working model credential in
 // its gateway. Every case costs model tokens: TRIAGELAB_CASES=name,name selects
 // a subset. All selected cases run; the test fails at the end if any missed.
 func TestLiveInvestigation(t *testing.T) {
 	if os.Getenv("TRIAGELAB_INTEGRATION") != "1" {
-		t.Skip("set TRIAGELAB_INTEGRATION=1 for real KAgent/Substrate/model integration")
+		t.Skip("set TRIAGELAB_INTEGRATION=1 for real kagent/Substrate/model integration")
 	}
 	corpus, err := loadCorpus(corpusManifestPath)
 	if err != nil {

@@ -23,7 +23,7 @@ sandbox runtime, or agent framework.
 - `internal/report` persists private reports atomically and keeps
   independently collected process evidence separate from model hypotheses.
 - `internal/agent` embeds the trusted investigator instructions and output
-  schema. KAgent executes the agent and its tools; TriageLab never simulates
+  schema. kagent executes the agent and its tools; TriageLab never simulates
   answers.
 - `internal/ticketflow` prepares helpdesk and issue-tracker cases. Policy
   checks and durable clarification reservations stay outside the
@@ -39,7 +39,7 @@ sandbox runtime, or agent framework.
   query hooks, and presentation kept separate. There is no second agent
   implementation or browser-held model credential.
 
-KAgent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
+kagent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, the Go ADK tool loop, authorization, the model gateway,
 and expiry. A standalone Sandbox is a database-backed API resource, **not** a
 Kubernetes CRD. Agent Substrate owns WorkerPools, Actors, gVisor or microVM

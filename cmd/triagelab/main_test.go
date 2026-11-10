@@ -99,7 +99,7 @@ func TestManifestAndVersion(t *testing.T) {
 		out.Reset()
 		code := run(context.Background(), []string{"version"}, &out, &stderr)
 		version = previous
-		if code != 0 || !strings.HasPrefix(out.String(), "triagelab "+build+" (KAgent ") {
+		if code != 0 || !strings.HasPrefix(out.String(), "triagelab "+build+" (kagent ") {
 			t.Fatalf("version output %q for build %s", out.String(), build)
 		}
 	}

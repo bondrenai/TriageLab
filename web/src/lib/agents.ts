@@ -1,12 +1,12 @@
 import { request } from "./api-client";
-import type { DeploymentResource, DeploymentStatus, KAgentManifest, ManifestDefinitions, SavedDefinition } from "./types/agent";
+import type { DeploymentResource, DeploymentStatus, kagentManifest, ManifestDefinitions, SavedDefinition } from "./types/agent";
 
 export function parseToolNames(value: string) {
   return value.split(/[,\s]+/).filter(Boolean);
 }
 
 export function renderManifest<K extends keyof ManifestDefinitions>(resource: K, definition: ManifestDefinitions[K]) {
-  return request<KAgentManifest>(`/api/${resource}/manifest`, {
+  return request<kagentManifest>(`/api/${resource}/manifest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(definition),

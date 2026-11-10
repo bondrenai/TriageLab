@@ -15,14 +15,14 @@ make check
 
 Keep `go.mod` and `go.sum` updated when changing dependencies. `make check` mirrors
 CI with formatting, tests, and vetting. Use the local-development guide
-to configure a dedicated KAgent/Substrate test environment. It can run on a remote
+to configure a dedicated kagent/Substrate test environment. It can run on a remote
 Linux VM; no Docker socket is exposed to the investigator or reproduction sandbox.
 Never use a production cluster for the example or integration tests.
 
 A useful pull request explains the concrete problem, resulting behavior, relevant
 tests, and any remaining uncertainty. Add tests for important behavior and failure
 paths. Source-level protocol tests and unit tests are not evidence of a successful
-live KAgent investigation; label those results accurately. Keep changes narrowly
+live kagent investigation; label those results accurately. Keep changes narrowly
 scoped and avoid adding a custom controller, agent framework, or job system.
 
 The repository follows conventional Go organization: `cmd/` entry

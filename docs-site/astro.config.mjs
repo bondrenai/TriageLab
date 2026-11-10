@@ -12,7 +12,7 @@ export default defineConfig({
     starlight({
       title: "TriageLab",
       description:
-        "Evidence-driven technical issue reproduction with a Go CLI, a browser workspace, and a real KAgent investigator.",
+        "A Kubernetes-based tool that automates technical investigations for tickets and issues — routing, classification, and sandboxed investigation with recorded evidence.",
       sidebar: [
         {
           label: "Start",

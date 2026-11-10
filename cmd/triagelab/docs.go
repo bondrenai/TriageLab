@@ -40,17 +40,17 @@ func cliCommandDocs() []commandDoc {
 		}
 	}
 	return []commandDoc{
-		{name: "investigate", usage: "triagelab investigate [options]", purpose: "Run one investigation: collect the bounded case, create a standalone sandbox, run the KAgent investigator, and write JSON and Markdown reports.", flags: runCommand("investigate")},
+		{name: "investigate", usage: "triagelab investigate [options]", purpose: "Run one investigation: collect the bounded case, create a standalone sandbox, run the kagent investigator, and write JSON and Markdown reports.", flags: runCommand("investigate")},
 		{name: "serve", usage: "triagelab serve [options]", purpose: "Serve the authenticated browser workspace on loopback, sharing the CLI's investigation workflow and report directory.", flags: runCommand("serve")},
-		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the KAgent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
+		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
 		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.", flags: runCommand("cleanup")},
-		{name: "manifest", usage: "triagelab manifest [options]", purpose: "Render the KAgent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.", flags: func() *flag.FlagSet {
+		{name: "manifest", usage: "triagelab manifest [options]", purpose: "Render the kagent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.", flags: func() *flag.FlagSet {
 			return newFlagSet("triagelab manifest", registerManifestFlags)
 		}},
 		{name: "agent-manifest", usage: "triagelab agent-manifest [options]", purpose: "Render a bundled agent definition — agent plus optional model and MCP server resources — as Kubernetes JSON for review and deployment.", flags: func() *flag.FlagSet {
 			return newFlagSet("triagelab agent-manifest", registerAgentManifestFlags)
 		}},
-		{name: "user", usage: "triagelab user <add|list|remove|set-role|set-password> [options]", purpose: "Manage local sign-in accounts without contacting KAgent. The first account defaults to admin; later accounts default to viewer.", flags: func() *flag.FlagSet {
+		{name: "user", usage: "triagelab user <add|list|remove|set-role|set-password> [options]", purpose: "Manage local sign-in accounts without contacting kagent. The first account defaults to admin; later accounts default to viewer.", flags: func() *flag.FlagSet {
 			return newFlagSet("triagelab user", registerUserFlags)
 		}},
 	}
@@ -75,12 +75,12 @@ var exitCodeDocs = []struct {
 // generator fails when a field is missing here or an entry goes stale, so
 // configuration changes must update this table.
 var configFieldDocs = map[string]string{
-	"endpoint":              "KAgent MCP API endpoint. HTTPS off-loopback; plain HTTP only on loopback or, with allow_cluster_http, on cluster-internal service names.",
-	"namespace":             "Kubernetes namespace of the KAgent installation.",
-	"agent":                 "KAgent agent invoked as the investigator.",
+	"endpoint":              "kagent MCP API endpoint. HTTPS off-loopback; plain HTTP only on loopback or, with allow_cluster_http, on cluster-internal service names.",
+	"namespace":             "Kubernetes namespace of the kagent installation.",
+	"agent":                 "kagent agent invoked as the investigator.",
 	"template":              "Standalone sandbox template used for the run's sandbox.",
-	"user_id":               "KAgent user identity that owns sessions and sandboxes.",
-	"token_env":             "Environment variable holding the KAgent invocation token; the token itself never goes in the file.",
+	"user_id":               "kagent user identity that owns sessions and sandboxes.",
+	"token_env":             "Environment variable holding the kagent invocation token; the token itself never goes in the file.",
 	"investigation_timeout": "Overall investigation budget in seconds (at most 3000).",
 	"process_timeout":       "Per-process watchdog in seconds; cannot exceed investigation_timeout.",
 	"sandbox_ttl":           "Sandbox TTL in seconds, fixed at creation; must cover the investigation plus request and cleanup budgets (at most 3600).",
@@ -261,7 +261,7 @@ func generateReferencePages(root string) (map[string][]byte, error) {
 
 // runDocsCommand writes the generated reference pages (--out) or verifies the
 // committed pages match the generator (--check). It needs no configuration
-// and never contacts KAgent.
+// and never contacts kagent.
 func runDocsCommand(args []string, out, errout io.Writer) int {
 	flags := flag.NewFlagSet("docs", flag.ContinueOnError)
 	flags.SetOutput(errout)

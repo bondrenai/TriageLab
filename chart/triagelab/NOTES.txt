@@ -10,7 +10,7 @@ this port has full workspace access; do not share or proxy it.
 
 Before the first investigation:
 
-1. The KAgent workspace resources (agent, sandbox template, triagelab-tools
+1. The kagent workspace resources (agent, sandbox template, triagelab-tools
    Service) must exist in namespace {{ .Values.config.namespace }}. Render and
    review them from the deployed binary if they are not installed yet:
 
@@ -19,7 +19,7 @@ Before the first investigation:
 
 2. The invocation token in the Secret {{ include "triagelab.tokenSecretName" . }} is
    short-lived and read once at pod start. Refresh it on the cluster that runs
-   KAgent, then restart the pod:
+   kagent, then restart the pod:
 
      kubectl -n {{ .Values.config.namespace }} create token triagelab \
        --audience=kagent-invocation --duration=1h

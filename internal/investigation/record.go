@@ -50,7 +50,7 @@ const (
 const substrateVersion = "v1.0.0"
 
 // Report is the canonical investigation record saved as report.json. It types
-// the members TriageLab defines. Members whose shape KAgent defines stay
+// the members TriageLab defines. Members whose shape kagent defines stay
 // generic: the sandbox and session resources, the saved creation requests, and
 // the tool-call arguments and responses inside kagent's own ToolCall type. The
 // model's schema-validated analysis stays generic too.
@@ -74,18 +74,18 @@ type Report struct {
 	// absent for CLI runs.
 	StartedBy string `json:"started_by,omitempty"`
 
-	// Sandbox is KAgent's sandbox resource as last returned. Session starts as
+	// Sandbox is kagent's sandbox resource as last returned. Session starts as
 	// TriageLab's journal of the session ID and task ID; recovery can replace it
-	// with KAgent's session resource, which then also carries the task ID.
+	// with kagent's session resource, which then also carries the task ID.
 	Sandbox map[string]any `json:"sandbox,omitzero"`
 	Session map[string]any `json:"session,omitzero"`
-	// The creation journal: the exact KAgent tool arguments, replayed verbatim
+	// The creation journal: the exact kagent tool arguments, replayed verbatim
 	// to recover a resource whose creation outcome is uncertain, and whether it is.
 	SandboxRequest           map[string]any `json:"sandbox_request,omitzero"`
 	SessionRequest           map[string]any `json:"session_request,omitzero"`
 	CreationUncertain        *bool          `json:"creation_uncertain,omitempty"`
 	SessionCreationUncertain *bool          `json:"session_creation_uncertain,omitempty"`
-	// TaskState is the last observed KAgent task state.
+	// TaskState is the last observed kagent task state.
 	TaskState string `json:"task_state,omitzero"`
 
 	Experiments []Experiment      `json:"experiments"`
@@ -103,13 +103,13 @@ type Report struct {
 	loaded preserved
 }
 
-// AgentRef names the KAgent Agent a run invoked.
+// AgentRef names the kagent Agent a run invoked.
 type AgentRef struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
 
-// Connection is the KAgent endpoint and identity that own a run's resources.
+// Connection is the kagent endpoint and identity that own a run's resources.
 // Cleanup of a saved report requires the same configuration.
 type Connection struct {
 	Endpoint  string `json:"endpoint"`
@@ -176,7 +176,7 @@ func (r *Report) taskID() string    { return str(r.Session["task_id"]) }
 func flag(value bool) *bool  { return &value }
 func isSet(value *bool) bool { return value != nil && *value }
 
-// newReport is the record Run journals before any KAgent call.
+// newReport is the record Run journals before any kagent call.
 func newReport(c casefile.Case, config Config, sandboxRequest map[string]any) *Report {
 	return &Report{
 		SchemaVersion: SchemaVersion, RunID: c.ID, Case: c, StartedAt: time.Now().UTC(),

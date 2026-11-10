@@ -45,7 +45,7 @@ bin/triagelab serve --tickets linear.local.json --output reports/linear
 ```
 
 Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`; keep the server on
-loopback. Configure KAgent and its invocation credential separately before
+loopback. Configure kagent and its invocation credential separately before
 approving an investigation. Importing or tracking an issue does not call a
 model or create a sandbox.
 
@@ -171,9 +171,9 @@ prevent refresh.
 Imported prose and files remain untrusted. Attachment validation and
 credential redaction are best effort; review evidence for secrets and
 customer data before sending it to a model. The existing
-[security model](../SECURITY.md), alpha KAgent API limitations, output
+[security model](../SECURITY.md), alpha kagent API limitations, output
 bounds, watchdog latency, and cleanup reporting also apply. Connector
 fixtures exercise parsing, delivery, and security boundaries; they do not
-establish a live Linear-to-KAgent investigation demonstration. No live
+establish a live Linear-to-kagent investigation demonstration. No live
 Linear clarification or summary sends were performed while implementing this
 connector; a controlled live pilot remains to be run.

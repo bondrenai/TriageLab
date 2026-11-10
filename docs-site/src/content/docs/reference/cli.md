@@ -7,7 +7,7 @@ This page is generated from the CLI source by `triagelab docs`; run `make docs-g
 
 ## investigate
 
-Run one investigation: collect the bounded case, create a standalone sandbox, run the KAgent investigator, and write JSON and Markdown reports.
+Run one investigation: collect the bounded case, create a standalone sandbox, run the kagent investigator, and write JSON and Markdown reports.
 
 ```text
 triagelab investigate [options]
@@ -35,7 +35,7 @@ triagelab serve [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --allow-resource-writes | false | allow the workspace to save KAgent definitions in the configured namespace |
+| --allow-resource-writes | false | allow the workspace to save kagent definitions in the configured namespace |
 | --assets | web/dist | built frontend directory |
 | --auth | (none) | optional sign-in configuration JSON with an oidc section |
 | --config | (none) | JSON configuration (default: built-in localhost settings) |
@@ -49,7 +49,7 @@ triagelab serve [options]
 
 ## doctor
 
-Check that the KAgent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.
+Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.
 
 ```text
 triagelab doctor [options]
@@ -76,7 +76,7 @@ triagelab cleanup [options]
 
 ## manifest
 
-Render the KAgent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.
+Render the kagent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.
 
 ```text
 triagelab manifest [options]
@@ -97,11 +97,11 @@ triagelab agent-manifest [options]
 | Flag | Default | Description |
 | --- | --- | --- |
 | --definition | (none) | local agent definition JSON file |
-| --namespace | kagent | KAgent namespace |
+| --namespace | kagent | kagent namespace |
 
 ## user
 
-Manage local sign-in accounts without contacting KAgent. The first account defaults to admin; later accounts default to viewer.
+Manage local sign-in accounts without contacting kagent. The first account defaults to admin; later accounts default to viewer.
 
 ```text
 triagelab user <add|list|remove|set-role|set-password> [options]
