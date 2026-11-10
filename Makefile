@@ -3,7 +3,7 @@ NPM ?= npm
 HELM ?= helm
 export GOFLAGS := -trimpath
 
-.PHONY: build fmt check test test-integration demo manifest install-ui dev-ui build-ui check-ui chart-lint
+.PHONY: build fmt check test test-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
 build:
 	$(GO) build -o bin/triagelab ./cmd/triagelab
 install-ui:
@@ -14,6 +14,16 @@ build-ui:
 	$(NPM) --prefix web run build
 check-ui:
 	$(NPM) --prefix web run check
+install-docs:
+	$(NPM) --prefix docs-site ci
+dev-docs:
+	$(NPM) --prefix docs-site run dev
+build-docs:
+	$(NPM) --prefix docs-site run build
+docs-generate:
+	$(GO) run ./cmd/triagelab docs --out docs-site/src/content/docs/reference
+docs-check:
+	$(GO) run ./cmd/triagelab docs --check docs-site/src/content/docs/reference
 fmt:
 	gofmt -w cmd internal
 check:

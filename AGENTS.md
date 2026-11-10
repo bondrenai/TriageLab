@@ -29,6 +29,12 @@ or one OIDC provider) of the same workflow, reached over loopback.
   fail closed without a configured login method.
 - `web/` uses React 19, TypeScript, Vite, and the Bondren design language.
   Read `web/AGENTS.md` before changing the frontend.
+- `docs-site/` builds the public documentation site (Astro/Starlight; see
+  `docs-site/README.md`). The reference pages under `reference/` are generated
+  by `triagelab docs` from the real flag registrations, the investigation
+  config struct, and the example JSON files; a golden test under `make check`
+  fails on drift. Internal links must carry the `/TriageLab` base prefix to
+  pass build-time validation. Contributor-facing notes stay in `docs/`.
 - `deploy/` configures KAgent and Agent Substrate. KAgent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
 - `chart/` and the root `Dockerfile` package the single-user workspace for a

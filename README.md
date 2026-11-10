@@ -155,6 +155,16 @@ KAgent/Substrate installation, installed from the public chart
 inside the pod and is reached through `kubectl port-forward`; the chart
 creates no Service or Ingress by design. See [Helm deployment](docs/helm.md).
 
+### Documentation site
+
+The public documentation lives in `docs-site/` (Astro/Starlight) and publishes
+to GitHub Pages at <https://bondrenai.github.io/TriageLab/> on pushes to main.
+Its CLI and configuration reference pages are generated from the actual flag
+registrations and config structs by `triagelab docs`; a golden test under
+`make check` fails if they drift, and the build validates internal links.
+See `docs-site/README.md` for the workflow (`make dev-docs`, `build-docs`,
+`docs-generate`). Contributor-facing notes stay in `docs/`.
+
 ### Checks
 
 Run these commands on the development VM:

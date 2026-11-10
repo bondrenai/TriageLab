@@ -18,16 +18,21 @@
       (the connector is fixture-verified only). Then add Bondren with shared
       ticket identity and one owner for automated replies. Use pilot evidence
       to guide procedure authoring and CEL.
-- [ ] Exercise the new sign-in surface against a real identity provider (the
-      OIDC client is tested against a local fake only) and pilot the account
-      workflow: bootstrap, role changes, lockout recovery, and the shared
-      users-file limitation between the CLI and a running server. Consider an
+- [x] Exercise the new sign-in surface against real identity providers
+      (done 2026-11-09 on the build VM: Keycloak 26 confidential client and
+      Zitadel v4.20 public PKCE client, full authorization-code flows with
+      admin/user/viewer role mapping and API enforcement; provider setup
+      notes in docs/ui.md). The browser login-UI round trip was driven for
+      Keycloak by form automation; Zitadel's Login v2 web-component UI was
+      completed headlessly through the documented Session API, and its
+      full-browser path remains manually unexercised. Still open: pilot the
+      account workflow (bootstrap, role changes, lockout recovery, shared
+      users-file limitation between CLI and a running server) and consider an
       append-only action audit log before widening who may launch runs.
-- [ ] Verify telemetry export against a real collector on the development VM
-      (run spans, phase spans, KAgent RPC metrics, HTTP route metrics, and
-      log correlation) and record it in docs/verification.md; the OTLP wire
-      behavior is currently verified by unit tests against an in-process
-      collector only.
+- [ ] Repeat telemetry verification with a **successful** model-backed
+      investigation and live ticket actions (the 2026-11-09 collector check in
+      docs/verification.md covered the failure path, HTTP routes, RPC metrics,
+      and log correlation end to end).
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
