@@ -1,11 +1,17 @@
 # TriageLab
 
-TriageLab is a free, Apache 2.0 tool for evidence-driven technical issue reproduction,
-with a Go CLI and a browser workspace styled by Bondren.
-It submits a case to a real KAgent investigator, gives it a disposable Agent
-Substrate sandbox, records experiments independently, and saves JSON and Markdown
-reports. It is an early, single-user proof of concept—not a production support
-platform.
+TriageLab is a free, Apache 2.0 tool that automates technical investigations
+for tickets and issues on Kubernetes, with a Go CLI and a browser workspace
+styled by Bondren. When a case arrives from Zendesk, GitHub, or Linear,
+TriageLab routes it to a matching procedure, classifies what evidence is
+still missing, and—after a human approves the exact evidence and run
+settings—investigates it in a secure, disposable sandbox: one KAgent
+investigator in a gVisor or microVM Agent Substrate sandbox with egress
+denied by default. Experiments are recorded independently of the model and
+saved as JSON and Markdown reports; a reviewed summary can return to the
+ticket with the full evidence trail. It is an early, single-user proof of
+concept—not a production support platform—and all sources currently use the
+Python 3.12 timeout procedure.
 
 The included example is a small Python application with a timeout configuration
 error. A useful investigation reproduces the error, identifies the units mismatch,
@@ -15,13 +21,14 @@ or dependencies. There is no simulated agent or local command-execution backend.
 ## Architecture
 
 ```text
-Local issue + files → UI / Go CLI → KAgent MCP API
-                          │          ├─ investigator Session → model provider
-                          │          └─ Sandbox → Agent Substrate → gVisor
-                          └─ tool events + process results → reports
+Ticket/issue or local case → UI / Go CLI → KAgent MCP API
+                                │          ├─ investigator Session → model provider
+                                │          └─ Sandbox → Agent Substrate → gVisor
+                                └─ tool events + process results → reports
 ```
 
-TriageLab owns case normalization, input limits, investigation budgets, evidence
+TriageLab owns ticket routing, clarification policy, human approval, case
+normalization, input limits, investigation budgets, evidence
 validation, cleanup, and reports. KAgent owns the agent loop, model access, tools,
 Sessions, SandboxTemplates, and standalone Sandbox lifecycle. Agent Substrate owns
 isolated execution, resource allocation, snapshots, identity, and egress enforcement.
@@ -200,5 +207,5 @@ Prompt rules and post-execution tool auditing cannot guarantee that a model
 will resist prompt injection. Hard boundaries come from upstream isolation,
 egress rules, resource limits, and credentials kept outside reproduction sandboxes.
 
-[Architecture](docs/architecture.md) · [Roadmap](TODO.md) ·
+[Documentation](https://bondrenai.github.io/TriageLab/) · [Architecture](docs/architecture.md) · [Roadmap](TODO.md) ·
 [Contributing](CONTRIBUTING.md) · [Apache 2.0 license](LICENSE)
