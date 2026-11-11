@@ -3,9 +3,11 @@ title: Jira issues
 description: Prepare issues from one Jira Cloud site with reviewed clarifications, and internal notes.
 ---
 
-TriageLab reads issues from one Jira Cloud site and prepares them for the
-existing Python 3.12 timeout investigation procedure: preview, tracking,
-reviewed clarification comments, and an evidence checklist. Completed investigations can publish a reviewed internal note to
+TriageLab reads issues from one Jira Cloud site and prepares them for
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification comments, and an evidence
+checklist. Completed investigations can publish a reviewed internal note to
 the linked issue. Jira remains the issue and conversation record.
 
 Jira issues are looked up by an issue key (`PROJ-123`), a pasted issue URL,

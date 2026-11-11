@@ -3,9 +3,11 @@ title: Bondren issues
 description: Prepare issues from one Bondren workspace with reviewed clarifications, and internal notes.
 ---
 
-TriageLab reads issues from one Bondren workspace and prepares them for the
-existing Python 3.12 timeout investigation procedure: preview, tracking,
-reviewed clarification messages, and an evidence checklist. Completed investigations can publish a reviewed internal note to
+TriageLab reads issues from one Bondren workspace and prepares them for
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification messages, and an evidence
+checklist. Completed investigations can publish a reviewed internal note to
 the linked issue. Bondren remains the issue and conversation record.
 
 Bondren issues are looked up by their issue ID or their number. ID lookup

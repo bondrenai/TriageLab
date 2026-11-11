@@ -1,8 +1,10 @@
 # Bondren issues
 
-TriageLab reads issues from one Bondren workspace and prepares them for the
-existing Python 3.12 timeout investigation procedure: preview, tracking,
-reviewed clarification messages, and an evidence checklist. Completed investigations can publish a reviewed internal note to
+TriageLab reads issues from one Bondren workspace and prepares them for
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification messages, and an evidence
+checklist. Completed investigations can publish a reviewed internal note to
 the linked issue. Bondren remains the issue and conversation record.
 
 Bondren issues are looked up by their issue ID or their number. ID lookup
@@ -21,8 +23,8 @@ Build the CLI and browser assets on your development VM as described in
 [UI setup](ui.md). Copy [bondren.example.json](../bondren.example.json) to
 `bondren.local.json`, set `origin` to the HTTPS origin serving both the
 Bondren API and its web workspace, and set `policy.tag` to the Bondren tag
-that selects open issues for this procedure. One workspace has one source and
-one origin.
+that selects open issues for the built-in procedure. One workspace has one
+source and one origin.
 
 ```json
 {
