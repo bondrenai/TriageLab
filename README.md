@@ -17,7 +17,7 @@ investigator ran, with its exit status and output, and saves that evidence in
 a JSON and Markdown report, kept apart from the model's conclusions.
 
 Cases can come from the command line, a browser workspace, or a ticket in
-Zendesk, GitHub, Linear, or Jira. For a ticket, TriageLab matches it to a
+Zendesk, GitHub, Linear, Bondren, or Jira. For a ticket, TriageLab matches it to a
 procedure, drafts a request for any missing evidence, and waits for your
 approval before starting. You can let a procedure start on its own once its
 evidence is ready. When the investigation ends, you can send a reviewed
@@ -330,6 +330,9 @@ guide:
   visible to anyone with repository access, and public in a public repository.
 - [Linear](docs/linear-issues.md), for one team: comments are visible to
   everyone in the Linear workspace.
+- [Bondren](docs/bondren-issues.md), for one workspace: clarifications are
+  public messages to the requester, and investigation summaries are internal
+  notes visible only to the team.
 - [Jira Cloud](docs/jira-issues.md), for one site: clarifications are
   customer-visible replies on Jira Service Management issues, and
   investigation summaries are internal comments.
