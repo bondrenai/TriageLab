@@ -1,16 +1,18 @@
 # Prepare GitHub issues for investigation
 
 TriageLab can read issues from one GitHub.com repository and prepare them for
-the existing Python 3.12 timeout investigation procedure. The workspace provides
-preview, tracking, reviewed clarification comments, and an evidence checklist. Completed investigations can also publish a reviewed
-summary to the linked issue. GitHub remains the issue and conversation record.
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification comments, and an evidence
+checklist. Completed investigations can also publish a reviewed summary to the
+linked issue. GitHub remains the issue and conversation record.
 
 ## Configure a repository
 
 Build the CLI and browser assets on your development VM as described in
 [UI setup](ui.md). Copy [github.example.json](../github.example.json) to
 `github.local.json`, set `repository` to `owner/repository`, and set `policy.tag`
-to the GitHub label that selects open issues for this procedure.
+to the GitHub label that selects open issues for the built-in procedure.
 
 The example enables clarification comments and investigation summaries. Create
 a fine-grained token limited to the selected repository with **Issues: read and

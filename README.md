@@ -20,8 +20,9 @@ Each run uses one kagent investigator in a disposable gVisor or microVM Agent
 Substrate sandbox with egress denied by default. Experiments are recorded
 independently of the model and saved as JSON and Markdown reports. A reviewed
 summary can return to the ticket with the full evidence trail. TriageLab is
-an early, single-user pilot. All ticket sources start with the Python 3.12
-timeout procedure.
+an early, single-user pilot. It ships with one procedure, a Python 3.12
+timeout reproduction; admins add procedures for other kinds of tickets in the
+workspace.
 
 [Configure automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
 
@@ -191,10 +192,10 @@ messages and investigation summaries are internal notes. [Jira issue
 support](docs/jira-issues.md) brings the same workflow to one Jira Cloud
 site through a server-side Atlassian account email and API token:
 clarifications are customer-visible replies on Jira Service Management
-issues and investigation summaries are internal comments. All sources currently
-use the Python 3.12
-timeout procedure; select the source with the configuration passed to
-`serve --tickets`.
+issues and investigation summaries are internal comments. Every source starts
+with the built-in Python 3.12 timeout procedure, and admins can add others
+under **Ticket cases → Edit procedures**. Select the source with the
+configuration passed to `serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.

@@ -1,11 +1,11 @@
 # Prepare Linear issues for investigation
 
 TriageLab can read issues from one team in one Linear workspace and prepare
-them for the existing Python 3.12 timeout investigation procedure. The
-workspace provides preview, tracking, reviewed clarification comments,
-and an evidence checklist. Completed investigations
-can also publish a reviewed summary to the linked issue. Linear remains the
-issue and conversation record.
+them for investigation. Each issue goes through the first matching procedure:
+the built-in Python 3.12 timeout procedure, or one an admin adds. The
+workspace provides preview, tracking, reviewed clarification comments, and an
+evidence checklist. Completed investigations can also publish a reviewed
+summary to the linked issue. Linear remains the issue and conversation record.
 
 ## Configure a team
 
@@ -14,8 +14,8 @@ Build the CLI and browser assets on your development VM as described in
 `linear.local.json`, set `workspace` to your `linear.app` URL key (the first
 path segment of your Linear URLs), set `team` to the team key (the uppercase
 prefix of issue identifiers such as `ENG-12`), and set `policy.tag` to the
-Linear label that selects open issues for this procedure. One workspace has
-one source and one team.
+Linear label that selects open issues for the built-in procedure. One
+workspace has one source and one team.
 
 Create a [personal API key](https://linear.app/settings/api) in
 **Settings → Security & access → API**. Reads use the Linear GraphQL API
