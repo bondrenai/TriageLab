@@ -4,7 +4,8 @@ description: Prepare issues from one GitHub.com repository with reviewed clarifi
 ---
 
 TriageLab reads issues from one GitHub.com repository and prepares them for
-the existing Python 3.12 timeout investigation procedure. The workspace
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
 provides preview, tracking, reviewed clarification comments, evidence review,
 and approval before a sandbox run; completed investigations can publish a
 reviewed summary to the linked issue. GitHub remains the issue and

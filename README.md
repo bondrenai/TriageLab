@@ -15,8 +15,9 @@ investigator in a gVisor or microVM Agent Substrate sandbox with egress
 denied by default. Experiments are recorded independently of the model and
 saved as JSON and Markdown reports; a reviewed summary can return to the
 ticket with the full evidence trail. It is an early, single-user proof of
-concept—not a production support platform—and all sources currently use the
-Python 3.12 timeout procedure.
+concept—not a production support platform—and it ships with one procedure, a
+Python 3.12 timeout reproduction. Admins add procedures for other kinds of
+tickets in the workspace.
 
 The included example is a small Python application with a timeout configuration
 error. A useful investigation reproduces the error, identifies the units mismatch,
@@ -178,8 +179,9 @@ comments to one configured repository through the same workflow. GitHub comments
 are visible to everyone with repository access and public in public repositories.
 [Linear issue support](docs/linear-issues.md) brings the same workflow to one
 configured team through a server-side API key. Linear comments are visible to
-everyone with workspace access. All sources currently use the Python 3.12
-timeout procedure; select the source with the configuration passed to
+everyone with workspace access. Every source starts with the built-in Python
+3.12 timeout procedure, and admins can add others under **Ticket cases → Edit
+procedures**. Select the source with the configuration passed to
 `serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`

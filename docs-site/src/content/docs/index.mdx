@@ -46,8 +46,9 @@ limits come from upstream isolation and egress policy, not from the prompt.
 ## Status and scope
 
 TriageLab is an early, single-user pilot, not a production support platform.
-The workflow is general, but every source currently uses the same Python 3.12
-timeout procedure. There is no database, operator, custom sandbox runtime, or
+The workflow is general, but the only procedure that ships with it is a Python
+3.12 timeout reproduction. Admins add procedures for other kinds of tickets in
+the workspace. There is no database, operator, custom sandbox runtime, or
 agent framework, and nothing is simulated. A failed run keeps its partial
 report, so a nonzero exit code is no reason to discard it. Infrastructure
 failures are never reported as "not reproduced."

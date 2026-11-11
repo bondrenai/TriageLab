@@ -4,10 +4,12 @@ description: Prepare issues from one Linear team with reviewed clarifications, s
 ---
 
 TriageLab reads issues from one team in one Linear workspace and prepares them
-for the existing Python 3.12 timeout investigation procedure: preview,
-tracking, reviewed clarification comments, evidence review, and approval
-before a sandbox run. Completed investigations can publish a reviewed summary
-to the linked issue. Linear remains the issue and conversation record.
+for investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification comments, evidence review,
+and approval before a sandbox run. Completed investigations can publish a
+reviewed summary to the linked issue. Linear remains the issue and
+conversation record.
 
 ## Configure a team
 
