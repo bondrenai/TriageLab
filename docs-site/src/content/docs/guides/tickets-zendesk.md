@@ -35,6 +35,9 @@ agent, and sandbox; the first matching procedure applies. An open ticket must
 carry the procedure's tag, match its priorities if provided, and match an
 optional custom-field condition.
 
+Zendesk connections can also be added in the workspace UI on the
+**Connections** page, which then offers the same browser authorization flow.
+
 ## Clarify and launch
 
 With `auto_questions: false`, review the draft and reply in Zendesk yourself.

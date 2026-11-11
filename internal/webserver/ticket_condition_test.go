@@ -11,13 +11,11 @@ import (
 
 func TestTicketConditionValidationRequiresAdminAndReturnsLocations(t *testing.T) {
 	s := newTestServer(t, nil)
-	if err := s.EnableTickets(ticketflow.Config{
+	seedTickets(t, s, githubConnection, ticketflow.Config{
 		Source: "github", Repository: "owner/repo",
 		Policy: ticketflow.Policy{Tag: "test"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	path := "/api/tickets/procedure/validate-condition"
+	})
+	path := "/api/tickets/c/" + githubConnection + "/procedure/validate-condition"
 	body := `{"expression":"true &&\nunknown_name == 1"}`
 	worker := loginAs(t, s, "worker", "user-password-1")
 	if w := requestAs(s, worker, http.MethodPost, path, strings.NewReader(body)); w.Code != http.StatusForbidden {
@@ -33,7 +31,7 @@ func TestTicketConditionValidationRequiresAdminAndReturnsLocations(t *testing.T)
 	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {
 		t.Fatalf("valid condition: %d %s", w.Code, w.Body)
 	}
-	if got := s.tickets.Procedure().Procedure.Policy.AutoRunCondition; got != "" {
+	if got := s.ticketConnection(githubConnection).flow.Procedure().Procedure.Policy.AutoRunCondition; got != "" {
 		t.Fatal("validation persisted the draft")
 	}
 }

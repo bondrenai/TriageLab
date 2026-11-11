@@ -58,7 +58,7 @@ func (s *Server) connectionMatches(config investigation.Config) bool {
 		config.UserID == s.config.UserID && config.AllowClusterHTTP == s.config.AllowClusterHTTP
 }
 
-func (s *Server) lifecycle(state investigation.State, active bool) lifecycleView {
+func (s *Server) lifecycle(id string, state investigation.State, active bool) lifecycleView {
 	view := lifecycleView{Phase: state.Phase, Round: state.Round, ResumeSettings: resumeSettings(state),
 		TimeoutSeconds: state.Config.InvestigationTimeout, MaxExperiments: state.Config.MaxExperiments}
 	if !s.connectionMatches(state.Config) {
@@ -69,7 +69,7 @@ func (s *Server) lifecycle(state investigation.State, active bool) lifecycleView
 	view.CanResume = !active && state.SandboxID != "" && state.SessionID != "" &&
 		((state.Round < 32 && (state.Phase == "paused" || state.Phase == "pausing")) || state.Phase == "resuming")
 	view.CanClose = !active && state.Phase != "closed" && (state.SandboxID != "" || state.SessionID != "" || state.SandboxCreationPending || state.SessionCreationPending)
-	if state.Trigger == "ticket" && s.tickets == nil {
+	if state.Trigger == "ticket" && s.ticketOwner(id) == nil {
 		view.CanResume = false
 		view.Message = "Reconnect the original ticket source before resuming this investigation."
 	}
@@ -82,7 +82,7 @@ func (s *Server) projectLifecycle(id string, saved map[string]any, active bool) 
 	if err != nil {
 		return
 	}
-	saved["lifecycle"] = s.lifecycle(state, active)
+	saved["lifecycle"] = s.lifecycle(id, state, active)
 	switch state.Phase {
 	case "pausing", "paused", "resuming", "invoking", "closing":
 		saved["status"] = state.Phase
@@ -125,7 +125,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 	if action == "resume" {
 		added, err = s.ingestUpload(w, r)
 		if err != nil {
-			fail(w, http.StatusBadRequest, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
+			fail(w, http.StatusBadRequest, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 			return
 		}
 	}
@@ -140,7 +140,8 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 	}
 	if action == "resume" && state.Trigger == "ticket" {
 		saved, readErr := s.readReport(id)
-		if readErr != nil || s.tickets == nil {
+		owner := s.ticketOwner(id)
+		if readErr != nil || owner == nil {
 			fail(w, http.StatusConflict, "The original ticket approval is unavailable")
 			return
 		}
@@ -151,7 +152,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 		if state.Phase == "resuming" && state.ResumeFromRound > 0 {
 			round = state.ResumeFromRound
 		}
-		err = s.tickets.ApproveContinuation(ticketflow.ContinuationApproval{RunID: id, Round: round, Report: saved, Input: added, Config: config, Tools: state.AdditionalTools, Actor: actor}, launch)
+		err = owner.flow.ApproveContinuation(ticketflow.ContinuationApproval{RunID: id, Round: round, Report: saved, Input: added, Config: config, Tools: state.AdditionalTools, Actor: actor}, launch)
 	} else {
 		err = launch(nil)
 	}
@@ -160,7 +161,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 		if errors.Is(err, errWorkspaceClosed) {
 			status = http.StatusServiceUnavailable
 		}
-		fail(w, status, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
+		fail(w, status, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
@@ -179,7 +180,7 @@ func (s *Server) launchContinuation(id string, state investigation.State, config
 	if err != nil || resumeSettings(current) != resumeSettings(state) || current.Phase != state.Phase {
 		return errors.New("the investigation changed; refresh it before continuing")
 	}
-	view := s.lifecycle(current, false)
+	view := s.lifecycle(id, current, false)
 	if action == "resume" && !view.CanResume || action == "close" && !view.CanClose {
 		if view.Message != "" {
 			return errors.New(view.Message)
@@ -218,8 +219,8 @@ func (s *Server) startOperationLocked(id string, config investigation.Config, to
 	s.activeID, s.active = id, active
 	go func() {
 		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, Secrets: s.secrets, Actor: actor, Trigger: trigger, Progress: func(message string) {
-			safe := fmt.Sprint(report.Redact(message, s.secrets...))
+		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, Secrets: s.secretList(), Actor: actor, Trigger: trigger, Progress: func(message string) {
+			safe := fmt.Sprint(report.Redact(message, s.secretList()...))
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			if len(active.progress) >= 100 {
@@ -232,7 +233,7 @@ func (s *Server) startOperationLocked(id string, config investigation.Config, to
 			if s.actionErrors == nil {
 				s.actionErrors = make(map[string]string)
 			}
-			s.actionErrors[id] = fmt.Sprint(report.Redact(err.Error(), s.secrets...))
+			s.actionErrors[id] = fmt.Sprint(report.Redact(err.Error(), s.secretList()...))
 			active.progress = append(active.progress, "Investigation ended; inspect the report for errors")
 			s.mu.Unlock()
 		}

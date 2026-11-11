@@ -62,6 +62,10 @@ Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`. One workspace has
 one source and one site; use a separate report directory per site and
 preserve its private `.tickets` directory across restarts.
 
+Admins can also add Jira connections in the workspace UI on the
+**Connections** page, pasting the API token or naming the environment variable
+that holds it.
+
 ## Prepare evidence and launch
 
 **Edit procedures** in Ticket cases sets up a procedure per label with its own

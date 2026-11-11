@@ -23,7 +23,8 @@ function HighlightedCEL({ value }: { value: string }) {
   return <>{tokens}{value.slice(end)}{"\n"}</>;
 }
 
-export function TicketConditionEditor({ source, label, emptyHint, hint, value, onChange }: {
+export function TicketConditionEditor({ connection, source, label, emptyHint, hint, value, onChange }: {
+  connection: string;
   label: string;
   emptyHint: string;
   hint?: string;
@@ -36,7 +37,7 @@ export function TicketConditionEditor({ source, label, emptyHint, hint, value, o
   const [draft, setDraft] = useState(initialCondition);
   const [editing, setEditing] = useState<number>();
   const [emptyJoin, setEmptyJoin] = useState<"all" | "any">("all");
-  const diagnostics = useTicketCondition(value);
+  const diagnostics = useTicketCondition(connection, value);
   const raw = useRef<TicketCELHandle>(null);
   const lintID = useId();
   const rules = parsed?.rules ?? [];

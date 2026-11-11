@@ -52,6 +52,10 @@ Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`. One workspace has
 one source, workspace, and team; use a separate report directory per team and
 preserve its private `.tickets` directory across restarts.
 
+Admins can also add Linear connections in the workspace UI on the
+**Connections** page, pasting the API key or naming the environment variable
+that holds it.
+
 ## Prepare evidence and launch
 
 **Edit procedures** in Ticket cases sets up a procedure per label with its own

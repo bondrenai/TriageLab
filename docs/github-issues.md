@@ -52,6 +52,11 @@ summary delivery reservations and receipts, and consumed run attempts. Changing
 the repository requires a separate directory. Restart the server after changing
 configuration or replacing its environment token.
 
+Connections can also be created in the workspace UI. On the **Connections**
+page an admin adds a GitHub connection and pastes the token there; the server
+stores it in the private connection registry instead of an environment
+variable. Anonymous read remains available without any token.
+
 ## Prepare evidence
 
 **Edit procedures** in Ticket cases lets you set up a procedure for each
@@ -167,3 +172,4 @@ also apply. Connector fixtures exercise parsing, delivery, and security
 boundaries; they do not establish a live GitHub-to-kagent investigation
 demonstration. No live GitHub clarification or summary sends were performed
 while implementing this connector; a controlled live pilot remains to be run.
+

@@ -61,7 +61,9 @@ type Server struct {
 	active         *runningCase
 	actionErrors   map[string]string
 	closed         bool
-	tickets        *ticketflow.Flow
+	secretMu       sync.Mutex
+	ticketMu       sync.RWMutex
+	ticketConns    []*ticketConn
 	deployments    *kagent.DeploymentReader
 	resourceWrites bool
 	auth           *gate
@@ -70,6 +72,24 @@ type Server struct {
 	chatClose      func()
 	chatActive     *chatJob
 	chatErrors     map[string]string
+}
+
+// secretList returns the current redaction list. Stored ticket credentials
+// join it at runtime, so reads copy under the secrets lock, which never nests
+// inside the workspace state lock.
+func (s *Server) secretList() []string {
+	s.secretMu.Lock()
+	defer s.secretMu.Unlock()
+	return s.secrets
+}
+
+func (s *Server) addSecret(value string) {
+	if value == "" {
+		return
+	}
+	s.secretMu.Lock()
+	s.secrets = append(s.secrets, value)
+	s.secretMu.Unlock()
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -145,8 +165,8 @@ func (s *Server) Close(ctx context.Context) error {
 		s.chatClose()
 	}
 	var ticketErr error
-	if s.tickets != nil {
-		ticketErr = s.tickets.Close()
+	for _, conn := range s.ticketConnections() {
+		ticketErr = errors.Join(ticketErr, conn.flow.Close())
 	}
 	return errors.Join(ticketErr, s.reports.Close(), s.assets.Close())
 }
@@ -173,8 +193,8 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	if err != nil {
 		return err
 	}
-	if s.tickets != nil {
-		s.tickets.Start(ctx)
+	for _, conn := range s.ticketConnections() {
+		conn.flow.Start(ctx)
 	}
 	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	result := make(chan error, 1)
@@ -461,7 +481,7 @@ func (s *Server) decodeReport(content []byte, id string) (map[string]any, error)
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return nil, fmt.Errorf("invalid report")
 	}
-	return report.Redact(saved, s.secrets...).(map[string]any), nil
+	return report.Redact(saved, s.secretList()...).(map[string]any), nil
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
@@ -570,9 +590,12 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	s.projectLifecycle(id, saved, saved["active"] == true)
-	if s.tickets != nil && saved["active"] == false {
-		if note := s.tickets.NotePreview(id, saved); note != nil {
-			saved["ticket_note"] = note
+	if saved["active"] == false {
+		for _, conn := range s.ticketConnections() {
+			if note := conn.flow.NotePreview(id, saved); note != nil {
+				saved["ticket_note"] = note
+				break
+			}
 		}
 	}
 	jsonResponse(w, 200, saved)
@@ -617,7 +640,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, id, name strin
 		content = append(content, '\n')
 		w.Header().Set("Content-Type", "application/json")
 	} else {
-		content = []byte(report.Redact(string(content), s.secrets...).(string))
+		content = []byte(report.Redact(string(content), s.secretList()...).(string))
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="triagelab-%s-%s"`, id, name))
@@ -759,7 +782,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	config.Template = template
 	c, err := s.ingestUpload(w, r)
 	if err != nil {
-		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
+		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
 	if r.Context().Err() != nil {
@@ -817,7 +840,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 		return errRunStore
 	}
 	initial := map[string]any{"schema_version": 1, "run_id": c.ID, "case": c, "status": "queued", "agent": map[string]string{"namespace": config.Namespace, "name": config.Agent}, "sandbox_template": config.Template, "started_by": actor, "outcome": "inconclusive", "started_at": time.Now().UTC().Format(time.RFC3339Nano), "finished_at": nil, "experiments": []any{}, "errors": []string{}, "warnings": []string{}}
-	if err := report.Write(dir, initial, s.secrets...); err != nil {
+	if err := report.Write(dir, initial, s.secretList()...); err != nil {
 		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
 		return errRunStore

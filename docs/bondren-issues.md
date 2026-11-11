@@ -65,6 +65,11 @@ reservations and receipts, and consumed run attempts. Changing the origin
 requires a separate directory. Restart the server after changing
 configuration or replacing its environment token.
 
+Connections can also be created in the workspace UI. On the **Connections**
+page an admin adds a Bondren connection and either pastes the agent token
+(stored in the private connection registry) or names the environment variable
+that holds it.
+
 ## Prepare evidence
 
 **Edit procedures** in Ticket cases lets you set up a procedure for each
@@ -194,3 +199,4 @@ fixtures exercise parsing, delivery, and security boundaries; they do not
 establish a live Bondren-to-kagent investigation demonstration. No live
 Bondren clarification or summary sends were performed while implementing
 this connector; a controlled live pilot remains to be run.
+

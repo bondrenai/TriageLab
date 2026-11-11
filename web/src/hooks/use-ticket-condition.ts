@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { validateTicketCondition, type ConditionDiagnostic } from "../lib/tickets";
 
-export function useTicketCondition(expression: string) {
+export function useTicketCondition(connection: string, expression: string) {
   const [result, setResult] = useState<{ expression: string; diagnostics: ConditionDiagnostic[] }>();
   useEffect(() => {
-    if (!expression) return;
+    if (!expression || !connection) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void validateTicketCondition(expression, controller.signal).then(
+      void validateTicketCondition(connection, expression, controller.signal).then(
         diagnostics => {
           if (!controller.signal.aborted) setResult({ expression, diagnostics });
         },
@@ -22,6 +22,6 @@ export function useTicketCondition(expression: string) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [expression]);
+  }, [connection, expression]);
   return result?.expression === expression ? result.diagnostics : undefined;
 }

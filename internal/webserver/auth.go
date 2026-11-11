@@ -96,9 +96,14 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, required auth
 
 // requiredRole reports the minimum role for an authenticated API request.
 // Reads need viewer; interactions that start or steer work need user; the
-// definition surface (saving kagent resources and ticket procedures, and
-// account management) needs admin.
+// definition surface (saving kagent resources, ticket connections and
+// procedures, and account management) needs admin.
 func requiredRole(method, path string) auth.Role {
+	if strings.HasPrefix(path, "/api/tickets/connections") {
+		// The connection registry carries configuration and credential
+		// references, not just workspace state.
+		return auth.RoleAdmin
+	}
 	if method == http.MethodGet || method == http.MethodHead {
 		if strings.HasPrefix(path, "/api/auth/admin/") {
 			return auth.RoleAdmin
@@ -113,8 +118,14 @@ func requiredRole(method, path string) auth.Role {
 			return auth.RoleAdmin
 		}
 	}
-	if path == "/api/tickets/procedure" || path == "/api/tickets/procedure/validate-condition" || path == "/api/tickets/oauth/start" {
-		return auth.RoleAdmin
+	if strings.HasPrefix(path, "/api/tickets/c/") {
+		parts := strings.Split(strings.TrimPrefix(path, "/api/tickets/c/"), "/")
+		if len(parts) >= 2 && parts[1] == "procedure" {
+			return auth.RoleAdmin
+		}
+		if len(parts) == 3 && parts[1] == "oauth" && parts[2] == "start" {
+			return auth.RoleAdmin
+		}
 	}
 	return auth.RoleUser
 }

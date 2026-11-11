@@ -467,6 +467,25 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
 .account-error { margin-top: 8px; color: var(--color-red-700); font-size: var(--text-annotation); }
 .role-picker { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
 
+/* Ticket connection catalog: ink-masked brand marks on bordered plates. */
+.connector-frame { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border: 1px solid var(--color-gray-300); }
+.connector-frame.connected { border-color: var(--color-blue-500); }
+.connector-glyph { width: 24px; height: 24px; background: var(--color-gray-900); }
+.connector-glyph.vector { background: none; display: grid; place-items: center; }
+.connector-glyph.vector svg { width: 24px; height: 24px; }
+.connector-frame.connected .connector-glyph { background: var(--color-blue-500); }
+.connector-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr)); gap: 10px; margin-top: 12px; }
+.connector-plate { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; min-height: 118px; padding: 14px; text-align: left; background: none; border: 1px solid var(--color-gray-100); font: inherit; color: inherit; cursor: pointer; }
+.connector-plate:hover:not(:disabled), .connector-plate:focus-visible { border-color: var(--color-gray-300); }
+.connector-plate:disabled { cursor: default; opacity: 0.55; }
+.connector-plate-head { display: flex; align-items: center; gap: 11px; }
+.connector-plate p { margin: 0; color: var(--color-gray-500); font-size: var(--text-annotation); }
+
+/* Ticket connections: credential pickers and write-capability toggles. */
+.credential-input { margin-top: 6px; }
+.capability-toggle { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
 /* API clients: scope grants, one-time secrets, and the connect notes. */
 .scope-options { display: grid; gap: 6px; }
 .scope-option { display: flex; align-items: flex-start; gap: 8px; min-height: 26px; }

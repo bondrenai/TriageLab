@@ -17,25 +17,31 @@ import (
 )
 
 const bondrenIssueURL = "https://app.bondren.example/work/support/00000000-0000-4000-8000-000000000042"
+const bondrenConnection = "b042a1c0"
 
 func TestBondrenWorkspaceExposesOnlyReadOnlyConnection(t *testing.T) {
 	s := newTestServer(t, nil)
 	const token = "test-bondren-server-token"
 	t.Setenv("TRIAGELAB_TEST_BONDREN_TOKEN", token)
-	if err := s.EnableTickets(ticketflow.Config{
+	seedTickets(t, s, bondrenConnection, ticketflow.Config{
 		Source: "bondren", Origin: "https://app.bondren.example", TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN",
 		Policy: ticketflow.Policy{Tag: "reproduce"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	w := request(s, http.MethodGet, "/api/tickets", nil)
-	var workspace map[string]any
+	var workspace struct {
+		Enabled     bool             `json:"enabled"`
+		Connections []map[string]any `json:"connections"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 {
 		t.Fatalf("workspace response: HTTP %d %v", w.Code, err)
 	}
-	if workspace["source"] != "bondren" || workspace["account"] != "https://app.bondren.example" ||
-		workspace["connected"] != true || workspace["oauth"] != nil {
-		t.Fatalf("wrong Bondren connection metadata: %v", workspace)
+	if !workspace.Enabled || len(workspace.Connections) != 1 {
+		t.Fatalf("wrong workspace shape: %v", workspace)
+	}
+	connection := workspace.Connections[0]
+	if connection["source"] != "bondren" || connection["account"] != "https://app.bondren.example" ||
+		connection["connected"] != true || connection["oauth"] != nil {
+		t.Fatalf("wrong Bondren connection metadata: %v", connection)
 	}
 	if strings.Contains(w.Body.String(), token) {
 		t.Fatal("workspace disclosed a server credential")
@@ -44,11 +50,11 @@ func TestBondrenWorkspaceExposesOnlyReadOnlyConnection(t *testing.T) {
 		method, path, body string
 		code               int
 	}{
-		{http.MethodPost, "/api/tickets/oauth/start", "", 409},
-		{http.MethodGet, "/oauth/zendesk/callback?state=state&code=code", "", 404},
-		{http.MethodPost, "/api/tickets/42/clarify", `{"revision":"reviewed"}`, 409},
-		{http.MethodPost, "/api/tickets/0/preview", "", 400},
-		{http.MethodPost, "/api/tickets/01/preview", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + bondrenConnection + "/oauth/start", "", 409},
+		{http.MethodGet, "/oauth/zendesk/callback?state=state&code=code", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + bondrenConnection + "/42/clarify", `{"revision":"reviewed"}`, 409},
+		{http.MethodPost, "/api/tickets/c/" + bondrenConnection + "/0/preview", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + bondrenConnection + "/01/preview", "", 400},
 	} {
 		w := request(s, tc.method, tc.path, strings.NewReader(tc.body))
 		if w.Code != tc.code {
@@ -61,8 +67,8 @@ func TestCompletedBondrenReportOffersReviewedInternalNote(t *testing.T) {
 	s := newTestServer(t, nil)
 	const id = "06b74da0-6b0c-4f5e-8a1a-1c6f65d94b1f"
 	const account = "https://app.bondren.example"
-	dir := filepath.Join(s.directory, ".tickets")
-	if err := os.Mkdir(dir, 0700); err != nil {
+	dir := filepath.Join(s.directory, ".tickets", bondrenConnection)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	c := ticketflow.Case{TicketID: 42, Account: account, Source: "bondren", URL: bondrenIssueURL,
@@ -75,11 +81,9 @@ func TestCompletedBondrenReportOffersReviewedInternalNote(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TRIAGELAB_TEST_BONDREN_TOKEN", "fixture-bondren-token")
-	if err := s.EnableTickets(ticketflow.Config{Source: "bondren", Origin: account,
+	seedTickets(t, s, bondrenConnection, ticketflow.Config{Source: "bondren", Origin: account,
 		TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN", InternalNotes: true,
-		Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
-		t.Fatal(err)
-	}
+		Policy: ticketflow.Policy{Tag: "reproduce"}})
 	saved := map[string]any{
 		"run_id": id, "status": "completed", "finished_at": "2026-11-09T12:10:00Z", "outcome": "reproduced",
 		"case": map[string]any{"source": map[string]any{"kind": "bondren", "bondren_origin": account,
@@ -150,11 +154,9 @@ func TestBondrenTicketRouteAcceptsIssueID(t *testing.T) {
 
 	s := newTestServer(t, nil)
 	t.Setenv("TRIAGELAB_TEST_BONDREN_TOKEN", "fixture-bondren-token")
-	if err := s.EnableTickets(ticketflow.Config{Source: "bondren", Origin: origin.URL,
-		TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN", Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
-		t.Fatal(err)
-	}
-	w := request(s, http.MethodPost, "/api/tickets/"+issueID+"/preview", nil)
+	seedTickets(t, s, bondrenConnection, ticketflow.Config{Source: "bondren", Origin: origin.URL,
+		TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN", Policy: ticketflow.Policy{Tag: "reproduce"}})
+	w := request(s, http.MethodPost, "/api/tickets/c/"+bondrenConnection+"/"+issueID+"/preview", nil)
 	var c ticketflow.Case
 	if err := json.Unmarshal(w.Body.Bytes(), &c); err != nil || w.Code != 200 {
 		t.Fatalf("issue ID preview: HTTP %d %s", w.Code, w.Body)
@@ -166,14 +168,14 @@ func TestBondrenTicketRouteAcceptsIssueID(t *testing.T) {
 		t.Fatalf("issue ID preview used the number filter %d times", numberLookups)
 	}
 	// The resolved case keeps working through its numeric reference alone.
-	w = request(s, http.MethodPost, "/api/tickets/42/preview", nil)
+	w = request(s, http.MethodPost, "/api/tickets/c/"+bondrenConnection+"/42/preview", nil)
 	var refreshed ticketflow.Case
 	if err := json.Unmarshal(w.Body.Bytes(), &refreshed); err != nil || w.Code != 200 || refreshed.TicketID != 42 {
 		t.Fatalf("numeric preview after ID enrollment: HTTP %d %s", w.Code, w.Body)
 	}
 	for _, tc := range []struct{ path, body string }{
-		{"/api/tickets/zzz-not-an-issue/preview", ""},
-		{"/api/tickets/" + strings.Repeat("x", 36) + "/preview", ""},
+		{"/api/tickets/c/" + bondrenConnection + "/zzz-not-an-issue/preview", ""},
+		{"/api/tickets/c/" + bondrenConnection + "/" + strings.Repeat("x", 36) + "/preview", ""},
 	} {
 		if w := request(s, http.MethodPost, tc.path, strings.NewReader(tc.body)); w.Code != 400 {
 			t.Fatalf("%s: HTTP %d, want 400: %s", tc.path, w.Code, w.Body)
@@ -208,20 +210,22 @@ func TestTrackedIssueStartsInvestigationUnderPolicy(t *testing.T) {
 		return nil, errors.New("fixture stops at upstream invocation")
 	}})
 	t.Setenv("TRIAGELAB_TEST_BONDREN_TOKEN", "fixture-bondren-token")
-	if err := s.EnableTickets(ticketflow.Config{Source: "bondren", Origin: origin.URL,
-		TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN", Policy: ticketflow.Policy{Tag: "reproduce", AutoRuns: true}}); err != nil {
-		t.Fatal(err)
+	seedTickets(t, s, bondrenConnection, ticketflow.Config{Source: "bondren", Origin: origin.URL,
+		TokenEnv: "TRIAGELAB_TEST_BONDREN_TOKEN", Policy: ticketflow.Policy{Tag: "reproduce", AutoRuns: true}})
+	conn := s.ticketConnection(bondrenConnection)
+	if conn == nil {
+		t.Fatal("Bondren connection is not open")
 	}
-	version := s.tickets.Procedure()
+	version := conn.flow.Procedure()
 	version.Procedure.Evidence = ticketflow.EvidenceRules{}
-	if _, err := s.tickets.SaveProcedure(version.Procedure, version.Revision); err != nil {
+	if _, err := conn.flow.SaveProcedure(version.Procedure, version.Revision); err != nil {
 		t.Fatal(err)
 	}
-	path := "/api/tickets/" + issueID
+	path := "/api/tickets/c/" + bondrenConnection + "/" + issueID
 	w := request(s, http.MethodPost, path+"/preview", nil)
 	var preview ticketflow.Case
 	if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil || w.Code != 200 ||
-		!preview.AutoRun || preview.RunID != "" || len(s.tickets.Cases()) != 0 {
+		!preview.AutoRun || preview.RunID != "" || len(conn.flow.Cases()) != 0 {
 		t.Fatalf("preview: HTTP %d %s", w.Code, w.Body)
 	}
 	w = request(s, http.MethodPost, path+"/track", strings.NewReader(`{"revision":"`+preview.Revision+`"}`))

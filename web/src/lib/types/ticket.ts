@@ -81,21 +81,25 @@ export interface TicketSettings {
   auto_runs_allowed: boolean;
 }
 
+export interface TicketConnectionView {
+  id: string;
+  label?: string;
+  source: TicketSource;
+  account: string;
+  connected: boolean;
+  repository?: string;
+  settings: TicketSettings;
+  procedure: ProcedureVersion;
+  cases: TicketCase[];
+  oauth?: { connected: boolean; account: string; workspace_url: string; scopes: string[] };
+}
+
 export type TicketWorkspace =
   | { enabled: false }
-  | {
-      enabled: true;
-      source: TicketSource;
-      account: string;
-      connected: boolean;
-      repository?: string;
-      settings: TicketSettings;
-      procedure: ProcedureVersion;
-      cases: TicketCase[];
-      oauth?: { connected: boolean; account: string; workspace_url: string; scopes: string[] };
-    };
+  | { enabled: true; connections: TicketConnectionView[] };
 
 export interface TicketAction {
+  connection: string;
   id: string;
   action: "preview" | "track" | "refresh" | "clarify" | "approve" | "pause" | "resume" | "route";
   revision?: string;

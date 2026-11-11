@@ -41,6 +41,32 @@ type Config struct {
 	InvestigationComments bool   `json:"investigation_comments"`
 	MaxAutoRunsPerDay     int    `json:"max_auto_runs_per_day,omitempty"`
 	Policy                Policy `json:"policy"`
+
+	// storedToken carries a credential saved in the connection registry so it
+	// is authorized like a token_env value without one. It never serializes
+	// with the configuration and never leaves the server.
+	storedToken string
+}
+
+// WithToken returns a copy of the configuration that authorizes with the
+// given stored credential instead of a process environment variable. The
+// credential applies to the GitHub, Linear, Bondren, and Jira sources; Zendesk
+// keeps its browser OAuth flow.
+func (config Config) WithToken(token string) Config {
+	config.storedToken = token
+	return config
+}
+
+// hasCredential reports whether the configuration names a token environment
+// variable or carries a stored token.
+func (config Config) hasCredential() bool {
+	return config.storedToken != "" || config.TokenEnv != ""
+}
+
+// tokenEnvName validates that a configured token_env, when present, is an
+// environment variable name and not a token value.
+func (config Config) tokenEnvName() bool {
+	return config.TokenEnv == "" || tokenEnvironment.MatchString(config.TokenEnv)
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -65,12 +91,62 @@ func LoadConfig(path string) (Config, error) {
 	return config, config.validate()
 }
 
+// withDefaults fills implicit connection settings before validation, so the
+// registry and the configuration file accept the same shapes.
+func (config Config) withDefaults() Config {
+	if config.provider() == "zendesk" && config.RedirectURI == "" {
+		config.RedirectURI = "http://127.0.0.1:8080" + OAuthCallbackPath
+	}
+	return config
+}
+
+// LoadConfigs reads one ticket configuration or a JSON array of them, so a
+// workspace can bootstrap several connections from one file. Each entry is
+// validated exactly like a single configuration.
+func LoadConfigs(path string) ([]Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 131073))
+	if err != nil || len(data) > 131072 {
+		return nil, errors.New("could not read ticket configuration or it exceeds 128 KiB")
+	}
+	var configs []Config
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if bytes.HasPrefix(bytes.TrimSpace(data), []byte("[")) {
+		if d.Decode(&configs) != nil || d.Decode(new(any)) != io.EOF {
+			return nil, errors.New("invalid ticket configuration JSON")
+		}
+	} else {
+		configs = make([]Config, 1)
+		if d.Decode(&configs[0]) != nil || d.Decode(new(any)) != io.EOF {
+			return nil, errors.New("invalid ticket configuration JSON")
+		}
+	}
+	if len(configs) == 0 || len(configs) > 8 {
+		return nil, errors.New("a ticket configuration file holds one to eight ticket connections")
+	}
+	for i := range configs {
+		configs[i] = configs[i].withDefaults()
+		if err := configs[i].validate(); err != nil {
+			return nil, err
+		}
+	}
+	return configs, nil
+}
+
 func (config Config) provider() string {
 	if config.Source == "" {
 		return "zendesk"
 	}
 	return config.Source
 }
+
+// Provider returns the ticket source this configuration connects to.
+func (config Config) Provider() string { return config.provider() }
 
 var githubRepository = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$`)
 var tokenEnvironment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
@@ -133,47 +209,47 @@ func (config Config) validate() error {
 	}
 	if config.provider() == "github" {
 		if !githubRepository.MatchString(config.Repository) || strings.HasSuffix(config.Repository, "/.") || strings.HasSuffix(config.Repository, "/..") ||
-			(config.TokenEnv != "" && !tokenEnvironment.MatchString(config.TokenEnv)) ||
+			!config.tokenEnvName() ||
 			config.Workspace != "" || config.Team != "" ||
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" || config.Origin != "" || config.Email != "" ||
 			config.InternalNotes || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("GitHub requires an owner/repository and label policy; Zendesk connection, priority, field and internal-note settings do not apply")
+			return errors.New("GitHub requires an owner/repository and label policy; Zendesk connection, priority, field, and internal-note settings do not apply")
 		}
-		if (p.AutoQuestions || config.InvestigationComments) && config.TokenEnv == "" {
-			return errors.New("GitHub clarification and investigation comments require token_env with Issues write permission")
+		if (p.AutoQuestions || config.InvestigationComments) && !config.hasCredential() {
+			return errors.New("GitHub clarification and investigation comments require a token with Issues write permission")
 		}
 		return nil
 	}
 	if config.provider() == "linear" {
 		if !linearWorkspace.MatchString(config.Workspace) || !linearTeamKey.MatchString(config.Team) ||
-			!tokenEnvironment.MatchString(config.TokenEnv) ||
+			!config.hasCredential() || !config.tokenEnvName() ||
 			config.Repository != "" || config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" ||
 			config.Origin != "" || config.Email != "" ||
 			config.InternalNotes || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("Linear requires a workspace key, an uppercase team key, and token_env with a label policy; Zendesk connection, priority, field and internal-note settings do not apply")
+			return errors.New("Linear requires a workspace key, an uppercase team key, and a token from token_env or the connection registry with a label policy; Zendesk connection, priority, field, and internal-note settings do not apply")
 		}
 		return nil
 	}
 	if config.provider() == "bondren" {
-		if !validBondrenOrigin(config.Origin) || !tokenEnvironment.MatchString(config.TokenEnv) ||
+		if !validBondrenOrigin(config.Origin) || !config.hasCredential() || !config.tokenEnvName() ||
 			config.Repository != "" || config.Workspace != "" || config.Team != "" ||
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" || config.Email != "" ||
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("Bondren requires an HTTPS origin and token_env with a tag policy; Zendesk, GitHub, Linear, priority, field, and public-comment settings do not apply")
+			return errors.New("Bondren requires an HTTPS origin and a token from token_env or the connection registry with a tag policy; Zendesk, GitHub, Linear, priority, field, and public-comment settings do not apply")
 		}
 		return nil
 	}
 	if config.provider() == "jira" {
-		if !validJiraOrigin(config.Origin) || !tokenEnvironment.MatchString(config.TokenEnv) ||
+		if !validJiraOrigin(config.Origin) || !config.hasCredential() || !config.tokenEnvName() ||
 			!jiraAccountEmail.MatchString(config.Email) ||
 			config.Repository != "" || config.Workspace != "" || config.Team != "" ||
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" ||
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("Jira requires an atlassian.net site origin, the Atlassian account email, and token_env with a label policy; Zendesk, GitHub, Linear, and Bondren connection, priority, field, and public-comment settings do not apply")
+			return errors.New("Jira requires an atlassian.net site origin, the Atlassian account email, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, Linear, and Bondren connection, priority, field, and public-comment settings do not apply")
 		}
 		return nil
 	}

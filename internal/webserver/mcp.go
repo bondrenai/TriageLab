@@ -313,7 +313,7 @@ func (s *Server) mcpResponse(handler http.HandlerFunc, r *http.Request, limit in
 		_ = json.Unmarshal(w.body.Bytes(), &failure)
 		message := "The workspace request could not be completed"
 		if failure.Error != "" {
-			message = mcpPreview(fmt.Sprint(report.Redact(failure.Error, s.secrets...)), 4096)
+			message = mcpPreview(fmt.Sprint(report.Redact(failure.Error, s.secretList()...)), 4096)
 		}
 		return nil, fmt.Errorf("%s (HTTP %d)", message, w.status)
 	}

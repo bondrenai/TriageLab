@@ -6,30 +6,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
-// EnableTickets is startup configuration; credentials remain server-side.
-func (s *Server) EnableTickets(config ticketflow.Config) error {
-	if _, manual := s.config.ManualAgents[s.config.Agent]; manual {
-		return errors.New("the default agent for ticket investigations must be separate from manual_agents")
-	}
-	flow, err := ticketflow.Open(config, filepath.Join(s.directory, ".tickets"), s.config, s.secrets...)
-	if err != nil {
-		return err
-	}
-	flow.ResolveTarget = s.resolveTicketTarget
-	if config.Policy.AutoRuns {
-		flow.AutoLaunch = s.launchTicketAs("ticket policy")
-	}
-	s.tickets = flow
-	return nil
-}
-
+// resolveTicketTarget keeps approved runs bound to an exactly deployed agent
+// and sandbox template.
 func (s *Server) resolveTicketTarget(ctx context.Context, agent, sandbox string) (ticketflow.RunTarget, error) {
 	target := ticketflow.RunTarget{Agent: agent, Sandbox: sandbox}
 	if !s.resourceWrites {
@@ -57,36 +41,74 @@ func (s *Server) resolveTicketTarget(ctx context.Context, agent, sandbox string)
 }
 
 func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
-	flow := s.tickets
-	if r.URL.Path == "/api/tickets" && r.Method == http.MethodGet {
-		if flow == nil {
-			jsonResponse(w, 200, map[string]bool{"enabled": false})
+	if r.URL.Path == "/api/tickets" {
+		if r.Method != http.MethodGet {
+			fail(w, 405, "Method not allowed")
 			return
 		}
-		procedure := flow.Procedure()
-		settings := flow.Settings()
-		settings.Policy = procedure.Procedure.Policy
-		workspace := map[string]any{"enabled": true, "source": flow.Provider(), "account": flow.Account(),
-			"settings": settings, "procedure": procedure, "cases": flow.Cases(), "connected": true}
-		switch flow.Provider() {
-		case "github":
-			workspace["repository"] = strings.TrimPrefix(flow.Account(), "https://github.com/")
-		case "zendesk":
-			oauth := flow.OAuthStatus()
-			workspace["oauth"], workspace["connected"] = oauth, oauth.Connected
-		}
-		jsonResponse(w, 200, workspace)
+		s.ticketWorkspace(w)
 		return
 	}
-	if flow == nil {
-		fail(w, 404, "A ticket or issue source is not configured")
+	if r.URL.Path == "/api/tickets/connections" || strings.HasPrefix(r.URL.Path, "/api/tickets/connections/") {
+		s.connectionsRoute(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/tickets/c/") {
+		s.connectionCaseRoute(w, r)
+		return
+	}
+	fail(w, 404, "Unknown ticket route")
+}
+
+// ticketWorkspace is the viewer-facing view of every connection: settings,
+// procedure, and tracked cases, without connection credentials.
+func (s *Server) ticketWorkspace(w http.ResponseWriter) {
+	connections := s.ticketConnections()
+	if len(connections) == 0 {
+		jsonResponse(w, 200, map[string]bool{"enabled": false})
+		return
+	}
+	views := make([]map[string]any, 0, len(connections))
+	for _, conn := range connections {
+		views = append(views, s.connectionView(conn))
+	}
+	jsonResponse(w, 200, map[string]any{"enabled": true, "connections": views})
+}
+
+func (s *Server) connectionView(conn *ticketConn) map[string]any {
+	flow := conn.flow
+	procedure := flow.Procedure()
+	settings := flow.Settings()
+	settings.Policy = procedure.Procedure.Policy
+	view := map[string]any{"id": conn.id, "label": conn.label, "source": flow.Provider(), "account": flow.Account(),
+		"settings": settings, "procedure": procedure, "cases": flow.Cases(), "connected": true}
+	switch flow.Provider() {
+	case "github":
+		view["repository"] = strings.TrimPrefix(flow.Account(), "https://github.com/")
+	case "zendesk":
+		oauth := flow.OAuthStatus()
+		view["oauth"], view["connected"] = oauth, oauth.Connected
+	}
+	return view
+}
+
+func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/c/"), "/")
+	if len(parts) == 0 || !connectionIDPath.MatchString(parts[0]) {
+		fail(w, 404, "Unknown ticket connection")
+		return
+	}
+	conn := s.ticketConnection(parts[0])
+	if conn == nil {
+		fail(w, 404, "Unknown ticket connection")
 		return
 	}
 	if r.Method != http.MethodPost {
 		fail(w, 405, "Method not allowed")
 		return
 	}
-	if r.URL.Path == "/api/tickets/procedure" {
+	flow := conn.flow
+	if len(parts) == 2 && parts[1] == "procedure" {
 		var input ticketflow.ProcedureVersion
 		if !decodeTicketInput(w, r, &input, ticketflow.MaxProcedureSetBytes) {
 			return
@@ -95,7 +117,7 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		writeTicketResult(w, procedure, err)
 		return
 	}
-	if r.URL.Path == "/api/tickets/procedure/validate-condition" {
+	if len(parts) == 3 && parts[1] == "procedure" && parts[2] == "validate-condition" {
 		var input struct {
 			Expression string `json:"expression"`
 		}
@@ -105,21 +127,20 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, flow.ValidateTicketCondition(input.Expression))
 		return
 	}
-	if r.URL.Path == "/api/tickets/oauth/start" {
+	if len(parts) == 3 && parts[1] == "oauth" && parts[2] == "start" {
 		if flow.Provider() != "zendesk" {
-			fail(w, 409, "The configured source does not use Zendesk OAuth")
+			fail(w, 409, "This connection does not use Zendesk OAuth")
 			return
 		}
-		s.zendeskAuthorize(w, r)
+		s.zendeskAuthorize(w, r, conn)
 		return
 	}
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
 		fail(w, 404, "Unknown ticket action")
 		return
 	}
-	id, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[0] {
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[1] {
 		// Bondren issues can also be referenced by the issue ID from their URL
 		// and Jira issues by their key, URL, or numeric id. The flow validates
 		// the reference before contacting the source and reports the numeric
@@ -128,12 +149,13 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "Use a positive numeric ticket ID or issue number")
 			return
 		}
-		if id, err = flow.ResolveTicket(r.Context(), parts[0]); err != nil {
+		if id, err = flow.ResolveTicket(r.Context(), parts[1]); err != nil {
 			writeTicketResult(w, nil, err)
 			return
 		}
 	}
-	if parts[1] == "procedure-preview" {
+	switch parts[2] {
+	case "procedure-preview":
 		var input ticketflow.Procedure
 		if !decodeTicketInput(w, r, &input, ticketflow.MaxProcedureSetBytes) {
 			return
@@ -141,8 +163,7 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		c, err := flow.PreviewProcedure(r.Context(), id, input)
 		writeTicketResult(w, c, err)
 		return
-	}
-	if parts[1] == "route" {
+	case "route":
 		var input struct {
 			Revision string `json:"revision"`
 			Agent    string `json:"agent"`
@@ -154,18 +175,17 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		writeTicketResult(w, c, err)
 		return
 	}
-
 	var input struct {
 		Revision string `json:"revision"`
 		Plan     string `json:"plan"`
 	}
-	if parts[1] == "track" || parts[1] == "clarify" || parts[1] == "approve" {
+	if parts[2] == "track" || parts[2] == "clarify" || parts[2] == "approve" {
 		if !decodeTicketInput(w, r, &input, 1024) {
 			return
 		}
 	}
 	var c ticketflow.Case
-	switch parts[1] {
+	switch parts[2] {
 	case "preview":
 		c, err = flow.Preview(r.Context(), id)
 	case "track":
@@ -220,11 +240,17 @@ func writeTicketResult(w http.ResponseWriter, value any, err error) {
 	}
 }
 
-func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id string) {
-	if s.tickets == nil {
-		fail(w, 404, "A ticket or issue source is not configured")
-		return
+// ticketOwner returns the connection whose case launched the run, if any.
+func (s *Server) ticketOwner(runID string) *ticketConn {
+	for _, conn := range s.ticketConnections() {
+		if conn.flow.OwnsRun(runID) {
+			return conn
+		}
 	}
+	return nil
+}
+
+func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id string) {
 	var input struct {
 		Plan string `json:"plan"`
 	}
@@ -246,6 +272,17 @@ func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id strin
 		fail(w, 404, "Run not found or unreadable")
 		return
 	}
-	note, err := s.tickets.PostNote(r.Context(), id, saved, input.Plan)
+	var owner *ticketConn
+	for _, conn := range s.ticketConnections() {
+		if conn.flow.NotePreview(id, saved) != nil {
+			owner = conn
+			break
+		}
+	}
+	if owner == nil {
+		writeTicketResult(w, nil, ticketflow.ErrBlocked)
+		return
+	}
+	note, err := owner.flow.PostNote(r.Context(), id, saved, input.Plan)
 	writeTicketResult(w, note, err)
 }

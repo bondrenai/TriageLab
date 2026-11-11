@@ -287,7 +287,10 @@ esac
 func TestTicketWorkspaceRejectsAManualAgentAsItsDefault(t *testing.T) {
 	s := newTestServer(t, nil)
 	s.config.ManualAgents = map[string][]string{s.config.Agent: {"search_docs"}}
-	err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "example/reproduction", Policy: ticketflow.Policy{Tag: "reproduce"}})
+	err := func() error {
+		_, _, err := s.EnableTicketConnections([]ticketflow.Config{{Source: "github", Repository: "example/reproduction", Policy: ticketflow.Policy{Tag: "reproduce"}}})
+		return err
+	}()
 	if err == nil || !strings.Contains(err.Error(), "default agent") {
 		t.Fatalf("ticket workspace accepted a manual default: %v", err)
 	}

@@ -114,10 +114,18 @@ func routePattern(path string) string {
 		return "/api/runs/{id}/" + strings.Join(segments[3:], "/")
 	case segments[1] == "tickets" && len(segments) == 3:
 		return "/" + strings.Join(segments, "/")
-	case segments[1] == "tickets" && len(segments) == 4 && segments[2] == "oauth":
-		return "/" + strings.Join(segments, "/")
+	case segments[1] == "tickets" && segments[2] == "connections":
+		return "/api/tickets/connections"
+	case segments[1] == "tickets" && segments[2] == "c" && len(segments) == 4:
+		return "/api/tickets/c/{id}/" + segments[3]
+	case segments[1] == "tickets" && segments[2] == "c" && len(segments) >= 5:
+		rest := segments[4:]
+		if rest[0] != "procedure" && rest[0] != "oauth" {
+			rest[0] = "{ref}"
+		}
+		return "/api/tickets/c/{id}/" + strings.Join(rest, "/")
 	case segments[1] == "tickets":
-		return "/api/tickets/{id}/" + strings.Join(segments[3:], "/")
+		return "/api/tickets/other"
 	default:
 		if len(segments) == 3 {
 			return "/" + strings.Join(segments, "/")

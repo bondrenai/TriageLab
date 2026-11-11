@@ -22,19 +22,23 @@ export function ticketReference(source: TicketSource | undefined, value: string)
 
 export const readTicketWorkspace = () => request<TicketWorkspace>("/api/tickets");
 
-export const takeTicketAction = ({ id, action, revision, plan, agent }: TicketAction) =>
-  request<TicketCase>(`/api/tickets/${encodeURIComponent(id)}/${action}`, {
+const connectionPath = (connection: string, suffix = "") =>
+  `/api/tickets/c/${encodeURIComponent(connection)}${suffix}`;
+
+export const takeTicketAction = ({ connection, id, action, revision, plan, agent }: TicketAction) =>
+  request<TicketCase>(`${connectionPath(connection)}/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
     body: JSON.stringify(action === "route" ? { revision, agent } : { revision, plan }),
   });
 
-export const beginZendeskOAuth = () => request<{ url: string }>("/api/tickets/oauth/start", { method: "POST" });
+export const beginZendeskOAuth = (connection: string) =>
+  request<{ url: string }>(connectionPath(connection, "/oauth/start"), { method: "POST" });
 
-export const saveProcedure = (version: ProcedureVersion) =>
-  request<ProcedureVersion>("/api/tickets/procedure", { method: "POST", body: JSON.stringify(version) });
+export const saveProcedure = (connection: string, version: ProcedureVersion) =>
+  request<ProcedureVersion>(connectionPath(connection, "/procedure"), { method: "POST", body: JSON.stringify(version) });
 
-export const previewProcedure = (id: string, procedure: TicketProcedure) =>
-  request<TicketCase>(`/api/tickets/${encodeURIComponent(id)}/procedure-preview`, { method: "POST", body: JSON.stringify(procedure) });
+export const previewProcedure = (connection: string, id: string, procedure: TicketProcedure) =>
+  request<TicketCase>(`${connectionPath(connection)}/${encodeURIComponent(id)}/procedure-preview`, { method: "POST", body: JSON.stringify(procedure) });
 
 export interface ConditionDiagnostic {
   message: string;
@@ -42,7 +46,7 @@ export interface ConditionDiagnostic {
   column?: number;
 }
 
-export const validateTicketCondition = (expression: string, signal: AbortSignal) =>
-  request<ConditionDiagnostic[]>("/api/tickets/procedure/validate-condition", {
+export const validateTicketCondition = (connection: string, expression: string, signal: AbortSignal) =>
+  request<ConditionDiagnostic[]>(connectionPath(connection, "/procedure/validate-condition"), {
     method: "POST", body: JSON.stringify({ expression }), signal,
   });

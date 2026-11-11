@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Users } from "lucide-react";
+import { ArrowUpRight, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Plug, Users } from "lucide-react";
 import { BrandMark } from "./components/brand-mark";
 import { AgentsPage } from "./pages/AgentsPage";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
@@ -10,6 +10,7 @@ import { ReportPage } from "./pages/ReportPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ApiClientsPage } from "./pages/ApiClientsPage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { PageTitle, ButtonLink, Stamp } from "./components/ui";
 import { useSession, useSignOut } from "./hooks/use-auth";
 import { roleAtLeast } from "./lib/auth";
@@ -62,6 +63,7 @@ export function App() {
         <NavLink to="/" end><FolderOpen size={17} aria-hidden="true" />Investigations</NavLink>
         <NavLink to="/agents"><Bot size={17} aria-hidden="true" />Agents</NavLink>
         <NavLink to="/tickets"><Inbox size={17} aria-hidden="true" />Ticket cases</NavLink>
+        {isAdmin && <NavLink to="/connections"><Plug size={17} aria-hidden="true" />Connections</NavLink>}
         {isAdmin && <NavLink to="/accounts"><Users size={17} aria-hidden="true" />Accounts</NavLink>}
         {isAdmin && <NavLink to="/clients"><KeyRound size={17} aria-hidden="true" />API clients</NavLink>}
       </nav>
@@ -81,6 +83,7 @@ export function App() {
           <Route path="/new" element={<NewInvestigationPage />} />
           <Route path="/agents/*" element={<AgentsPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
+          <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/accounts" element={<UsersPage />} />
           <Route path="/clients" element={<ApiClientsPage />} />
           <Route path="/example" element={<ReportPage example />} />

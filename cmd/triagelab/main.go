@@ -316,16 +316,24 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 				return 2
 			}
 		}
+		var bootstraps []ticketflow.Config
 		if opts.tickets != "" {
-			ticketConfig, err := ticketflow.LoadConfig(opts.tickets)
-			if err == nil {
-				err = workspace.EnableTickets(ticketConfig)
-			}
+			bootstraps, err = ticketflow.LoadConfigs(opts.tickets)
 			if err != nil {
 				_ = workspace.Close(ctx)
 				fmt.Fprintln(errout, err)
 				return 2
 			}
+		}
+		opened, seeded, err := workspace.EnableTicketConnections(bootstraps)
+		if err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if opts.tickets != "" && opened > 0 && !seeded {
+			fmt.Fprintln(out, "Using the ticket connections saved in this workspace; manage them in the UI or remove "+
+				filepath.Join(opts.output, ".tickets", "registry.json")+" to bootstrap from --tickets again.")
 		}
 		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))

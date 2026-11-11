@@ -131,6 +131,13 @@ OpenID Connect flow verifies ID-token signatures against the provider's JWKS
 with PKCE, one-time state, and nonce checks. Sign-in attempts are rate-limited
 per account, and each report records who started it.
 
+Ticket connections are defined and edited by admins in the workspace UI. A
+pasted source token rests only in the connection registry, a mode-0600 file
+inside the private `.tickets` directory beside the reports; it is registered
+for redaction, never returned by an API, and never logged. Connections that
+read a token from the process environment keep only that variable name in
+the registry, never the value.
+
 These are workspace roles, not isolation between accounts: everyone signed in
 reads the same shared report volume. Anyone who can reach the local port can
 attempt sign-in, so keep the port forward private; use an SSH tunnel for a

@@ -294,7 +294,7 @@ func TestAPIClientSurfaceRefused(t *testing.T) {
 			t.Fatalf("GET %s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	if w := bearer(s, http.MethodPost, "/api/tickets/1/preview", token, nil); w.Code != 403 {
+	if w := bearer(s, http.MethodPost, "/api/tickets/c/0a1b2c3d/1/preview", token, nil); w.Code != 403 {
 		t.Fatalf("ticket action: %d %s", w.Code, w.Body)
 	}
 	// Account and client management need an admin session; a Bearer header

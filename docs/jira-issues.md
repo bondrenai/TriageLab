@@ -66,6 +66,11 @@ delivery reservations and receipts, and consumed run attempts. Changing the
 site requires a separate directory. Restart the server after changing
 configuration or replacing its environment token.
 
+Connections can also be created in the workspace UI. On the **Connections**
+page an admin adds a Jira connection with the site origin and account email,
+then either pastes the API token (stored in the private connection registry)
+or names the environment variable that holds it.
+
 ## Prepare evidence
 
 **Edit procedures** in Ticket cases lets you set up a procedure for each
@@ -207,3 +212,4 @@ requester inbox remain to be exercised on a JSM project. The pilot also
 surfaced that Jira assigns issue ids and comment ids from separate
 sequences that collide numerically; the connector derives the issue
 description's comment key instead of reusing the issue id.
+

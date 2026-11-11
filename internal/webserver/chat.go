@@ -266,7 +266,7 @@ func (s *Server) chatRoute(w http.ResponseWriter, r *http.Request, id string) {
 			fail(w, 400, fmt.Sprintf("Use a nonempty question of at most %d UTF-8 bytes", resultchat.MaxMessageBytes))
 			return
 		}
-		input.Message = report.Redact(strings.TrimSpace(input.Message), s.secrets...).(string)
+		input.Message = report.Redact(strings.TrimSpace(input.Message), s.secretList()...).(string)
 		if input.Message == "" || len(input.Message) > resultchat.MaxMessageBytes {
 			fail(w, 400, "The sanitized question is empty or too long")
 			return
@@ -301,7 +301,7 @@ func (s *Server) chatRoute(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	view := s.chatViewLocked(root, saved, record, identity)
 	if r.Method == http.MethodGet {
-		jsonResponse(w, 200, report.Redact(view, s.secrets...))
+		jsonResponse(w, 200, report.Redact(view, s.secretList()...))
 		return
 	}
 	if !view.CanAsk {
@@ -323,7 +323,7 @@ func (s *Server) chatRoute(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	history := make([]resultchat.Message, 0, len(record.Messages))
 	for _, message := range record.Messages {
-		history = append(history, resultchat.Message{Role: message.Role, Content: report.Redact(message.Content, s.secrets...).(string)})
+		history = append(history, resultchat.Message{Role: message.Role, Content: report.Redact(message.Content, s.secretList()...).(string)})
 	}
 	record.Messages = append(record.Messages, chatMessage{ID: chatID(), Role: "user", Content: input.Message, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), Actor: identity.Username})
 	record.Status, record.Error = "answering", ""
@@ -339,7 +339,7 @@ func (s *Server) chatRoute(w http.ResponseWriter, r *http.Request, id string) {
 	jobRoot := root
 	root = nil // the job owns the open root and lock until its final durable write
 	go s.answerChat(ctx, job, jobRoot, lock, saved, history, input.Message, record)
-	jsonResponse(w, 202, report.Redact(chatView{chatRecord: record, MaxMessageBytes: resultchat.MaxMessageBytes, UnavailableReason: "An answer is being prepared."}, s.secrets...))
+	jsonResponse(w, 202, report.Redact(chatView{chatRecord: record, MaxMessageBytes: resultchat.MaxMessageBytes, UnavailableReason: "An answer is being prepared."}, s.secretList()...))
 }
 
 func (s *Server) answerChat(ctx context.Context, job *chatJob, root *os.Root, lock *os.File, saved map[string]any, history []resultchat.Message, question string, record chatRecord) {
@@ -352,7 +352,7 @@ func (s *Server) answerChat(ctx context.Context, job *chatJob, root *os.Root, lo
 			record.Status, record.Error = "interrupted", "The workspace stopped before saving an answer. No request was retried."
 		}
 	} else {
-		content := report.Redact(answer.Content, s.secrets...).(string)
+		content := report.Redact(answer.Content, s.secretList()...).(string)
 		if strings.TrimSpace(content) == "" || len(content) > resultchat.MaxAnswerBytes {
 			record.Status, record.Error = "error", "The model returned an empty or oversized answer."
 		} else {

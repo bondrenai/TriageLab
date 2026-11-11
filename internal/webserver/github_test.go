@@ -13,23 +13,31 @@ import (
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
+const githubConnection = "e241af10"
+
 func TestGitHubWorkspaceExposesOnlyReadOnlyConnection(t *testing.T) {
 	s := newTestServer(t, nil)
 	const token = "test-github-server-token"
 	t.Setenv("TRIAGELAB_TEST_GITHUB_TOKEN", token)
-	if err := s.EnableTickets(ticketflow.Config{
+	seedTickets(t, s, githubConnection, ticketflow.Config{
 		Source: "github", Repository: "owner/repo", TokenEnv: "TRIAGELAB_TEST_GITHUB_TOKEN",
 		Policy: ticketflow.Policy{Tag: "reproduce"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	w := request(s, http.MethodGet, "/api/tickets", nil)
-	var workspace map[string]any
+	var workspace struct {
+		Enabled     bool             `json:"enabled"`
+		Connections []map[string]any `json:"connections"`
+	}
 	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 {
 		t.Fatalf("workspace response: HTTP %d %v", w.Code, err)
 	}
-	if workspace["source"] != "github" || workspace["repository"] != "owner/repo" || workspace["account"] != "https://github.com/owner/repo" || workspace["connected"] != true || workspace["oauth"] != nil {
-		t.Fatalf("wrong GitHub connection metadata: %v", workspace)
+	if !workspace.Enabled || len(workspace.Connections) != 1 {
+		t.Fatalf("wrong workspace shape: %v", workspace)
+	}
+	connection := workspace.Connections[0]
+	if connection["source"] != "github" || connection["repository"] != "owner/repo" ||
+		connection["account"] != "https://github.com/owner/repo" || connection["connected"] != true || connection["oauth"] != nil {
+		t.Fatalf("wrong GitHub connection metadata: %v", connection)
 	}
 	if strings.Contains(w.Body.String(), token) || strings.Contains(w.Body.String(), "TOKEN") {
 		t.Fatal("workspace disclosed a server credential")
@@ -38,12 +46,13 @@ func TestGitHubWorkspaceExposesOnlyReadOnlyConnection(t *testing.T) {
 		method, path, body string
 		code               int
 	}{
-		{http.MethodPost, "/api/tickets/oauth/start", "", 409},
-		{http.MethodGet, "/oauth/zendesk/callback?state=state&code=code", "", 404},
-		{http.MethodPost, "/api/tickets/42/clarify", `{"revision":"reviewed"}`, 409},
-		{http.MethodPost, "/api/tickets/0/preview", "", 400},
-		{http.MethodPost, "/api/tickets/01/preview", "", 400},
-		{http.MethodPost, "/api/tickets/owner/repo/preview", "", 404},
+		{http.MethodPost, "/api/tickets/c/" + githubConnection + "/oauth/start", "", 409},
+		{http.MethodGet, "/oauth/zendesk/callback?state=state&code=code", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + githubConnection + "/42/clarify", `{"revision":"reviewed"}`, 409},
+		{http.MethodPost, "/api/tickets/c/" + githubConnection + "/0/preview", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + githubConnection + "/01/preview", "", 400},
+		{http.MethodPost, "/api/tickets/c/" + githubConnection + "/owner/repo/preview", "", 404},
+		{http.MethodPost, "/api/tickets/c/zzzzzzzz/42/preview", "", 404},
 	} {
 		w := request(s, tc.method, tc.path, strings.NewReader(tc.body))
 		if w.Code != tc.code {
@@ -57,8 +66,8 @@ func TestCompletedGitHubReportOffersReviewedRepositoryComment(t *testing.T) {
 	const id = "037c54da-437c-48ed-b898-a36a27334e9c"
 	const account = "https://github.com/owner/repo"
 	const issueURL = account + "/issues/42"
-	dir := filepath.Join(s.directory, ".tickets")
-	if err := os.Mkdir(dir, 0700); err != nil {
+	dir := filepath.Join(s.directory, ".tickets", githubConnection)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	c := ticketflow.Case{TicketID: 42, Account: account, Source: "github", URL: issueURL, State: "launched", RunID: id, Plan: "run-approval"}
@@ -70,10 +79,8 @@ func TestCompletedGitHubReportOffersReviewedRepositoryComment(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TRIAGELAB_TEST_GITHUB_TOKEN", "fixture-github-token")
-	if err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "owner/repo", TokenEnv: "TRIAGELAB_TEST_GITHUB_TOKEN",
-		InvestigationComments: true, Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
-		t.Fatal(err)
-	}
+	seedTickets(t, s, githubConnection, ticketflow.Config{Source: "github", Repository: "owner/repo", TokenEnv: "TRIAGELAB_TEST_GITHUB_TOKEN",
+		InvestigationComments: true, Policy: ticketflow.Policy{Tag: "reproduce"}})
 	saved := map[string]any{
 		"run_id": id, "status": "completed", "finished_at": "2026-11-09T12:10:00Z", "outcome": "reproduced",
 		"case": map[string]any{"source": map[string]any{"kind": "github", "repository": "owner/repo", "issue_number": "42", "ticket_id": "42", "url": issueURL, "approval_plan": "run-approval"}},

@@ -148,8 +148,8 @@ Three roles are enforced server-side on every API route:
 | Role | Can | Cannot |
 | --- | --- | --- |
 | viewer | Read reports, cases, deployment status | Change anything |
-| user | Everything a viewer can, plus launching and steering investigations and ticket actions | Define agents, sandbox templates, egress policies, procedures, or accounts |
-| admin | Everything, including saving kagent definitions, ticket procedures, and account management | |
+| user | Everything a viewer can, plus launching and steering investigations and ticket actions | Define agents, sandbox templates, egress policies, procedures, or connections |
+| admin | Everything, including saving kagent definitions, ticket procedures, connections, and account management | |
 
 Each report records `started_by`. Sign-in attempts are rate-limited per
 account. There is no per-user action audit log yet.
@@ -170,6 +170,22 @@ requests bypass the `X-TriageLab-Request` marker rule — the token is a
 credential in the request itself — but stay inside the loopback and
 same-origin checks and never reach account, ticket, or definition routes.
 The public guide is [API clients (OAuth)](https://bondrenai.github.io/TriageLab/guides/api-clients/).
+
+### Ticket connections
+
+Admins connect helpdesk and issue sources on the **Connections** page. A
+workspace keeps up to eight connections active at once — any mix of Zendesk,
+GitHub, Linear, Bondren, and Jira — and each keeps its own tracked cases,
+procedures, and polling interval. **Ticket cases** shows one connection at a
+time with a picker across them. Zendesk still authorizes through its browser
+OAuth flow (**Connect** on the row or the Zendesk panel); the other sources
+take a token pasted into the form or a named environment variable. **Test**
+checks the settings against the source with one request before or after
+saving. Changing a connection's account or repository resets that
+connection's tracked cases and procedure after an explicit confirmation.
+Connections persist in `<output>/.tickets/registry.json` (mode 0600, token
+values included) and survive restarts; a `--tickets` file only seeds an empty
+registry.
 
 ## Data flow
 

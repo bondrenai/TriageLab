@@ -5,6 +5,7 @@ export const queryKeys = {
   accounts: ["accounts"] as const,
   apiClients: ["api-clients"] as const,
   tickets: ["tickets"] as const,
+  connections: ["connections"] as const,
   settings: ["settings"] as const,
   runs: ["runs"] as const,
   run: (id: string) => ["runs", id] as const,

@@ -130,17 +130,35 @@ type Flow struct {
 	AutoLaunch Launch
 }
 
+// resolveToken returns the source credential: a stored token from the
+// connection registry when present, otherwise the configured environment
+// variable. An empty result is valid only for anonymous GitHub reads.
+func resolveToken(config Config) (string, error) {
+	name := map[string]string{"github": "GitHub", "linear": "Linear", "bondren": "Bondren", "jira": "Jira"}[config.provider()]
+	if config.storedToken != "" {
+		if !validOAuthToken(config.storedToken) {
+			return "", fmt.Errorf("the stored %s token is invalid", name)
+		}
+		return config.storedToken, nil
+	}
+	if config.TokenEnv == "" {
+		return "", nil
+	}
+	token := os.Getenv(config.TokenEnv)
+	if token == "" || !validOAuthToken(token) {
+		return "", fmt.Errorf("the configured %s token environment variable is missing or invalid", name)
+	}
+	return token, nil
+}
+
 func Open(config Config, dir string, runtime investigation.Config, secrets ...string) (*Flow, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
 	if config.provider() == "github" {
-		var token string
-		if config.TokenEnv != "" {
-			token = os.Getenv(config.TokenEnv)
-			if token == "" || !validOAuthToken(token) {
-				return nil, errors.New("the configured GitHub token environment variable is missing or invalid")
-			}
+		token, err := resolveToken(config)
+		if err != nil {
+			return nil, err
 		}
 		g := newGitHub(config.Repository, token)
 		g.writable = config.Policy.AutoQuestions || config.InvestigationComments
@@ -153,9 +171,9 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 		return flow, flow.checkSavedProcedure()
 	}
 	if config.provider() == "linear" {
-		token := os.Getenv(config.TokenEnv)
-		if token == "" || !validOAuthToken(token) {
-			return nil, errors.New("the configured Linear token environment variable is missing or invalid")
+		token, err := resolveToken(config)
+		if err != nil {
+			return nil, err
 		}
 		l := newLinear(config.Workspace, config.Team, token)
 		l.writable = config.Policy.AutoQuestions || config.InvestigationComments
@@ -168,9 +186,9 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 		return flow, flow.checkSavedProcedure()
 	}
 	if config.provider() == "bondren" {
-		token := os.Getenv(config.TokenEnv)
-		if token == "" || !validOAuthToken(token) {
-			return nil, errors.New("the configured Bondren token environment variable is missing or invalid")
+		token, err := resolveToken(config)
+		if err != nil {
+			return nil, err
 		}
 		b := newBondren(config.Origin, token)
 		b.writable = config.Policy.AutoQuestions || config.InternalNotes
@@ -186,9 +204,9 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 		return flow, flow.checkSavedProcedure()
 	}
 	if config.provider() == "jira" {
-		token := os.Getenv(config.TokenEnv)
-		if token == "" || !validOAuthToken(token) {
-			return nil, errors.New("the configured Jira token environment variable is missing or invalid")
+		token, err := resolveToken(config)
+		if err != nil {
+			return nil, err
 		}
 		j := newJira(config.Origin, config.Email, token)
 		j.writable = config.Policy.AutoQuestions || config.InternalNotes
@@ -283,6 +301,20 @@ func (f *Flow) Settings() Settings {
 	settings := f.settings
 	settings.AutoRunsAllowed = settings.Policy.AutoRuns && f.AutoLaunch != nil
 	return settings
+}
+
+// OwnsRun reports whether one of this connection's cases launched the run.
+// It peeks stored state only and is safe to call on any connection.
+func (f *Flow) OwnsRun(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	for _, c := range f.store.list() {
+		if c.RunID == runID && c.State == "launched" {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Flow) Cases() []Case { return f.store.list() }

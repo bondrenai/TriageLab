@@ -461,18 +461,19 @@ func (j *jiraSource) file(ctx context.Context, f attachment) ([]byte, error) {
 	return data, nil
 }
 
-// fetch performs the authorized request for an API path on the site.
+// fetch performs the authorized GET for an API path on the site without
+// reading the body, so callers can inspect the status first.
 func (j *jiraSource) fetch(ctx context.Context, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, j.origin+path, nil)
 	if err != nil {
-		return nil, errors.New("invalid Jira attachment request")
+		return nil, errors.New("invalid Jira request")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "TriageLab")
 	req.Header.Set("Authorization", j.authorization)
 	res, err := j.client.Do(req)
 	if err != nil {
-		return nil, errors.New("Jira attachment download could not be completed")
+		return nil, errors.New("Jira request could not be completed")
 	}
 	return res, nil
 }

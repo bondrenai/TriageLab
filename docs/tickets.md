@@ -8,6 +8,15 @@ TriageLab keeps preparation decisions and the linked investigation report.
 
 ## Connect a test account
 
+Connections are managed on the workspace **Connections** page by an admin.
+The workspace can keep several sources connected at once (up to eight), each
+with its own tracked cases and procedures. Credentials stay on the server:
+Zendesk authorizes through its browser OAuth flow, and the other sources
+either store a token pasted by the admin or read one from a named environment
+variable. Connections persist in `<output>/.tickets/registry.json` (mode
+0600) and reopen on restart. Changing a connection's account or repository
+resets that connection's tracked cases after an explicit confirmation.
+
 1. In Zendesk Admin Center, open **Apps and integrations → APIs → OAuth clients**.
    Create a [Public client](https://developer.zendesk.com/documentation/authentication/oauth-migration/#setting-up-an-oauth-client)
    named **TriageLab**. Use the identifier `triagelab-local` and redirect URL
@@ -15,24 +24,31 @@ TriageLab keeps preparation decisions and the linked investigation report.
    ticket details and comments, and `ticket_attachments:read` for downloading
    evidence files. Also allow `tickets:write` for public clarifications or
    internal notes.
-2. Build the Go binary and browser assets as described in [UI setup](ui.md).
-   Copy `tickets.example.json` to `tickets.local.json`. Set the Zendesk
-   subdomain, client identifier, and exact registered redirect URI. Existing
-   pilot configurations should replace the old `email` and `token_env`
-   settings with `client_id` and `redirect_uri`.
-3. Start `bin/triagelab serve --tickets tickets.local.json`. Keep its listener
+2. Build the Go binary and browser assets as described in [UI setup](ui.md)
+   and start `bin/triagelab serve`. Keep its listener
    on loopback. For a remote VM, forward local port 8080 to VM loopback port
-   8080 over SSH. Open `http://127.0.0.1:8080/tickets` in the browser, using
-   the same hostname and port registered for OAuth.
-4. Choose **Connect Zendesk** and approve access as a Zendesk agent who can
+   8080 over SSH.
+3. Open `http://127.0.0.1:8080/connections` in the browser, using
+   the same hostname and port registered for OAuth. Add a Zendesk connection
+   with the subdomain, client identifier, and exact registered redirect URI,
+   then save it.
+4. Choose **Connect** and approve access as a Zendesk agent who can
    read the selected tickets and, when enabled, post replies or internal notes.
    TriageLab uses an authorization code with PKCE and requests
    `tickets:read` and `ticket_attachments:read`. It adds `tickets:write`
    when `auto_questions` or `internal_notes` is enabled. The browser handles
    consent.
-5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
+5. Preview a ticket by numeric ID on **Ticket cases**. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
    procedure. Configure kagent separately before launching an investigation.
+
+A `--tickets` configuration file remains for headless bootstrap. It may hold
+one configuration object or a JSON array of up to eight. The file seeds the
+connection registry the first time the workspace starts against a fresh
+output directory; once connections exist the registry is canonical and edits
+happen in the UI (the flag is ignored with a note on the console). Each
+connection keeps its cases, procedures, and Zendesk OAuth state under
+`<output>/.tickets/<connection id>/`.
 
 Configure the source and initial policy in the JSON file. Use **Ticket cases →
 Edit procedures** to add or edit procedures and save them while the workspace

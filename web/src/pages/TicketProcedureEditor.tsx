@@ -11,7 +11,8 @@ import type { EvidenceRule, ProcedureVersion, TicketCase, TicketProcedure, Ticke
 
 const priorities = ["low", "normal", "high", "urgent"];
 
-export function TicketProcedureEditor({ version, source, connected, template, clarificationLimit, autoRunsAllowed, renderPreview }: {
+export function TicketProcedureEditor({ connection, version, source, connected, template, clarificationLimit, autoRunsAllowed, renderPreview }: {
+  connection: string;
   version: ProcedureVersion;
   source: TicketSource;
   connected: boolean;
@@ -88,7 +89,11 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    save.mutate({ procedure: procedures[procedures.length - 1], additional_procedures: procedures.slice(0, -1), revision }, {
+    save.mutate({ connection, version: {
+      procedure: procedures[procedures.length - 1],
+      additional_procedures: procedures.slice(0, -1),
+      revision,
+    } }, {
       onSuccess: saved => {
         setRevision(saved.revision);
         setProcedures(orderedProcedures(saved));
@@ -99,7 +104,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
 
   function previewDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    preview.mutate({ id: ticketReference(source, ticketID), procedure: draft });
+    preview.mutate({ connection, id: ticketReference(source, ticketID), procedure: draft });
   }
 
   function agentOptions(current: string) {
@@ -163,7 +168,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
           </>}
         </fieldset>
 
-        <TicketConditionEditor key={`match-${selected}`} source={source} label="Procedure match condition"
+        <TicketConditionEditor key={`match-${selected}`} connection={connection} source={source} label="Procedure match condition"
           value={draft.policy.match_condition ?? ""} emptyHint="An empty condition uses the procedure’s tag to match tickets."
           hint="A CEL match condition takes the place of the tag check. Use tags in the condition if the procedure still needs them."
           onChange={value => updatePolicy({ match_condition: value || undefined })} />
@@ -203,7 +208,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
             </Field>}
             {rule.required && <details>
               <summary>Conditional requirement</summary>
-              <TicketConditionEditor source={source} label="Required when"
+              <TicketConditionEditor connection={connection} source={source} label="Required when"
                 value={rule.required_when ?? ""} emptyHint="An empty condition makes this item required for every matching ticket."
                 onChange={value => updateEvidence(index, { required_when: value || undefined })} />
             </details>}
@@ -239,7 +244,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
             Start automatically when evidence is ready
           </label>}
           {autoRunsAllowed && draft.policy.auto_runs && <TicketConditionEditor key={`start-${selected}`}
-            source={source} label="Automatic start condition" value={draft.policy.auto_run_condition ?? ""}
+            connection={connection} source={source} label="Automatic start condition" value={draft.policy.auto_run_condition ?? ""}
             emptyHint="An empty condition allows automatic starts when evidence is ready."
             onChange={value => updatePolicy({ auto_run_condition: value || undefined })} />}
           <div className="agent-field-grid">

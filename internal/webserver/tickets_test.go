@@ -16,17 +16,17 @@ import (
 
 func TestSaveTicketProcedureChecksRevisionAndSourceCapabilities(t *testing.T) {
 	s := newTestServer(t, nil)
-	if err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
-		t.Fatal(err)
-	}
+	seedTickets(t, s, githubConnection, ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}})
 	var workspace struct {
-		Procedure ticketflow.ProcedureVersion `json:"procedure"`
+		Connections []struct {
+			Procedure ticketflow.ProcedureVersion `json:"procedure"`
+		} `json:"connections"`
 	}
 	w := request(s, http.MethodGet, "/api/tickets", nil)
-	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 || workspace.Procedure.Revision == "" {
+	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 || len(workspace.Connections) != 1 || workspace.Connections[0].Procedure.Revision == "" {
 		t.Fatalf("get procedure: HTTP %d %s", w.Code, w.Body)
 	}
-	version := workspace.Procedure
+	version := workspace.Connections[0].Procedure
 	version.Procedure.Policy.Tag = "timeout"
 	version.Procedure.Routes = []ticketflow.RouteRule{{Tag: "product:network", Agent: "network-investigator"}}
 	post := func(version ticketflow.ProcedureVersion) *httptest.ResponseRecorder {
@@ -34,7 +34,7 @@ func TestSaveTicketProcedureChecksRevisionAndSourceCapabilities(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return request(s, http.MethodPost, "/api/tickets/procedure", bytes.NewReader(data))
+		return request(s, http.MethodPost, "/api/tickets/c/"+githubConnection+"/procedure", bytes.NewReader(data))
 	}
 	w = post(version)
 	var saved ticketflow.ProcedureVersion
@@ -53,27 +53,27 @@ func TestSaveTicketProcedureChecksRevisionAndSourceCapabilities(t *testing.T) {
 
 func TestTicketWorkspaceSavesProductProcedures(t *testing.T) {
 	s := newTestServer(t, nil)
-	if err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}}); err != nil {
-		t.Fatal(err)
-	}
+	seedTickets(t, s, githubConnection, ticketflow.Config{Source: "github", Repository: "owner/example", Policy: ticketflow.Policy{Tag: "reproduce"}})
 	w := request(s, http.MethodGet, "/api/tickets", nil)
 	var workspace struct {
-		Procedure ticketflow.ProcedureVersion `json:"procedure"`
+		Connections []struct {
+			Procedure ticketflow.ProcedureVersion `json:"procedure"`
+		} `json:"connections"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 {
+	if err := json.Unmarshal(w.Body.Bytes(), &workspace); err != nil || w.Code != 200 || len(workspace.Connections) != 1 {
 		t.Fatalf("read workspace: %d %s", w.Code, w.Body)
 	}
-	product := workspace.Procedure.Procedure
+	product := workspace.Connections[0].Procedure.Procedure
 	product.Policy.Tag = "product:network"
 	product.Clarification = "Can you share the failing request?"
 	data, err := json.Marshal(map[string]any{
-		"revision": workspace.Procedure.Revision, "procedure": workspace.Procedure.Procedure,
+		"revision": workspace.Connections[0].Procedure.Revision, "procedure": workspace.Connections[0].Procedure.Procedure,
 		"additional_procedures": []ticketflow.Procedure{product},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	w = request(s, http.MethodPost, "/api/tickets/procedure", bytes.NewReader(data))
+	w = request(s, http.MethodPost, "/api/tickets/c/"+githubConnection+"/procedure", bytes.NewReader(data))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"tag":"product:network"`) {
 		t.Fatalf("save product procedure: %d %s", w.Code, w.Body)
 	}
@@ -87,8 +87,8 @@ func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 	s := newTestServer(t, nil)
 	const id = "037c54da-437c-48ed-b898-a36a27334e9c"
 	const origin = "https://example.zendesk.com"
-	store := filepath.Join(s.directory, ".tickets")
-	if err := os.Mkdir(store, 0700); err != nil {
+	store := filepath.Join(s.directory, ".tickets", zendeskConnection)
+	if err := os.MkdirAll(store, 0700); err != nil {
 		t.Fatal(err)
 	}
 	tracked, err := json.Marshal(ticketflow.Case{TicketID: 42, Account: origin, State: "launched", RunID: id, Plan: "run-approval"})
@@ -98,12 +98,10 @@ func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store, "42.json"), tracked, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EnableTickets(ticketflow.Config{
+	seedTickets(t, s, zendeskConnection, ticketflow.Config{
 		Subdomain: "example", ClientID: "test-local", RedirectURI: "http://localhost:8080/oauth/zendesk/callback",
 		InternalNotes: true, Policy: ticketflow.Policy{Tag: "reproduce"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	data := map[string]any{
 		"run_id": id, "status": "completed", "finished_at": "2026-11-08T12:10:00Z", "outcome": "reproduced",
 		"case": map[string]any{"source": map[string]any{"kind": "zendesk", "ticket_id": "42", "url": origin + "/agent/tickets/42", "approval_plan": "run-approval"}},

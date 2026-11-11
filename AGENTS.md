@@ -19,7 +19,9 @@ or one OIDC provider) of the same workflow, reached over loopback.
   model hypotheses. Keep the JSON report canonical and Markdown readable.
 - `internal/ticketflow` prepares helpdesk cases. Keep policy checks and durable
   clarification reservations outside the investigator. Bind ticket launches
-  to the exact evidence and run settings. Default to approval and let
+  to the exact evidence and run settings. Connections persist in the private
+  registry and per-connection state directories under `.tickets`; stored
+  credentials never leave the server. Default to approval and let
   explicitly enabled procedures start automatically once evidence is ready.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Keep credentials server-side and route new runs through the existing investigator.

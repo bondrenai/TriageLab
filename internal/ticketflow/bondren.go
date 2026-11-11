@@ -132,6 +132,25 @@ type bondrenMessage struct {
 // call performs one bounded request against the configured Bondren origin.
 // Reads may retry nothing; writes are never retried here.
 func (b *bondrenSource) call(ctx context.Context, method, path string, body []byte, limit int64) ([]byte, error) {
+	res, err := b.callResponse(ctx, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
+		// Never echo provider response bodies.
+		return nil, fmt.Errorf("Bondren returned HTTP %d", res.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil || int64(len(data)) > limit {
+		return nil, errors.New("Bondren response is incomplete or too large")
+	}
+	return data, nil
+}
+
+// callResponse performs the authorized request without reading the body, so
+// callers such as connection verification can inspect the status first.
+func (b *bondrenSource) callResponse(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	target, err := url.Parse(b.origin + path)
 	if err != nil || target.Scheme+"://"+target.Host != b.origin || target.User != nil || target.Fragment != "" || target.RawPath != "" {
 		return nil, errors.New("Bondren resource is outside the configured origin")
@@ -157,16 +176,7 @@ func (b *bondrenSource) call(ctx context.Context, method, path string, body []by
 	if err != nil {
 		return nil, errors.New("Bondren request could not be completed")
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
-		// Never echo provider response bodies.
-		return nil, fmt.Errorf("Bondren returned HTTP %d", res.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
-	if err != nil || int64(len(data)) > limit {
-		return nil, errors.New("Bondren response is incomplete or too large")
-	}
-	return data, nil
+	return res, nil
 }
 
 // resolve maps the tenant-wide issue number to the issue resource. The number
