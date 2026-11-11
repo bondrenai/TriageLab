@@ -1,12 +1,11 @@
 ---
 title: Linear issues
-description: Prepare issues from one Linear team with reviewed clarifications, summaries, and approval before a run.
+description: Prepare issues from one Linear team with reviewed clarifications, and investigation summaries.
 ---
 
 TriageLab reads issues from one team in one Linear workspace and prepares them
 for the existing Python 3.12 timeout investigation procedure: preview,
-tracking, reviewed clarification comments, evidence review, and approval
-before a sandbox run. Completed investigations can publish a reviewed summary
+tracking, reviewed clarification comments, and an evidence checklist. Completed investigations can publish a reviewed summary
 to the linked issue. Linear remains the issue and conversation record.
 
 ## Configure a team
@@ -53,7 +52,7 @@ Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`. One workspace has
 one source, workspace, and team; use a separate report directory per team and
 preserve its private `.tickets` directory across restarts.
 
-## Prepare and approve evidence
+## Prepare evidence and launch
 
 **Edit procedures** in Ticket cases sets up a procedure per label with its own
 evidence requirements, clarification policy, agent, and sandbox; the first
@@ -77,7 +76,10 @@ the issue for review after seven days. Every send is reserved in durable case
 state first; a confirmed comment is identified by ID and never resent, while
 an uncertain delivery stays held for manual inspection.
 
-Once evidence is ready, **Approve and start investigation** binds approval to
+A procedure can start automatically when the evidence is ready.
+[Automatic ticket investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, **Approve and start investigation** binds approval to
 the selected evidence and run settings, expires after 15 minutes, and rereads
 the issue before launch. Each tracked issue consumes one investigation
 attempt and shares the workspace's single run slot.

@@ -1,11 +1,11 @@
 ---
 title: What is TriageLab
-description: "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an approved investigation in a disposable sandbox."
+description: "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an investigation in a disposable sandbox."
 template: splash
 tableOfContents: false
 hero:
   title: 'Every ticket gets a <span class="hero-accent">real investigation.</span>'
-  tagline: "TriageLab routes each ticket to a procedure, gathers the evidence it is missing, and waits for a person to approve the run. Then it investigates in a disposable sandbox on Kubernetes and reports what it found, with the evidence behind every finding."
+  tagline: "TriageLab routes each ticket to a procedure, gathers the evidence it is missing, and starts after review or according to policy. Then it investigates in a disposable sandbox on Kubernetes and reports what it found, with the evidence behind every finding."
   actions:
     - text: Start the quickstart
       link: /TriageLab/start/quickstart/
@@ -35,13 +35,13 @@ files yourself, or let a ticket source start the case. Inputs are capped at 64
 files, 1 MiB per file and 4 MiB in total, and unsafe inputs are rejected before
 anything is transferred.
 
-## Why approval comes first
+## Review or automate
 
-The steps before the sandbox keep untrusted ticket content away from the model
-until a person has seen exactly what will run: the sanitized facts, file
-hashes, chosen agent, and run limits. Approval expires quickly and is checked
-again at launch, so an outdated plan cannot start. Inside the sandbox, the hard
-limits come from upstream isolation and egress policy, not from the prompt.
+Ticket cases default to review before launch. TriageLab binds sanitized facts,
+file hashes, the chosen agent, and run limits to each run. An explicitly enabled
+policy can start an investigation once evidence is ready and source freshness
+checks pass. Sandbox isolation and egress policy enforce the boundaries.
+[Configure automatic investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
 
 ## Status and scope
 

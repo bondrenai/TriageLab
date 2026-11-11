@@ -1,0 +1,13 @@
+{
+  "source": "jira",
+  "origin": "https://your-site.atlassian.net",
+  "email": "triagelab@your-company.example",
+  "token_env": "TRIAGELAB_JIRA_TOKEN",
+  "poll_seconds": 60,
+  "internal_notes": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}

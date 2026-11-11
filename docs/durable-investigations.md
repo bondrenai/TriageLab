@@ -2,9 +2,9 @@
 
 Status: upstream retention patch and TriageLab workflow implemented, 2026-11-10.
 The controller pin is
-[`bondrenai/kagent` commit `9bf1a20db0a165c477e893584c1904e58f361cd2`](https://github.com/bondrenai/kagent/commit/9bf1a20db0a165c477e893584c1904e58f361cd2),
-based on kagent `v1.0.0-rc3`, commit
-`3548b7aaf4d91ec86b0565df2bd8a9950e9a276d`.
+[`bondrenai/kagent` commit `048e1016d50b209dba01065d0d10dfd80b78fb41`](https://github.com/bondrenai/kagent/commit/048e1016d50b209dba01065d0d10dfd80b78fb41),
+based on kagent `v1.0.0`, commit
+`a08cde76ad6482dd758a4220b14213d79185ac30`.
 This replaces the earlier checkpoint-copy/fork proposal. Both the standalone
 Sandbox retention test and the real-model pause/resume test passed; see
 [verification.md](verification.md) for the evidence and limits.
@@ -77,7 +77,7 @@ Sandbox with a later deadline to expire, then restores the retained Sandbox and
 checks its ID, file bytes, fresh active TTL, duplicate resume, and deletion.
 This proves the elapsed-expiry path without claiming weeks of elapsed uptime.
 
-`scripts/install-dev.sh` installs the released rc3 stack, builds the pinned fork
+`scripts/install-dev.sh` installs the released 1.0.0 stack, builds the pinned fork
 controller with `scripts/install-fork-controller.sh`, loads it into Kind, and
 waits for its rollout before installing TriageLab resources. No fork image has
 been published. See [development.md](development.md) and [upstream.md](upstream.md)
@@ -174,8 +174,8 @@ retained until closed, and cleanup can fail during outages. These are the first
 version's explicit limits; independent backups, checkpoint branching, retention
 policies, and broader recovery automation are outside this implementation.
 
-[sandboxes]: https://github.com/bondrenai/kagent/blob/9bf1a20db0a165c477e893584c1904e58f361cd2/docs/architecture/sandboxes.md
-[sessions]: https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/runtime-and-lifecycle.md
-[sandbox-store]: https://github.com/bondrenai/kagent/blob/9bf1a20db0a165c477e893584c1904e58f361cd2/go/core/internal/database/sandboxes.go
-[sandbox-workflow]: https://github.com/bondrenai/kagent/blob/9bf1a20db0a165c477e893584c1904e58f361cd2/go/core/internal/service/sandbox/workflow.go
-[session-expiration]: https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/service/session/expiration.go
+[sandboxes]: https://github.com/bondrenai/kagent/blob/048e1016d50b209dba01065d0d10dfd80b78fb41/docs/architecture/sandboxes.md
+[sessions]: https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/runtime-and-lifecycle.md
+[sandbox-store]: https://github.com/bondrenai/kagent/blob/048e1016d50b209dba01065d0d10dfd80b78fb41/go/core/internal/database/sandboxes.go
+[sandbox-workflow]: https://github.com/bondrenai/kagent/blob/048e1016d50b209dba01065d0d10dfd80b78fb41/go/core/internal/service/sandbox/workflow.go
+[session-expiration]: https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/core/internal/service/session/expiration.go

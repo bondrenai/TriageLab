@@ -3,7 +3,7 @@
        Keep in sync with docs-site/src/components/diagrams/SystemMap.astro,
        which renders the same drawing from CSS tokens on the docs site. -->
   <title id="sm-t">TriageLab system map</title>
-  <desc id="sm-d">Ticket sources (Zendesk, GitHub, Linear, Bondren, or a local case) feed TriageLab, which routes, classifies, clarifies, and holds the case for human approval. An approved run reaches kagent, which runs the investigator session against a standalone sandbox provided by Agent Substrate with egress denied by default. Tool events and process results flow back into reports that keep evidence and hypothesis separate; a reviewed summary returns to the ticket.</desc>
+  <desc id="sm-d">Ticket sources (Zendesk, GitHub, Linear, Bondren, or a local case) feed TriageLab, which routes, classifies, clarifies, and prepares the case for review or an automatic policy. A run reaches kagent, which runs the investigator session against a standalone sandbox provided by Agent Substrate with egress denied by default. Tool events and process results flow back into reports that keep evidence and hypothesis separate; a reviewed summary returns to the ticket.</desc>
 
   <style>
     text {
@@ -97,7 +97,7 @@
     <text x="329" y="144" class="chip-text">CLARIFY</text>
     <line x1="329" y1="150" x2="329" y2="160" class="arrow" marker-end="url(#sm-arrow)" />
     <rect x="274" y="162" width="110" height="20" class="gate" rx="2" />
-    <text x="329" y="176" class="chip-text gate-text">APPROVE</text>
+    <text x="329" y="176" class="chip-text gate-text">POLICY</text>
     <text x="390" y="176" class="sub-text side-note">human</text>
     <text x="329" y="206" class="sub-text">bounded inputs · watchdog limits · reports</text>
   </g>
@@ -144,7 +144,7 @@
   <text x="170" y="146" class="arrow-label">or issue</text>
 
   <line x1="456" y1="124" x2="516" y2="124" class="arrow accent" marker-end="url(#sm-arrow-accent)" />
-  <text x="486" y="104" class="arrow-label accent">approved</text>
+  <text x="486" y="104" class="arrow-label accent">admitted</text>
   <text x="486" y="146" class="arrow-label accent">run</text>
 
   <line x1="752" y1="124" x2="812" y2="124" class="arrow" marker-end="url(#sm-arrow)" />

@@ -10,11 +10,12 @@ import (
 )
 
 type EvidenceRule struct {
-	Kind     string `json:"kind"`
-	Match    string `json:"match"`
-	Required bool   `json:"required"`
-	Pattern  string `json:"pattern,omitempty"`
-	Question string `json:"question,omitempty"`
+	Kind         string `json:"kind"`
+	Match        string `json:"match"`
+	RequiredWhen string `json:"required_when,omitempty"`
+	Required     bool   `json:"required"`
+	Pattern      string `json:"pattern,omitempty"`
+	Question     string `json:"question,omitempty"`
 }
 
 type EvidenceRules []EvidenceRule
@@ -65,7 +66,7 @@ func (rules EvidenceRules) valid(validText func(string, int) bool) bool {
 		return false
 	}
 	for i, rule := range rules {
-		if !validText(rule.Match, 100) || ((rule.Required || rule.Question != "") && !validText(rule.Question, 500)) {
+		if (rule.RequiredWhen != "" && !rule.Required) || !validText(rule.Match, 100) || ((rule.Required || rule.Question != "") && !validText(rule.Question, 500)) {
 			return false
 		}
 		switch rule.Kind {
@@ -160,4 +161,12 @@ func (rules EvidenceRules) selectFiles(replies []comment) []evidenceFile {
 		}
 	}
 	return files
+}
+
+// Older plans retain their digest when no evidence requirement uses CEL.
+func conditionalEvidenceDigest(saved, effective EvidenceRules) string {
+	if slices.ContainsFunc(saved, func(rule EvidenceRule) bool { return rule.RequiredWhen != "" }) {
+		return digest(effective)
+	}
+	return ""
 }

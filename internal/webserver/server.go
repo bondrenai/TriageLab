@@ -65,6 +65,11 @@ type Server struct {
 	deployments    *kagent.DeploymentReader
 	resourceWrites bool
 	auth           *gate
+	mcp            *mcpAccess
+	chat           chatGenerator
+	chatClose      func()
+	chatActive     *chatJob
+	chatErrors     map[string]string
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -117,6 +122,10 @@ func (s *Server) Close(ctx context.Context) error {
 	if active != nil {
 		active.cancel()
 	}
+	chat := s.chatActive
+	if chat != nil {
+		chat.cancel()
+	}
 	s.mu.Unlock()
 	if active != nil {
 		select {
@@ -124,6 +133,16 @@ func (s *Server) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	if chat != nil {
+		select {
+		case <-chat.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if s.chatClose != nil {
+		s.chatClose()
 	}
 	var ticketErr error
 	if s.tickets != nil {
@@ -223,9 +242,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	// Monaco uses runtime styles for layout and syntax colors. Scripts and workers
+	// remain same-origin; no inline script, eval, blob worker, or CDN is allowed.
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 	if !allowedHost(r.Host) {
 		fail(w, http.StatusForbidden, "Only a loopback host is allowed")
+		return
+	}
+	if r.URL.Path == "/mcp" {
+		s.serveMCP(w, r)
 		return
 	}
 	// OAuth is a top-level navigation from Zendesk. The callback has its
@@ -453,8 +478,12 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	activeID := s.activeID
+	failedActions := make(map[string]bool, len(s.actionErrors))
+	for id := range s.actionErrors {
+		failedActions[id] = true
+	}
 	s.mu.Unlock()
-	runs := []map[string]any{}
+	runs := []runSummary{}
 	for _, entry := range entries {
 		if !entry.IsDir() || !runID.MatchString(entry.Name()) {
 			continue
@@ -468,22 +497,10 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 			saved["started_by"] != auth.ClientActor(grant.ClientID) {
 			continue
 		}
-		c, _ := saved["case"].(map[string]any)
-		description, _ := c["description"].(string)
-		experiments, _ := saved["experiments"].([]any)
-		experimentCount := len(experiments)
-		if rounds, ok := saved["rounds"].([]any); ok {
-			for _, round := range rounds {
-				if prior, ok := round.(map[string]any); ok {
-					previous, _ := prior["experiments"].([]any)
-					experimentCount += len(previous)
-				}
-			}
-		}
 		s.projectLifecycle(entry.Name(), saved, entry.Name() == activeID)
-		runs = append(runs, map[string]any{"id": entry.Name(), "description": description, "status": saved["status"], "outcome": saved["outcome"], "started_at": saved["started_at"], "finished_at": saved["finished_at"], "experiment_count": experimentCount, "active": entry.Name() == activeID})
+		runs = append(runs, summarizeRun(entry.Name(), saved, entry.Name() == activeID, failedActions[entry.Name()]))
 	}
-	sort.Slice(runs, func(i, j int) bool { return fmt.Sprint(runs[i]["started_at"]) > fmt.Sprint(runs[j]["started_at"]) })
+	sort.Slice(runs, func(i, j int) bool { return runs[i].StartedAt > runs[j].StartedAt })
 	jsonResponse(w, 200, map[string]any{"runs": runs})
 }
 
@@ -494,6 +511,10 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if len(parts) == 2 && parts[1] == "chat" {
+		s.chatRoute(w, r, id)
+		return
+	}
 	if len(parts) == 2 && r.Method == http.MethodPost {
 		switch parts[1] {
 		case "pause":
@@ -748,6 +769,8 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	trigger := "ui"
 	if _, client := clientFrom(r.Context()); client {
 		trigger = "api"
+	} else if actor.Via == "mcp" {
+		trigger = "mcp"
 	}
 	if err := s.launchRun(c, nil, config, extraTools, actor.Username, trigger); err != nil {
 		writeLaunchError(w, err)

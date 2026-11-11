@@ -81,6 +81,9 @@ func (r *statusRecorder) statusCode() int {
 // segments (run and ticket identifiers) become {id}; every other segment is
 // part of a fixed route vocabulary.
 func routePattern(path string) string {
+	if path == "/mcp" {
+		return "/mcp"
+	}
 	if !strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/oauth/") && path != "/healthz" {
 		return "static"
 	}

@@ -65,7 +65,8 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, required auth
 	// session cookie is never consulted afterwards.
 	if bearerRequest(r) {
 		if g.clients == nil {
-			fail(w, http.StatusServiceUnavailable, "API clients are not configured for this workspace")
+			w.Header().Set("WWW-Authenticate", `Bearer realm="TriageLab API clients"`)
+			fail(w, http.StatusUnauthorized, "API client authentication is unavailable")
 			return false
 		}
 		return s.authorizeClient(w, r, g)
@@ -112,7 +113,7 @@ func requiredRole(method, path string) auth.Role {
 			return auth.RoleAdmin
 		}
 	}
-	if path == "/api/tickets/procedure" || path == "/api/tickets/oauth/start" {
+	if path == "/api/tickets/procedure" || path == "/api/tickets/procedure/validate-condition" || path == "/api/tickets/oauth/start" {
 		return auth.RoleAdmin
 	}
 	return auth.RoleUser

@@ -16,6 +16,9 @@ exit code never means the report should be discarded.
 - **Connection and resources** — endpoint, user, namespace, the sandbox and
   session identifiers, and the run settings actually used, including the
   selected agent and who started the run (`started_by`).
+- **Ticket launch provenance** — the linked source, the bound plan
+  (`case.source.approval_plan`), and `case.source.unattended: true` when the
+  procedure started the run automatically.
 - **Independently collected evidence** — durable tool activity paired by call
   and result IDs, and for each process the state, exit code, and paginated
   output TriageLab fetched itself from the sandbox. Failed experiments are
@@ -24,13 +27,39 @@ exit code never means the report should be discarded.
   from process evidence. The relationship between an experiment and the
   reported symptom is model-assessed and visible for human review; the report
   does not certify root causes.
-- **Failure reason** — when the investigator's task stops without completing,
-  the reason kagent gives is kept as `task_failure`. It is upstream text, so it
-  is clipped and redacted like the rest of the report and stays out of logs.
 - **Cleanup record** — what was deleted, what failed, and any request IDs
   needed for manual recovery. New runs keep operational identities in a private
   `lifecycle.json`; `triagelab close --report` uses it. Legacy cleanup still
   supports reports created before lifecycle records existed.
+
+## Reviewing the model's reasoning
+
+New investigator answers include `experiment_assessments`: each entry links a
+current-round `process_id` to the question tested, an expected observation, and
+the model's interpretation. An empty expected observation means no prior
+expectation was established. These entries stay under `analysis`; commands,
+exit codes, and captured output remain under `experiments` and are collected
+independently.
+
+Each hypothesis retains `evidence_process_ids` for the evidence behind its
+reported status. `contradicting_process_ids` identifies collected results that
+challenge it, while `distinguishing_observation` describes what could distinguish
+it from another explanation. An empty contradiction list means no contradicting
+evidence was cited, not that the explanation is proved.
+
+TriageLab checks references against complete, exited current-round processes.
+Unavailable, truncated, timed-out, or explicitly incomplete evidence cannot
+support a conclusion. Invalid contradiction references are removed and the
+hypothesis is marked untested; unsupported or duplicate experiment assessments
+are omitted with warnings. This validates reference provenance and completeness,
+not the truth of the model's interpretation. Setup failure is not a refuted
+hypothesis, and a sandbox reproduction does not establish the customer's root
+cause. The emitted output schema requires these fields for kagent's strict
+structured output. Retained investigator sessions using an earlier prompt can
+still continue: TriageLab fills only absent explanatory fields with empty arrays
+or text before validating the answer. Explicitly malformed values, including
+`null`, remain invalid. Earlier saved reports without these reasoning fields
+remain readable.
 
 ## Paused investigations and rounds
 

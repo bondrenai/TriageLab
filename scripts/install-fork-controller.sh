@@ -10,7 +10,7 @@ for tool in docker git go kind kubectl; do
   command -v "$tool" >/dev/null || { echo "Missing prerequisite: $tool" >&2; exit 2; }
 done
 
-revision=9bf1a20db0a165c477e893584c1904e58f361cd2
+revision=048e1016d50b209dba01065d0d10dfd80b78fb41
 image="localhost/triagelab-kagent-controller:$revision"
 umask 077
 scratch=$(mktemp -d)
@@ -33,13 +33,13 @@ build_date=$(git -C "$scratch/source" show -s --format=%cs HEAD)
 (
   cd "$scratch/source/go"
   CGO_ENABLED=0 GOFLAGS=-trimpath go build -buildvcs=false \
-    -ldflags "-s -w -X github.com/kagent-dev/kagent/go/core/internal/version.Version=1.0.0-rc3 -X github.com/kagent-dev/kagent/go/core/internal/version.GitCommit=$revision -X github.com/kagent-dev/kagent/go/core/internal/version.BuildDate=$build_date -X github.com/kagent-dev/kagent/go/core/internal/version.SubstrateVersion=1.0.0" \
+    -ldflags "-s -w -X github.com/kagent-dev/kagent/go/core/internal/version.Version=1.0.0 -X github.com/kagent-dev/kagent/go/core/internal/version.GitCommit=$revision -X github.com/kagent-dev/kagent/go/core/internal/version.BuildDate=$build_date -X github.com/kagent-dev/kagent/go/core/internal/version.SubstrateVersion=1.0.0" \
     -o "$scratch/image/app" ./core/cmd/controller/main.go
 )
 
-# Reuse rc3's runtime filesystem; only the controller executable changes.
+# Reuse the released 1.0.0 runtime filesystem; only the controller executable changes.
 cat > "$scratch/image/Dockerfile" <<'EOF'
-FROM ghcr.io/kagent-dev/kagent/controller@sha256:e12e7be9346d3f338581a7ccc583bdb7990e27341a227cd0a13d8aaaf325df3f
+FROM ghcr.io/kagent-dev/kagent/controller@sha256:a85cc7452b403e879f592a094dfb3fb3f40b3552a2c1c91956184c7280850ed5
 COPY --chown=65532:65532 app /app
 EOF
 docker build --pull=false \

@@ -196,6 +196,8 @@ func render(data map[string]any) string {
 		output.WriteString("\nStandard error:\n\n" + fence(experiment["stderr"]))
 	}
 	output.WriteString("\n## Investigator analysis (hypotheses, not confirmed conclusions)\n\n")
+	output.WriteString("Observations, hypothesis support or contradiction, and experiment assessments are model interpretations. ")
+	output.WriteString("Their process references identify collected evidence; they do not certify causal reasoning or a customer's root cause.\n")
 	analysis := object(data["analysis"])
 	if len(analysis) == 0 {
 		output.WriteString("No validated investigator analysis is available.\n")
@@ -203,6 +205,7 @@ func render(data map[string]any) string {
 	for _, item := range []struct{ key, title string }{
 		{"summary", "Summary"}, {"observations", "Reported observations"},
 		{"hypotheses", "Hypotheses considered"},
+		{"experiment_assessments", "Experiment assessments (model interpretation)"},
 		{"root_cause", "Suspected root cause and supporting process IDs"},
 		{"reproduced_process_ids", "Process IDs supporting reproduction"},
 		{"reproduction_steps", "Independent reproduction steps"},

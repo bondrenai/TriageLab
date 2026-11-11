@@ -104,9 +104,13 @@ var exampleFileDocs = []struct {
 }{
 	{file: "triagelab.example.json", title: "Investigation configuration", description: "The core configuration passed to `--config`; defaults shown in the [configuration](/TriageLab/reference/configuration/) table."},
 	{file: "auth.example.json", title: "Sign-in configuration", description: "Optional file passed to `serve --auth` configuring one OpenID Connect provider; see [sign-in and roles](/TriageLab/guides/sign-in/)."},
+	{file: "triagelab.chat.example.json", title: "Results chat", description: "Optional file passed to `serve --chat` selecting a tool-free completion endpoint; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
+	{file: "triagelab.mcp.example.json", title: "HTTP MCP access", description: "Optional file passed to `serve --mcp` defining scoped machine credentials; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
 	{file: "tickets.example.json", title: "Zendesk ticket source", description: "Passed to `serve --tickets` for the Zendesk case source; see [Zendesk tickets](/TriageLab/guides/tickets-zendesk/)."},
 	{file: "github.example.json", title: "GitHub issue source", description: "Passed to `serve --tickets` for one GitHub.com repository; see [GitHub issues](/TriageLab/guides/tickets-github/)."},
 	{file: "linear.example.json", title: "Linear issue source", description: "Passed to `serve --tickets` for one Linear team; see [Linear issues](/TriageLab/guides/tickets-linear/)."},
+	{file: "bondren.example.json", title: "Bondren issue source", description: "Passed to `serve --tickets` for one Bondren workspace origin; see [Bondren issues](/TriageLab/guides/tickets-bondren/)."},
+	{file: "jira.example.json", title: "Jira issue source", description: "Passed to `serve --tickets` for one Jira Cloud site; see [Jira issues](/TriageLab/guides/tickets-jira/)."},
 	{file: "triagelab.telemetry.example.json", title: "Telemetry configuration", description: "Optional file passed to `--telemetry` for OTLP/HTTP export; see [telemetry](/TriageLab/guides/telemetry/)."},
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/resultchat"
 	"github.com/bondrenai/TriageLab/internal/telemetry"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 	"github.com/bondrenai/TriageLab/internal/webserver"
@@ -50,6 +51,8 @@ type runOptions struct {
 	statusContext       string
 	authConfigPath      string
 	usersPath           string
+	chatConfigPath      string
+	mcpConfigPath       string
 	clientsPath         string
 	allowResourceWrites bool
 	manualAgent         string
@@ -69,7 +72,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
 	flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
-	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, or Linear case configuration (serve only)")
+	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only)")
 	flags.StringVar(&opts.telemetryPath, "telemetry", "", "optional OTLP telemetry configuration exporting logs, metrics, and traces")
 	if command == "serve" {
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
@@ -77,6 +80,8 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
 		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
 		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
+		flags.StringVar(&opts.chatConfigPath, "chat", "", "optional results chat model configuration JSON")
+		flags.StringVar(&opts.mcpConfigPath, "mcp", "", "optional HTTP MCP credentials and origins configuration JSON")
 		flags.StringVar(&opts.clientsPath, "clients", "", "API client file for OAuth access (default <output>/.auth/clients.json)")
 	}
 	if command == "investigate" {
@@ -263,6 +268,28 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			_ = workspace.Close(ctx)
 			fmt.Fprintln(errout, err)
 			return 2
+		}
+		if opts.chatConfigPath != "" {
+			chatConfig, err := resultchat.Load(opts.chatConfigPath)
+			if err == nil {
+				err = workspace.EnableChat(chatConfig)
+			}
+			if err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
+		}
+		if opts.mcpConfigPath != "" {
+			mcpConfig, err := webserver.LoadMCPConfig(opts.mcpConfigPath)
+			if err == nil {
+				err = workspace.EnableMCP(mcpConfig)
+			}
+			if err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
 		}
 		clients, err := auth.OpenClientStore(resolveClientsPath(opts.output, opts.clientsPath))
 		if err != nil {

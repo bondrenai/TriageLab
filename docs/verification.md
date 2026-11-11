@@ -1,5 +1,339 @@
 # Executed verification
 
+## UI-authored automatic Jira policy — November 11, 2026
+
+Using the signed-in running workspace UI, configured the existing
+`triagelab_python_timeout` procedure with match condition
+`ticket.source == "jira" && "triagelab_python_timeout" in ticket.tags`, enabled
+automatic starts, and used the condition builder to require the timeout tag for
+launch. Existing Python-version, expected/actual behavior, and `.py` attachment
+requirements remained intact. Both expressions passed the real server validator.
+
+Draft and saved-policy previews of live Jira ticket `ASHE2E-4` showed evidence
+ready. **Track and start when ready** launched run
+`b6f84360-2e5a-456c-bdde-4e56011cbc29` without a separate run approval. The UI
+showed **Started by policy**, and the canonical report records
+`started_by: ticket policy`, `unattended: true`, and the exact launch condition.
+
+Round one independently recorded `python3 app.py`, exit 0, stdout `timeout`.
+The investigator paused because the 17-byte synthetic fixture has no timeout
+logic. Supplied that limitation through the UI's resume form; round two completed
+with an inconclusive outcome. It recorded no new process evidence, and unsupported
+model citations/claims were downgraded by report validation. This verifies the
+policy-to-investigation flow, not reproduction of the stated timing defect.
+
+The report confirms Sandbox and Session deletion without cleanup errors.
+Independent authenticated controller reads confirmed `RUNTIME_STATE_DELETED`
+for the exact sandbox and `not_found` for the exact session. The policy remains
+enabled as requested. Screenshots, saved policy, report hash, and controller
+checks are under `triagelab-v1-live/chat-mcp/verification/cel-ui-live-20261111`
+on `bondren-build`.
+
+
+## Monaco workspace deployment — November 11, 2026
+
+Updated the running `triagelab-workspace` service on `bondren-build` to the
+previously tested `releases/cel-monaco-20261111` binary and UI. The gateway and
+controller services remained on their existing configuration. All listeners
+remain loopback-only. The prior release and launcher are retained for rollback.
+
+The deployed workspace now uses the existing Jira test-site connection.
+Automatic-start configuration is available to admins, while the saved default
+procedure keeps automatic starts disabled. Clarification sends and internal
+notes are disabled. A real browser signed into the deployed UI, exercised
+Monaco completions and server errors in the three policy editors, and previewed
+synthetic Jira ticket `ASHE2E-4`. It reached the approval-ready state without
+creating a tracked case or investigation. Draft edits were not published.
+Desktop/mobile checks passed with no runtime errors or external browser requests.
+
+Before rollout and final cleanup, authenticated MCP reads confirmed no active
+investigation or answer. After verification, the temporary account was removed and the
+workspace restarted. The original account records are identical and all 60
+preexisting report-directory files retain their hashes. The deployed service
+returned HTTP 200 after the final restart. Evidence is under
+`triagelab-v1-live/chat-mcp/verification/cel-monaco-deployment-20261111` on the VM.
+
+
+## Monaco CEL editor — November 11, 2026
+
+On `bondren-build`, built the local adaptation of Agentgateway v1.7.0's editor
+with pinned Monaco 0.57.0 and React wrapper 4.7.0. Two isolated, authenticated
+loopback workspaces used GitHub and Zendesk configurations without provider
+credentials. Their real TriageLab server supplied validation and procedure
+persistence; these checks did not start investigations or contact ticket providers.
+
+- Playwright Chromium checked source-specific property suggestions, accepting a
+  completion, builder/raw round trips, standard CEL function suggestions,
+  inline server errors, and clearing stale markers. A diagnostic after two
+  emoji landed on the correct identifier after Unicode-to-UTF-16 conversion.
+- Three simultaneous policy editors retained independent values. Invalid CEL
+  was rejected by the save API; valid match, evidence, and automatic-start
+  expressions saved and survived reload. Each workspace made nine successful
+  compiler-validation requests through the actual authenticated API.
+- Tab exited the editor, desktop and 390-pixel mobile views were inspected,
+  and there was no horizontal overflow. Monaco loaded only when raw CEL was
+  opened. Browser requests stayed on the workspace origin, with no runtime or
+  CSP errors. CSP permits Monaco's runtime styles, with scripts and workers
+  restricted to the same origin.
+- `make check build`, `make install-ui check-ui build-ui`, and
+  `make install-docs build-docs` passed on the VM. The dependency audit was
+  clean after overriding Monaco's DOMPurify pin to patched 3.4.17.
+  Vite reports the expected large lazy editor chunk (about 0.9 MB gzipped).
+
+Screenshots and the browser script are retained on the VM under
+`triagelab-v1-live/chat-mcp/verification/cel-monaco-20261111`. Temporary
+workspaces were stopped and their login credentials removed. The running
+workspace deployment was not replaced.
+
+
+
+## Live CEL automatic launch — November 11, 2026
+
+On `bondren-build`, a separate loopback workspace read the existing synthetic
+Jira issue `ASHE2E-4` using the real Jira connector. The workspace used the
+disposable `kind-triagelab` kagent/Substrate deployment and its configured
+`gpt-4.1` investigator. The test used private reports and accounts separate
+from the running workspace.
+
+- A condition requiring an absent label left the ticket ready for approval
+  with no run ID and no new investigation report.
+- After saving a condition matching the issue's existing label, refreshing
+  started an unattended run. The report recorded the matching CEL expression
+  and real sandbox process evidence.
+- Run `161a8051-a818-49b2-bb43-d15da40eb70b` stopped after an out-of-scope
+  sandbox access attempt and deleted its Sandbox and Session. A second
+  unattended run, `0bdaabd7-1703-40b3-82ca-0685073bfd9f`, paused for missing
+  information. Resuming with the fixture's limitations completed round two
+  with an inconclusive outcome and confirmed Sandbox and Session cleanup.
+- Playwright signed into the rebuilt workspace on the VM and exercised the
+  builder and raw CEL modes, syntax highlighting, line and column diagnostics,
+  preview against the live Jira issue, saving all three condition types, and
+  the mobile layout. Preview and save created no tracked case or run.
+
+## Live results chat and agentgateway deployment — November 11, 2026
+
+Deployed on `bondren-build` using the existing disposable `kind-triagelab`
+cluster, installed investigator, and `gpt-4.1` credential from
+`kagent/kagent-openai`. This verification used real model calls and real
+kagent/Substrate sandboxes. All builds, tests, and browser execution remained
+on the VM. [Access and service operations](build-vm-chat-mcp.md) document the
+installed release and private SSH-forwarded endpoints.
+
+- Agentgateway v1.7.0 serves separate authenticated model and HTTP MCP routes.
+  The workspace, gateway, and controller port-forward run as enabled user
+  systemd services. All four service ports bind only to loopback. Model,
+  frontend MCP, and backend MCP keys are distinct; the provider credential
+  is loaded from the existing Kubernetes Secret into the gateway environment.
+- Missing and incorrect MCP credentials returned 401. The frontend key was
+  rejected by the backend, confirming credential substitution at the gateway.
+  The backend viewer principal could read but could not start a run, even
+  with an injected admin-role header. The model route also rejected an
+  unauthenticated request.
+- All **10 MCP tools** succeeded through the actual gateway. The primary
+  investigation (`65bd6ccb-fe01-4e4d-84bf-cd5a6c3299f3`) reproduced the
+  fixture failure and correction in three independently collected experiments.
+  Report pagination used four pages and process evidence used six stream pages.
+  A real chat answer included two validated evidence citations, and the
+  canonical report's SHA-256 remained unchanged.
+- The browser signed into the actual workspace and submitted exactly one
+  question. The real answer cited a saved process; evidence review, keyboard
+  dismissal, reload persistence, deep links, and mobile layout passed. JSON and
+  Markdown reports remained byte-identical. A viewer could read the answer,
+  had no composer, and received 403 for a direct submission. No browser
+  runtime errors occurred. Desktop, mobile, and evidence screenshots were
+  inspected.
+- A second investigation (`f31b98c8-d23b-4f5c-a27c-735d0acfc88a`) paused and
+  resumed into round two using the same Sandbox and Session. Its round-one
+  archive remained byte-identical; it completed naturally with four processes.
+  A stale-round polling race in the test harness missed a second pause window;
+  the harness was corrected without replaying an accepted mutation.
+- A third, narrowly scoped case (`3816b5d7-6af3-46cd-a140-5a6f57c38c95`)
+  paused before the first process and successfully exercised explicit close
+  using fresh round/settings bindings. Close preserved the case, analysis,
+  evidence, and round archive. All three cases recorded successful Sandbox
+  and Session deletion without cleanup errors.
+- Independent controller reads confirmed all three exact Sandbox IDs in
+  `RUNTIME_STATE_DELETED` and all three Session IDs with explicit `not_found`
+  error codes. Authentication or transport failures were not counted as
+  cleanup success.
+- Removed both temporary browser accounts while the workspace was stopped,
+  then restarted it. The original account records were unchanged, all 39
+  saved report/chat files retained their hashes, and MCP read the browser's
+  saved answer through the gateway after restart. All three services were
+  active and enabled, with user lingering enabled. The temporary password
+  file was removed. Checked workspace/gateway journal records contained
+  neither configured credentials nor saved chat content; the provider key
+  was absent from the workspace process environment.
+
+The first live chat request exposed OpenAI rejecting `tool_choice` when no
+`tools` are supplied. The request now omits both fields, with a regression test;
+returned tool calls remain rejected. The failed question was preserved, and an
+explicit new question succeeded after deployment of the fix. No uncertain or
+accepted mutation was automatically retried.
+
+Remote `make fmt build check-ui build-ui docs-check` passed, followed by a full
+`make check`. After the provider compatibility fix, the result-chat package
+tests, rebuild, and another full `make check` passed. The full checks include
+gofmt, `go vet`, Go tests, and reference drift checks, using Go 1.27.3,
+Node 24.18.1, and `GOFLAGS=-trimpath`.
+
+The private runtime verification records are under
+`/home/will_bondren_ai/triagelab-v1-live/chat-mcp/verification` on the VM.
+The deployment uses machine credentials over SSH; a public HTTPS domain and
+real OAuth provider were not configured or tested. MCP actions are attributed
+to the shared gateway principal. The workspace's kagent invocation token lasts
+24 hours and is refreshed by an idle workspace restart; chat's model credential
+is independent.
+
+## Results chat and remote HTTP MCP fixture checks — November 11, 2026
+
+Implemented and cross-reviewed with three subagents. All builds, dependency
+installation, tests, gateway execution, and browser execution ran on
+`bondren-build`, using Go 1.27.3 and Node 24.18.1 in the isolated task checkout.
+
+- `make fmt docs-generate check docs-check` passed, including all Go tests,
+  `go vet`, and generated-reference drift checks. Result-chat tests cover
+  bounded report/history projection, round-specific citation validation,
+  no-tools requests, refusal/tool-call/partial/oversized response rejection,
+  credential redaction, cancellation, and transport failures without retries.
+- Webserver tests cover durable questions before model calls, unchanged
+  canonical reports, private atomic chat storage, cross-process locks,
+  restart/shutdown interruption, corrupt journals, symlink refusal, role and
+  terminal-run admission, and redaction of old conversation content under
+  newly configured credentials in both model input and HTTP responses.
+- MCP tests use the real Go SDK transport and schemas, with fixture workflows:
+  separate bearer authentication, per-call role isolation, rejected extra
+  fields/unsafe uploads, asynchronous starts and busy admission, stale lifecycle
+  bindings and ticket continuation policy, bounded chat receipts/pages, UTF-8
+  and snapshot-bound report pages, and rejection of ambiguous round/process
+  attribution. Focused race checks passed for result-chat and MCP/chat server
+  paths; the final `go test -race ./internal/webserver -run 'Test(MCP|Chat)'
+  -count=1` passed after the last hardening changes.
+- `make check-ui build-ui` passed. Headless Chromium passed 13 distinct
+  synthetic-API scenarios with no page errors: submission/polling, literal
+  model text, historical citations and keyboard evidence review, role/lifecycle
+  gating, failed/interrupted answers, uncertain submission reconciliation without
+  replay, byte bounds, read errors, 401/403 cache clearing, mobile overflow,
+  interrupted/timed-out runs, and resetting chat state between investigations.
+  Desktop/mobile screenshots were inspected. The task preview was stopped.
+- `make build-docs` passed with every internal link valid. Existing optional
+  i18n and 404 content warnings remain.
+- A real **agentgateway v1.7.0** binary, SHA-256
+  `1b2fc01a2de29ca113bbb6258b5cae7b1eb3c724071c09d687a449132f2f42f8`,
+  passed configuration validation and 20 end-to-end assertions against a
+  freshly built TriageLab server plus disposable RSA JWT/JWKS/discovery and
+  saved-report fixtures. Missing, expired, wrong-issuer, and wrong-audience
+  tokens were rejected. An unapproved subject saw no tools and could not call
+  them, including when reusing an approved subject's gateway session. Backend
+  requests rejected both absent credentials and frontend JWTs; approved
+  gateway requests succeeded using the separate backend principal. Listing,
+  report pagination, historical evidence, and OAuth metadata all worked.
+  The gateway negotiated `2025-11-25`, used SSE and a session ID externally,
+  and connected to TriageLab's stateless JSON backend. Canonical report bytes
+  were unchanged. All task listeners were loopback-only and stopped afterward.
+
+The final full check also found a startup panic in concurrently added Jira
+source: a regular-expression repetition exceeded Go's maximum. Splitting that
+range into equivalent permitted repetitions preserved its accepted paths and
+removed the panic.
+
+These earlier checks used fixtures, not a live model or a real identity-provider
+browser login. The live model and private deployment checks are recorded above;
+public HTTPS and real OAuth verification remain open. No investigation sandbox,
+cluster, production deployment, or public endpoint was changed during this
+fixture phase. The gateway example's shared backend key records the gateway
+principal, not individual OAuth subjects.
+
+## Investigation workspace and evidence review — November 11, 2026
+
+Verified in an isolated source checkout on `bondren-build` using Go 1.27.3,
+Node 24.18.1, and `GOFLAGS=-trimpath`. No builds, tests, containers, or browser
+execution ran on the local laptop.
+
+- `make fmt check docs-check` passed: formatting, `go vet ./...`, all Go tests,
+  and generated-reference drift checks. New behavior tests cover queue state
+  projection and privacy, archived experiment counts, incomplete or invented
+  evidence references, contradiction references, model assessment separation,
+  redaction, and retained-session answers from the older output contract.
+- `make check-ui build-ui` and `make build-docs` passed. All documentation
+  internal links validated. The docs build still reports its existing missing
+  optional i18n collection and 404 content warnings.
+- The final output schema passed the unmodified `CheckStrict` function taken
+  from the pinned kagent commit `048e1016d50b209dba01065d0d10dfd80b78fb41`.
+  Rendered default and custom managed-agent schemas also have regression tests
+  for required properties and closed objects. New native output fields remain
+  required; local validation fills only absent explanatory fields in answers
+  from older retained sessions.
+- Headless Chromium exercised the Vite UI on loopback with synthetic intercepted
+  API responses. Checks passed for the brief, evidence review, literal imported
+  text, modal keyboard focus and Escape, incomplete-output warnings, historical
+  round links after reload, an inspector open while polling advances the round,
+  current-round resume review, ticket-note preview, 390px mobile layout, queue
+  refresh failure preserving confirmed rows, denial clearing them, unconfirmed
+  retention without a lifecycle record, and the historical saved example.
+  No mutation requests were sent by this browser check. Desktop and mobile
+  screenshots were visually inspected.
+
+These checks do not prove a new live model or sandbox run. The installed
+investigator and cluster were not changed. New experiment assessments require
+an updated investigator definition; earlier retained sessions can omit them.
+
+## kagent 1.0.0 upgrade — November 10, 2026
+
+Executed remotely on `bondren-build` after kagent v1.0.0 was released. The fork
+was built and tested with Go 1.27.3. No builds, tests, containers, or cluster
+work ran on the local laptop.
+The earlier `triagelab` cluster and its database were deleted rather than
+upgraded. A new Kind cluster was installed with `scripts/install-dev.sh`: kagent
+CLI and chart 1.0.0, Substrate 1.0.0 with gVisor, and controller `048e1016`
+built from the rebased fork on the released `controller:1.0.0` image.
+
+- Fork commit `048e1016` is v1.0.0 plus the retention patch. `go build ./...`,
+  `go vet ./core/... ./api/...`, `go test -race` with envtest across 47 packages
+  covering the set upstream used to validate its v1.0.0 backports, `buf` lint,
+  breaking, and generation checks, and `make -C go lint` passed. See
+  [bondrenai/kagent#1](https://github.com/bondrenai/kagent/pull/1).
+- The installed database applied core migrations 1 through 4, including the
+  release's `000003_session_revert_operation` and the fork's renumbered
+  `000004_retain_suspended_sandboxes`. The SandboxTemplate and investigator
+  Agent became Ready.
+- The fork's `TestSandboxRetentionWhileSuspended` **passed in 96.23 seconds**:
+  an ordinary suspended Sandbox expired, an opted-in one survived its original
+  TTL, and restoration preserved its ID and file bytes with one fresh bounded
+  TTL that a duplicate resume did not renew.
+- `TestLiveInvestigation` **passed in 32.59 seconds** against the real `gpt-4.1`
+  model with outcome `reproduced`: four experiments (exit 1, 0, 1, 0) including
+  an observed timeout failure and a corrected run returning HTTP 200, complete
+  output collection, four evidence references for the root cause, and deletion
+  of the Sandbox and Session. The report carries one warning: a hypothesis
+  lacking complete evidence was marked untested.
+- `TestLiveInvestigationPauseResume` **passed in 23.31 seconds** against the same
+  model. Run, resume, and close executed in separate OS processes; resume and
+  close used a freshly issued caller token. Both rounds kept the same Sandbox
+  and Session with a new task per round, and each pause confirmed
+  `SUSPENDED/NONE` with the retention flag. Round 1 recorded the Python failure
+  (exit 1); round 2 recorded the failure and a corrected run (exit 0) with fresh
+  process IDs. Every experiment's output collection completed. Substrate logged
+  the Session Actor checkpointing at 18:24:47.804 UTC, restoring at 18:24:50.508
+  UTC, and checkpointing again at 18:24:56.980 UTC under one Actor UID. Close
+  deleted both resources.
+- `make check` and `make docs-check` passed with the updated pins under Go
+  1.27.3 and under the VM's default go1.26.10, which built the two live
+  TriageLab tests. `make build-docs` passed with all internal links valid.
+
+Evidence: the live investigation [JSON](verification/agent-demo-v1.0.0.json) and
+[Markdown](verification/agent-demo-v1.0.0.md) reports, and the pause/resume
+[JSON](verification/pause-resume-v1.0.0.json) and
+[Markdown](verification/pause-resume-v1.0.0.md) reports. All four were checked
+for credential values before saving. The provider credential was carried from
+the deleted cluster's Secret through a temporary private file on the VM,
+deleted afterward, without logging its value.
+
+Not re-run on v1.0.0: the sandbox smoke checks for DNS/HTTP egress denial and
+process termination, the microVM backend, browser interaction, and live ticket
+flows. The Substrate distribution and kagent's egress policy source are
+unchanged from the rc3 check. These checks do not represent weeks of elapsed
+uptime. The sections below describe runs on rc3.
 ## OAuth API clients — November 10, 2026
 
 Executed remotely on `bondren-build` with Go 1.27.3; no builds, tests, or

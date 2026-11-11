@@ -1,4 +1,4 @@
-export type TicketSource = "zendesk" | "github" | "linear";
+export type TicketSource = "zendesk" | "github" | "linear" | "bondren" | "jira";
 
 export interface TicketCase {
   ticket_id: string;
@@ -17,6 +17,8 @@ export interface TicketCase {
   plan_expires: string;
   checked_at: string;
   run_id?: string;
+  auto_run?: boolean;
+  unattended?: boolean;
   paused: boolean;
   revision: string;
   procedure_revision?: string;
@@ -37,6 +39,7 @@ export interface EvidenceRule {
   kind: "field" | "attachment";
   match: string;
   required: boolean;
+  required_when?: string;
   pattern?: string;
   question?: string;
 }
@@ -64,6 +67,9 @@ export interface TicketSettings {
     field_value?: string;
     auto_questions: boolean;
     max_questions: number;
+    auto_runs?: boolean;
+    auto_run_condition?: string;
+    match_condition?: string;
   };
   internal_notes: boolean;
   investigation_comments: boolean;
@@ -72,6 +78,7 @@ export interface TicketSettings {
   timeout_seconds: number;
   template: string;
   clarification_limit: number;
+  auto_runs_allowed: boolean;
 }
 
 export type TicketWorkspace =

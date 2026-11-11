@@ -3,7 +3,7 @@
 TriageLab can read issues from one team in one Linear workspace and prepare
 them for the existing Python 3.12 timeout investigation procedure. The
 workspace provides preview, tracking, reviewed clarification comments,
-evidence review, and approval before a sandbox run. Completed investigations
+and an evidence checklist. Completed investigations
 can also publish a reviewed summary to the linked issue. Linear remains the
 issue and conversation record.
 
@@ -45,9 +45,9 @@ bin/triagelab serve --tickets linear.local.json --output reports/linear
 ```
 
 Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`; keep the server on
-loopback. Configure kagent and its invocation credential separately before
-approving an investigation. Importing or tracking an issue does not call a
-model or create a sandbox.
+loopback. Configure kagent and its invocation credential before starting
+investigations. Preview only reads the issue. Tracking a ready issue can
+start a run when the procedure enables automatic launch.
 
 Use a separate report directory for each team and for Zendesk or GitHub
 sources. Preserve its private `.tickets` directory across restarts: it stores
@@ -56,7 +56,7 @@ reservations and receipts, and consumed run attempts. Changing the workspace
 or team requires a separate directory. Restart the server after changing
 configuration or replacing its environment key.
 
-## Prepare and approve evidence
+## Prepare evidence
 
 **Edit procedures** in Ticket cases lets you set up a procedure for each
 product label with its own evidence requirements, clarification, agent, and
@@ -112,7 +112,7 @@ never count as creator replies, including when the issue creator and the
 account behind the key are the same. If a clarification remains unanswered
 for seven days, the next check routes the issue for review.
 
-Set `poll_seconds` to 60–3600 to check one waiting issue per interval, in
+Set `poll_seconds` to 60–3600 to check one eligible tracked issue per interval, in
 turn. Set it to `0` to refresh manually. **Refresh and apply policy** can
 also check a tracked issue immediately; **Pause tracking** stops its automatic
 work. Tracking does not enumerate a team inbox. With
@@ -129,7 +129,10 @@ comments. Linear does not support conditional writes for comments, so another
 edit can still occur between that check and the send. This is not an atomic
 compare-and-send guarantee like Zendesk's safe update.
 
-Once evidence is ready, choose **Approve and start investigation**. The plan
+A procedure can start automatically when the evidence is ready.
+[Automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, choose **Approve and start investigation**. The plan
 binds approval to the selected evidence and run settings and expires after
 15 minutes. TriageLab rereads the issue before launch; changed evidence
 requires fresh review. Each tracked issue can consume one investigation

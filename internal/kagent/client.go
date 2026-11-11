@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	Version            = "v1.0.0-rc3+bondrenai.9bf1a20d"
-	ControllerRevision = "9bf1a20db0a165c477e893584c1904e58f361cd2"
+	Version            = "v1.0.0+bondrenai.048e1016"
+	ControllerRevision = "048e1016d50b209dba01065d0d10dfd80b78fb41"
 	MCPVersion         = "2026-07-28"
 	tasksExtension     = "io.modelcontextprotocol/tasks"
 	maxResponseBytes   = 12 << 20
@@ -419,7 +419,7 @@ func nonzero(value any) bool {
 	return !ok || number != 0
 }
 
-// CancelTask uses the rc3 MCP task extension reference. The caller must observe
+// CancelTask uses the kagent 1.0.0 MCP task extension reference. The caller must observe
 // cancellation before declaring the task stopped; acknowledgement alone is not exit.
 func (c *Client) CancelTask(ctx context.Context, session, task string) error {
 	if session == "" || task == "" {

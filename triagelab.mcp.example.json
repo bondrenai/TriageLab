@@ -1,0 +1,10 @@
+{
+  "principals": [
+    {
+      "name": "gateway",
+      "role": "user",
+      "token_env": "TRIAGELAB_MCP_TOKEN"
+    }
+  ],
+  "allowed_origins": []
+}

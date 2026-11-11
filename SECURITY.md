@@ -30,6 +30,21 @@ the backstop if the CLI crashes, loses connectivity, or is killed without cleanu
 
 ## Identity and credentials
 
+Optional results chat uses a separately configured, tool-free completion client.
+It receives bounded saved report excerpts and conversation text, not a live
+investigator session. Model answers remain untrusted interpretations in a
+separate private journal. Validated evidence references establish attribution,
+not correctness; redaction and prompt-injection resistance remain best effort.
+
+The optional `/mcp` endpoint uses separate named bearer principals with viewer
+or user permissions. It never trusts browser cookies or forwarded identity/role
+headers. It remains on loopback; remote OAuth/TLS belongs at an explicitly
+configured gateway. A gateway backend credential identifies a shared workspace
+principal, not the original OAuth user, and all principals share report access.
+Gateway credentials grant no browser API session or account administration.
+The gateway must restrict users, audiences, origins and rates for its deployment.
+See [results chat and MCP](docs-site/src/content/docs/guides/chat-mcp.md).
+
 The example installation deliberately uses kagent's development authentication mode.
 Keep it private behind loopback port forwarding or an SSH tunnel. A development
 `user_id` is an ownership partition, not an authentication credential; never expose
@@ -48,7 +63,7 @@ SandboxTemplate environment variables. TriageLab reads its API token from a name
 environment variable and does not place it in the reproduction environment. The
 trusted sandbox MCP binding forwards the verified invocation token to preserve
 ownership. Keep global runtime token propagation disabled before attaching MCP
-servers. In rc3 it forwards the caller credential and identity to all MCP
+servers. In kagent 1.0.0 it forwards the caller credential and identity to all MCP
 servers. Custom runtime images can receive the invocation credential and must be
 trusted. Review model and server references for explicit caller passthrough.
 See [custom agent deployment](docs/agents.md#deploy-and-use).
@@ -186,9 +201,10 @@ unauthenticated download path with a bounded body and one narrowly allowed
 GitHub attachment redirect. Private attachments and arbitrary linked downloads
 are unsupported. Facts and reproduction files come only from the issue author.
 Issue and comment contents, attachment references and bytes, policy, and run
-settings bind the investigation approval and are checked again before launch.
-Imported data remains untrusted, and approval does not establish that the
-reproduction is safe. See the [GitHub setup and limits](docs/github-issues.md).
+settings bind the launch plan. Manual approval rechecks that plan, and an
+automatic launch uses a fresh assessment and confirms the source before
+dispatch. Imported data remains untrusted and runs inside the configured
+sandbox. See the [GitHub setup and limits](docs/github-issues.md).
 
 ## Telemetry export
 
