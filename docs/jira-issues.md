@@ -1,8 +1,10 @@
 # Jira issues
 
-TriageLab reads issues from one Jira Cloud site and prepares them for the
-existing Python 3.12 timeout investigation procedure: preview, tracking,
-reviewed clarification comments, and an evidence checklist. Completed investigations can publish a reviewed internal note to
+TriageLab reads issues from one Jira Cloud site and prepares them for
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification comments, and an evidence
+checklist. Completed investigations can publish a reviewed internal note to
 the linked issue. Jira remains the issue and conversation record.
 
 Jira issues are looked up by an issue key (`PROJ-123`), a pasted issue URL,
@@ -20,8 +22,8 @@ Build the CLI and browser assets on your development VM as described in
 [UI setup](ui.md). Copy [jira.example.json](../jira.example.json) to
 `jira.local.json`, set `origin` to your site's `https://your-site.atlassian.net`
 origin, set `email` to the Atlassian account that owns the API token, and set
-`policy.tag` to the Jira label that selects open issues for this procedure.
-One workspace has one source and one site.
+`policy.tag` to the Jira label that selects open issues for the built-in
+procedure. One workspace has one source and one site.
 
 ```json
 {

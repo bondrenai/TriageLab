@@ -342,7 +342,8 @@ needs, the clarification to send, and the agent and sandbox to use.
 TriageLab binds each launch to the exact evidence and run settings it checked.
 Launches wait for approval unless you
 [enable automatic investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations)
-for a procedure.
+for a procedure. Every source starts with the built-in Python 3.12 timeout
+procedure; admins can add others under **Ticket cases → Edit procedures**.
 
 ## Deploy with Helm
 
