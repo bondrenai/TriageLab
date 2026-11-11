@@ -15,6 +15,9 @@ shape, update all of these files.
 
 ## Run on a development VM
 
+For the configured `bondren-build` workspace with results chat and agentgateway,
+see [build VM access and operations](build-vm-chat-mcp.md).
+
 Use Node.js 24 and Go 1.27.3. Install dependencies and build on the VM:
 
 ```sh
@@ -67,6 +70,36 @@ investigation at a time. Closing a tab leaves the investigation running; use
 Cancel to stop it. Server shutdown also cancels active work and allows bounded
 cleanup. After an abrupt crash, inspect the report and use the CLI cleanup
 command if resources remain. A recorded outcome does not override cleanup errors.
+
+## Reading and continuing an investigation
+
+The investigation brief brings together the current agent analysis, reported
+observations, blocking questions, and next actions. Observations and experiment
+assessments remain model interpretations. The experiment register contains the
+commands and outputs collected independently from the sandbox.
+
+Open an evidence reference to review the claim beside its recorded command,
+exit status, output, and collection warnings. Reproduction references, hypothesis
+references, and contradicting references all point to the selected round's saved
+process evidence. Missing or incomplete output never becomes evidence of success.
+Older reports can be read without the newer experiment assessments.
+
+Execution state, reproduction outcome, and resource state are shown separately.
+A paused investigation can already have reproduced a symptom, while its sandbox
+and session remain retained. Answer blocking questions through Resume, review
+the new information and limits, and approve the continuation. Closing releases
+execution resources and keeps saved reports.
+
+Round history records added information, experiments, analysis, and outstanding
+questions without rewriting earlier rounds. When viewing a historical round,
+lifecycle controls still operate on the latest investigation. Downloads include
+all saved rounds; they do not include the private operational lifecycle record.
+
+The queue separates active work, investigations needing attention, and recent
+reports. A transient refresh failure keeps the last confirmed rows visible with
+an explanation; an access denial hides the protected rows. Ticket handoff keeps
+the destination, audience, reviewed text, and confirmed or uncertain delivery
+visible. Reviewing a note does not confirm its conclusions.
 
 ## Sign-in and roles
 
@@ -140,9 +173,45 @@ The public guide is [API clients (OAuth)](https://bondrenai.github.io/TriageLab/
 
 ## Data flow
 
+Results chat is configured separately with `serve --chat`; it uses a tool-free
+completion endpoint to discuss saved evidence after a run finishes. Questions,
+answers, and interrupted/error state are stored in private `chat.json`, never
+in the canonical report. Viewers can read; users and admins can ask. The report
+page preserves literal text, saved questions after failures, and citations to
+the exact evidence round. Questions are not automatically retried.
+
+`serve --mcp` adds a bearer-authenticated Streamable HTTP endpoint on the same
+loopback listener. Its machine credentials do not grant browser sessions. An
+optional agentgateway OAuth edge supplies a configured viewer/user principal;
+TriageLab still authorizes every tool and reuses the existing investigation and
+ticket-policy admission paths. Setup, bounds, and deployment instructions are in
+the [chat and MCP guide](../docs-site/src/content/docs/guides/chat-mcp.md).
+
 The browser uses an API transport module, typed domain functions, and query hooks
 before presentation components. Report text renders as text, including command
 output; it never becomes executable HTML. The Go service normalizes uploads with
 the existing ingestion package and invokes the existing investigator. JSON stays
 the canonical report. No database, queue service, browser model SDK, or alternate
 execution backend is introduced.
+
+## CEL policy editor
+
+Raw policy fields lazy-load a local adaptation of Agentgateway v1.7.0's Monaco
+editor. The condition builder continues to work without loading Monaco.
+`web/src/lib/cel-monaco.ts` provides language support; `ticket-cel-schema.ts`
+mirrors the normalized ticket attributes in `internal/ticketflow/cel.go`.
+Each model carries its source so multiple editors do not share connector state.
+
+The existing admin-only validator supplies debounced compiler diagnostics.
+Obsolete requests are aborted, stale markers are cleared, and CEL code-point
+locations are converted to Monaco's UTF-16 columns. Save-time checks remain
+server-side. Compilation cannot prove that a dynamic map key exists on a ticket;
+use ticket preview to check actual values and missing custom fields.
+
+Monaco 0.57.0 and the React wrapper 4.7.0 are pinned. Monaco's DOMPurify
+dependency is overridden to patched 3.4.17. Only editor features are bundled,
+without gateway extensions or unrelated language packs. The editor and worker
+are served from the workspace, with no CDN requests. Monaco needs runtime CSS,
+so CSP permits inline styles while scripts and workers remain restricted to
+`'self'` without `unsafe-eval`. Attribution and licenses ship with the UI under
+`/licenses/`; see [third-party notices](../web/THIRD_PARTY_NOTICES.md).

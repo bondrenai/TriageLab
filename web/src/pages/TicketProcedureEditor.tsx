@@ -1,21 +1,23 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { TicketConditionEditor } from "../components/ticket-condition-editor";
 import { Field } from "../components/resource-editor";
 import { Button, ErrorPlate, Panel } from "../components/ui";
 import { useDeploymentStatus } from "../hooks/use-agents";
 import { useSettings } from "../hooks/use-investigations";
 import { usePreviewProcedure, useSaveProcedure } from "../hooks/use-tickets";
-import { orderedProcedures } from "../lib/tickets";
+import { orderedProcedures, ticketReference } from "../lib/tickets";
 import type { EvidenceRule, ProcedureVersion, TicketCase, TicketProcedure, TicketSource } from "../lib/types/ticket";
 
 const priorities = ["low", "normal", "high", "urgent"];
 
-export function TicketProcedureEditor({ version, source, connected, template, clarificationLimit, renderPreview }: {
+export function TicketProcedureEditor({ version, source, connected, template, clarificationLimit, autoRunsAllowed, renderPreview }: {
   version: ProcedureVersion;
   source: TicketSource;
   connected: boolean;
   template: string;
   clarificationLimit: number;
+  autoRunsAllowed: boolean;
   renderPreview: (ticket: TicketCase, procedure: TicketProcedure) => ReactNode;
 }) {
   const [procedures, setProcedures] = useState(() => orderedProcedures(version));
@@ -39,8 +41,10 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
   const busy = save.isPending || preview.isPending;
   const stale = version.revision !== revision;
   const zendesk = source === "zendesk";
+  const bondren = source === "bondren";
+  const jira = source === "jira";
   const kind = zendesk ? "ticket" : "issue";
-  const tagLabel = source === "github" ? "GitHub label" : source === "linear" ? "Linear label" : "Zendesk tag";
+  const tagLabel = source === "github" ? "GitHub label" : source === "linear" ? "Linear label" : source === "bondren" ? "Bondren tag" : source === "jira" ? "Jira label" : "Zendesk tag";
 
   function updateProcedures(next: TicketProcedure[], index = selected) {
     setProcedures(next);
@@ -95,7 +99,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
 
   function previewDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    preview.mutate({ id: ticketID, procedure: draft });
+    preview.mutate({ id: ticketReference(source, ticketID), procedure: draft });
   }
 
   function agentOptions(current: string) {
@@ -130,7 +134,7 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
         </fieldset>
         <fieldset className="agent-fields agent-inset" disabled={busy}>
           <legend className="field-label">Match cases</legend>
-          <Field label={`Required ${tagLabel}`}>
+          <Field label={draft.policy.match_condition ? "Procedure label" : `Required ${tagLabel}`}>
             <input className="field" required maxLength={100} value={draft.policy.tag} onChange={e => updatePolicy({ tag: e.target.value })} />
           </Field>
           {zendesk && <>
@@ -159,10 +163,15 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
           </>}
         </fieldset>
 
+        <TicketConditionEditor key={`match-${selected}`} source={source} label="Procedure match condition"
+          value={draft.policy.match_condition ?? ""} emptyHint="An empty condition uses the procedure’s tag to match tickets."
+          hint="A CEL match condition takes the place of the tag check. Use tags in the condition if the procedure still needs them."
+          onChange={value => updatePolicy({ match_condition: value || undefined })} />
+
         <fieldset className="agent-fields agent-inset" disabled={busy}>
           <legend className="field-label">Evidence and clarification</legend>
-          <p className="field-help">Choose what to collect from the {zendesk ? "requester" : "issue author"}. Only required items block approval or add a question to the clarification.</p>
-          {draft.evidence.length === 0 && <p>No evidence rules. Cases that match can proceed to approval without a checklist.</p>}
+          <p className="field-help">Choose what to collect from the {zendesk ? "requester" : "issue author"}. Missing required items block a run and add a question to the clarification.</p>
+          {draft.evidence.length === 0 && <p>Matching cases can proceed without an evidence checklist.</p>}
           {draft.evidence.map((rule, index) => <fieldset className="agent-fields agent-inset" key={index}>
             <legend className="field-label">{rule.kind === "field" ? "Text field" : "Attachment"} {index + 1}</legend>
             {rule.kind === "field" ? <>
@@ -185,13 +194,19 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
               <p className="field-help">Supported file types: .py, .json, .txt, and .log.</p>
             </>}
             <label className="agent-tool-option">
-              <input type="checkbox" checked={rule.required} onChange={e => updateEvidence(index, { required: e.target.checked })} />
-              Required for approval
+              <input type="checkbox" checked={rule.required} onChange={e => updateEvidence(index, { required: e.target.checked, required_when: e.target.checked ? rule.required_when : undefined })} />
+              Required for investigation
             </label>
             {rule.required && <Field label="Question when missing">
               <input className="field" required maxLength={500} value={rule.question ?? ""}
                 onChange={e => updateEvidence(index, { question: e.target.value })} />
             </Field>}
+            {rule.required && <details>
+              <summary>Conditional requirement</summary>
+              <TicketConditionEditor source={source} label="Required when"
+                value={rule.required_when ?? ""} emptyHint="An empty condition makes this item required for every matching ticket."
+                onChange={value => updateEvidence(index, { required_when: value || undefined })} />
+            </details>}
             <div><Button type="button" onClick={() => update({ ...draft, evidence: draft.evidence.filter((_, i) => i !== index) })}>Remove evidence item</Button></div>
           </fieldset>)}
           <div className="button-row">
@@ -218,6 +233,15 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
 
         <fieldset className="agent-fields agent-inset" disabled={busy}>
           <legend className="field-label">Routing and run target</legend>
+          {autoRunsAllowed && <label className="agent-tool-option">
+            <input type="checkbox" checked={Boolean(draft.policy.auto_runs)}
+              onChange={e => updatePolicy({ auto_runs: e.target.checked })} />
+            Start automatically when evidence is ready
+          </label>}
+          {autoRunsAllowed && draft.policy.auto_runs && <TicketConditionEditor key={`start-${selected}`}
+            source={source} label="Automatic start condition" value={draft.policy.auto_run_condition ?? ""}
+            emptyHint="An empty condition allows automatic starts when evidence is ready."
+            onChange={value => updatePolicy({ auto_run_condition: value || undefined })} />}
           <div className="agent-field-grid">
             <Field label="Default agent">
               <select className="field" value={draft.default_agent} onChange={e => update({ ...draft, default_agent: e.target.value })}>
@@ -264,8 +288,8 @@ export function TicketProcedureEditor({ version, source, connected, template, cl
         </div>
       </form>
       <form className="ticket-form" onSubmit={previewDraft}>
-        <Field label={`Preview ${kind} number`}>
-          <input className="field" inputMode="numeric" pattern="[1-9][0-9]{0,18}" required value={ticketID}
+        <Field label={jira ? "Preview Jira issue key, URL, or id" : bondren ? "Preview Bondren issue ID or number" : `Preview ${kind} number`}>
+          <input className="field" inputMode={bondren || jira ? undefined : "numeric"} pattern={bondren || jira ? undefined : "[1-9][0-9]{0,18}"} maxLength={bondren || jira ? 512 : 19} required value={ticketID}
             disabled={busy || !connected} onChange={e => { setTicketID(e.target.value); preview.reset(); }} />
         </Field>
         <Button type="submit" disabled={busy || !connected}>{preview.isPending ? "Checking…" : `Preview draft on ${kind}`}</Button>

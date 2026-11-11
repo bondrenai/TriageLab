@@ -61,9 +61,9 @@ blocking questions cleans up automatically.
 ## Deployment and storage
 
 Every controller must run the pinned
-[bondrenai/kagent retention patch](https://github.com/bondrenai/kagent/commit/9bf1a20db0a165c477e893584c1904e58f361cd2).
+[bondrenai/kagent retention patch](https://github.com/bondrenai/kagent/commit/048e1016d50b209dba01065d0d10dfd80b78fb41).
 The dedicated deployment must set `config.sessions.idleTtl: 0s`; the development
-installer configures both. Ordinary rc3 controllers do not provide this retention
+installer configures both. Released 1.0.0 controllers do not provide this retention
 guarantee, and TriageLab rejects a sandbox without the retention flag.
 
 Keep the entire private `reports/<case-id>/` directory, including `lifecycle.json`,

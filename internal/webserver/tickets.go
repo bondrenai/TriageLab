@@ -23,6 +23,9 @@ func (s *Server) EnableTickets(config ticketflow.Config) error {
 		return err
 	}
 	flow.ResolveTarget = s.resolveTicketTarget
+	if config.Policy.AutoRuns {
+		flow.AutoLaunch = s.launchTicketAs("ticket policy")
+	}
 	s.tickets = flow
 	return nil
 }
@@ -92,6 +95,16 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 		writeTicketResult(w, procedure, err)
 		return
 	}
+	if r.URL.Path == "/api/tickets/procedure/validate-condition" {
+		var input struct {
+			Expression string `json:"expression"`
+		}
+		if !decodeTicketInput(w, r, &input, 32<<10) {
+			return
+		}
+		jsonResponse(w, http.StatusOK, flow.ValidateTicketCondition(input.Expression))
+		return
+	}
 	if r.URL.Path == "/api/tickets/oauth/start" {
 		if flow.Provider() != "zendesk" {
 			fail(w, 409, "The configured source does not use Zendesk OAuth")
@@ -107,12 +120,22 @@ func (s *Server) ticketRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[0] {
-		fail(w, 400, "Use a positive numeric ticket ID or issue number")
-		return
+		// Bondren issues can also be referenced by the issue ID from their URL
+		// and Jira issues by their key, URL, or numeric id. The flow validates
+		// the reference before contacting the source and reports the numeric
+		// case key.
+		if flow.Provider() != "bondren" && flow.Provider() != "jira" {
+			fail(w, 400, "Use a positive numeric ticket ID or issue number")
+			return
+		}
+		if id, err = flow.ResolveTicket(r.Context(), parts[0]); err != nil {
+			writeTicketResult(w, nil, err)
+			return
+		}
 	}
 	if parts[1] == "procedure-preview" {
 		var input ticketflow.Procedure
-		if !decodeTicketInput(w, r, &input, 16<<10) {
+		if !decodeTicketInput(w, r, &input, ticketflow.MaxProcedureSetBytes) {
 			return
 		}
 		c, err := flow.PreviewProcedure(r.Context(), id, input)
@@ -178,8 +201,10 @@ func writeTicketResult(w http.ResponseWriter, value any, err error) {
 	switch {
 	case err == nil:
 		jsonResponse(w, 200, value)
+	case errors.Is(err, ticketflow.ErrReference), errors.Is(err, ticketflow.ErrJiraReference):
+		fail(w, 400, err.Error())
 	case errors.Is(err, ticketflow.ErrInvalidProcedure):
-		fail(w, 400, "Check the match tags, evidence rules, clarification limits, and routing rules. Match tags must be unique and each required evidence item needs a question.")
+		fail(w, 400, "Check the match tags, evidence rules, clarification limits, and routing rules. Match tags must be unique and each required evidence item needs a question. Ticket conditions must be valid CEL expressions returning a boolean.")
 	case errors.Is(err, ticketflow.ErrChanged), errors.Is(err, ticketflow.ErrBusy), errors.Is(err, ticketflow.ErrBlocked):
 		fail(w, 409, err.Error())
 	case errors.Is(err, ticketflow.ErrOAuthRequired):

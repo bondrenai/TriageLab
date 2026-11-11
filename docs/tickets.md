@@ -2,7 +2,7 @@
 
 The first ticket procedure handles a small, dependency-free Python 3.12 timeout
 reproduction. It checks what the requester has already provided, drafts or
-sends a clarification under policy, and hands approved evidence to the existing
+sends a clarification under policy, and prepares evidence for the existing
 kagent investigator. The helpdesk remains the ticket and conversation record.
 TriageLab keeps preparation decisions and the linked investigation report.
 
@@ -32,7 +32,7 @@ TriageLab keeps preparation decisions and the linked investigation report.
    consent.
 5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
-   procedure. Configure kagent separately before approving a lab.
+   procedure. Configure kagent separately before launching an investigation.
 
 Configure the source and initial policy in the JSON file. Use **Ticket cases →
 Edit procedures** to add or edit procedures and save them while the workspace
@@ -47,10 +47,10 @@ value. This slice uses those typed conditions and a fixed sequence of actions.
 The editor starts with a removable Python timeout checklist. Add, edit, or
 remove text fields and attachment rules. Text fields match `Label: value`
 lines and can validate the value with a regular expression. Attachments match
-a filename or a supported extension. Set which items are required for approval,
+a filename or a supported extension. Set which items are required for investigation,
 write the question for each required item, and optionally add an opening message.
 Only missing required items generate questions. An empty checklist lets a
-matching ticket reach approval without collecting fields or attachments.
+matching ticket proceed without collecting fields or attachments.
 **Preview draft on ticket** checks the selected procedure on its own.
 The main ticket preview uses the saved order and shows the matched procedure.
 Preview does not track the ticket, send a question, or start a run.
@@ -58,8 +58,8 @@ Preview does not track the ticket, send a question, or start a run.
 Set a default agent and a sandbox template. Add routing rules to
 select agents by exact tag. If matching tags select different agents, track the
 case and choose one of the matching agents. The proposed run displays the agent,
-sandbox, and matching tags. Changes to the procedure, route, or reviewed run
-target require fresh approval. An unavailable target holds the case for review.
+sandbox, and matching tags. Changes to the procedure, route, or run target
+invalidate the previous plan. An unavailable target holds the case for review.
 Saved agents and alternative sandbox templates use the workspace's kagent
 deployment connection. Allow `get` and `list` on `sandboxtemplates` in its
 namespace Role. The source's startup policy sets the maximum clarification
@@ -117,14 +117,19 @@ to a numbered Zendesk attachment host and fetches it without the OAuth token.
 A ticket with more than 100 comments, unsupported attachments, or unsafe
 evidence requires review.
 
-The server checks one waiting ticket each configured polling interval
+The server checks one eligible tracked ticket each configured polling interval
 (60–3600 seconds, round robin). Set `poll_seconds: 0` to refresh manually.
 In draft mode, use **Refresh ticket** after a reply. **Pause tracking** stops
 automatic work for a case. An unanswered clarification is escalated for review
 after seven days when checked. Waiting and drafting never allocate a sandbox
 or call a model.
 
-Once evidence is ready, review its source references, file hashes, and run
+A procedure can start automatically when the evidence is ready. Set
+`policy.auto_run_condition` to a boolean CEL expression over ticket attributes
+to restrict automatic launches, such as `"reproduce" in ticket.tags`.
+[Automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, check the source references, file hashes, and run
 limits, then choose **Approve and start investigation**. Approval expires after
 15 minutes. It is checked against current ticket access, evidence, procedure,
 and run settings. A stale plan cannot launch work. Each tracked case can

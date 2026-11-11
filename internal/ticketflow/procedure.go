@@ -76,17 +76,27 @@ func cloneProcedure(p Procedure) Procedure {
 
 // Additional procedures are checked in priority order. The final procedure
 // still needs to match its own admission criteria.
-func (v ProcedureVersion) match(provider string, t ticket) (Procedure, string) {
-	for _, p := range v.Additional {
-		if p.Policy.exclusion(provider, t) == "" {
-			return p, ""
+func (v ProcedureVersion) match(ctx context.Context, provider string, t ticket) (Procedure, string, error) {
+	procedures := append(slices.Clone(v.Additional), v.Procedure)
+	var reason string
+	for _, p := range procedures {
+		reason = p.Policy.exclusion(provider, t)
+		if reason != "" {
+			continue
 		}
+		matches, err := evaluateTicketCondition(ctx, p.Policy.MatchCondition, provider, t)
+		if err != nil {
+			return p, "", err
+		}
+		if matches {
+			return p, "", nil
+		}
+		reason = "The ticket does not match the procedure condition."
 	}
-	reason := v.Procedure.Policy.exclusion(provider, t)
-	if reason != "" && len(v.Additional) > 0 {
+	if len(v.Additional) > 0 {
 		reason = "This case does not match any saved procedure."
 	}
-	return v.Procedure, reason
+	return v.Procedure, reason, nil
 }
 
 func (v ProcedureVersion) byTag(tag string) (Procedure, bool) {
@@ -120,6 +130,18 @@ func (f *Flow) validateProcedureSet(v ProcedureVersion) error {
 
 func (f *Flow) validateProcedure(p Procedure) error {
 	policy := p.Policy
+	expressions := []string{policy.MatchCondition, policy.AutoRunCondition}
+	for _, rule := range p.Evidence {
+		expressions = append(expressions, rule.RequiredWhen)
+	}
+	for _, expression := range expressions {
+		if f.hasSecret([]byte(expression)) {
+			return ErrInvalidProcedure
+		}
+		if _, err := compileTicketCondition(expression); err != nil {
+			return errors.Join(ErrInvalidProcedure, err)
+		}
+	}
 	validText := func(value string, max int) bool {
 		return value != "" && len(value) <= max && strings.TrimSpace(value) == value &&
 			!strings.ContainsFunc(value, unicode.IsControl) && !f.hasSecret([]byte(value))
@@ -135,7 +157,7 @@ func (f *Flow) validateProcedure(p Procedure) error {
 		len(p.Routes) > 20 {
 		return ErrInvalidProcedure
 	}
-	if (f.provider == "github" || f.provider == "linear") && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
+	if (f.provider == "github" || f.provider == "linear" || f.provider == "bondren") && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
 		return ErrInvalidProcedure
 	}
 	for _, priority := range policy.Priorities {
@@ -327,12 +349,12 @@ func (f *Flow) chooseRoute(ctx context.Context, id int64, revision, agent string
 	}
 	previous.SelectedAgent = agent
 	previous.SelectedFor = routeKey(p, previous.Matches)
-	c, _, _, err := f.assessProcedure(ctx, id, previous, version)
+	c, t, input, err := f.assessProcedure(ctx, id, previous, version)
 	if err != nil {
 		return Case{}, err
 	}
 	if c.MatchedTag != p.Policy.Tag || c.SelectedAgent != agent || len(c.AgentChoices) < 2 {
 		return c, errors.Join(ErrChanged, f.save(c))
 	}
-	return c, f.save(c)
+	return f.saveAndMaybeLaunch(ctx, c, t, input)
 }

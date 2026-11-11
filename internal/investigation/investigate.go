@@ -38,8 +38,7 @@ type Investigator struct {
 	Config Config
 	// Progress receives TriageLab-authored phase messages for the CLI or UI.
 	Progress func(string)
-	// Trigger labels the launch origin for telemetry ("cli", "ui", "ticket",
-	// "api").
+	// Trigger labels the launch origin for telemetry ("cli", "ui", "mcp", "ticket", "api").
 	Trigger string
 	// Actor records who started the run in the report provenance; it is
 	// empty for CLI runs and "client:<id>" for an API client.

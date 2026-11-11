@@ -18,7 +18,14 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       description:
-        "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an approved investigation in a disposable sandbox.",
+        "A Kubernetes-based tool that automates technical investigations for tickets and issues — routing, classification, and sandboxed investigation with recorded evidence.",
+      social: [
+        {
+          icon: "github",
+          label: "TriageLab on GitHub",
+          href: "https://github.com/bondrenai/TriageLab",
+        },
+      ],
       sidebar: [
         {
           label: "Start",
@@ -32,6 +39,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Browser workspace", slug: "guides/workspace" },
+			{ label: "Results chat and MCP", slug: "guides/chat-mcp" },
             { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
             { label: "API clients (OAuth)", slug: "guides/api-clients" },
@@ -39,6 +47,8 @@ export default defineConfig({
             { label: "Zendesk tickets", slug: "guides/tickets-zendesk" },
             { label: "GitHub issues", slug: "guides/tickets-github" },
             { label: "Linear issues", slug: "guides/tickets-linear" },
+            { label: "Bondren issues", slug: "guides/tickets-bondren" },
+            { label: "Jira issues", slug: "guides/tickets-jira" },
             { label: "Helm deployment", slug: "guides/helm" },
             { label: "Telemetry", slug: "guides/telemetry" },
           ],

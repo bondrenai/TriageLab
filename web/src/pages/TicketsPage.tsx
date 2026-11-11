@@ -4,11 +4,11 @@ import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Stamp, type 
 import { useTicketAction, useTicketWorkspace, useZendeskOAuth } from "../hooks/use-tickets";
 import { useSession } from "../hooks/use-auth";
 import { roleAtLeast } from "../lib/auth";
-import { orderedProcedures } from "../lib/tickets";
+import { orderedProcedures, ticketReference } from "../lib/tickets";
 import type { TicketAction, TicketCase, TicketSettings, TicketSource } from "../lib/types/ticket";
 import { TicketProcedureEditor } from "./TicketProcedureEditor";
 
-const providerName = (source?: TicketSource) => source === "github" ? "GitHub" : source === "linear" ? "Linear" : "Zendesk";
+const providerName = (source?: TicketSource) => source === "github" ? "GitHub" : source === "linear" ? "Linear" : source === "bondren" ? "Bondren" : source === "jira" ? "Jira" : "Zendesk";
 
 const states: Record<TicketCase["state"], [string, StampHue]> = {
   excluded: ["Outside policy", "gray"],
@@ -20,7 +20,10 @@ const states: Record<TicketCase["state"], [string, StampHue]> = {
 };
 
 function CaseStamp({ ticket }: { ticket: TicketCase }) {
-  const [label, hue] = ticket.paused ? ["Paused", "gray"] as const : states[ticket.state];
+  const [label, hue] = ticket.paused ? ["Paused", "gray"] as const
+    : ticket.auto_run && ticket.state === "approval" ? ["Evidence ready", "blue"] as const
+    : ticket.unattended && ticket.state === "launched" ? ["Started by policy", "blue"] as const
+    : states[ticket.state];
   return <Stamp hue={hue}>{label}</Stamp>;
 }
 
@@ -74,7 +77,9 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         </div>)}
       </dl>}
       {(ticket.state === "approval" || Boolean(ticket.files?.length)) && <div className="ticket-plan">
-        <p>Proposed run: <strong>{ticket.sandbox || settings.template}</strong>, up to {settings.max_experiments} experiments and {settings.timeout_seconds} seconds. Approval applies to these inputs and expires after 15 minutes.</p>
+        <p><strong>{ticket.sandbox || settings.template}</strong> · up to {settings.max_experiments} experiments and {settings.timeout_seconds} seconds.
+          {ticket.state === "approval" && !ticket.auto_run && " Approval applies to these inputs and expires after 15 minutes."}
+        </p>
         <ul className="prose-list">
           {ticket.files?.map(file => <li key={file.path}>{file.path} ({file.size_bytes} bytes)
             {file.source_url && <> · <a className="ticket-source" href={file.source_url} target="_blank" rel="noreferrer">Source attachment ↗</a></>}
@@ -92,6 +97,8 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         {ticket.state === "ask" && <>
           {source === "github" && <p>This clarification is visible to everyone with access to the repository. In a public repository, it is public.</p>}
           {source === "linear" && <p>This clarification is visible to everyone with access to the workspace.</p>}
+          {source === "bondren" && <p>This clarification is visible to the requester and everyone with access to the issue.</p>}
+          {source === "jira" && <p>This clarification is visible to the requester on Jira Service Management issues and to everyone with access to the issue otherwise.</p>}
           <p>Approval sends this {issue ? "issue comment" : "public reply"} and allows up to {settings.policy.max_questions} total clarification attempts on this {kind} under the current policy.</p>
         </>}
       </div>}
@@ -107,7 +114,9 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
       {mode !== "draft" && canAct === false && <p className="quiet">Acting on {kind}s requires the user role.</p>}
       {mode !== "draft" && canAct !== false && <div className="button-row">
         {mode === "preview" ? ticket.state !== "excluded" &&
-          <Button variant="primary" disabled={busy || stale} onClick={() => action("track")}>Track {kind}</Button>
+          <Button variant="primary" disabled={busy || stale} onClick={() => action("track")}>
+            {settings.auto_runs_allowed && settings.policy.auto_runs ? "Track and start when ready" : `Track ${kind}`}
+          </Button>
         : ticket.run_id ? <ButtonLink variant="primary" to={`/runs/${ticket.run_id}`}>Open investigation</ButtonLink>
         : <>
           {ticket.state === "approval" && planCurrent && !ticket.paused && !stale &&
@@ -115,7 +124,7 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
           {ticket.state === "ask" && !ticket.paused && !stale &&
             <Button variant="primary" disabled={busy} onClick={() => action("clarify")}>Approve and send clarification</Button>}
           {!ticket.paused && <Button disabled={busy} onClick={() => action("refresh")}>
-            {settings.policy.auto_questions ? "Refresh and apply policy" : `Refresh ${kind}`}
+            {settings.policy.auto_questions || (settings.auto_runs_allowed && settings.policy.auto_runs) ? "Refresh and apply policy" : `Refresh ${kind}`}
           </Button>}
           <Button disabled={busy} onClick={() => action(ticket.paused ? "resume" : "pause")}>{ticket.paused ? "Resume tracking" : "Pause tracking"}</Button>
         </>}
@@ -141,7 +150,9 @@ export function TicketsPage() {
   const source = data?.enabled ? data.source : undefined;
   const github = source === "github";
   const linear = source === "linear";
-  const issue = github || linear;
+  const bondren = source === "bondren";
+  const jira = source === "jira";
+  const issue = github || linear || bondren || jira;
   const kind = issue ? "issue" : "ticket";
   const oauth = data?.enabled ? data.oauth : undefined;
   const atCallbackOrigin = oauth && new URL(oauth.workspace_url).origin === window.location.origin;
@@ -165,25 +176,41 @@ export function TicketsPage() {
 
   function inspect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    perform({ id: id.trim(), action: "preview" });
+    perform({ id: ticketReference(source, id), action: "preview" });
   }
 
   return <>
-    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub or Linear issues for a useful investigation." />
+    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub, Linear, Bondren, or Jira issues for a useful investigation." />
     {workspace.isPending && <Loading label="Loading ticket cases" />}
     {workspace.isError && <ErrorPlate title="Could not load ticket cases" error={workspace.error} action={<Button onClick={() => void workspace.refetch()}>Try again</Button>} />}
     {data && !data.enabled && <Panel title="Connect a case source">
       <div className="panel-body ticket-detail">
-        <p>Choose a Zendesk account, GitHub repository, or Linear team and configure a ticket procedure to prepare cases here.</p>
+        <p>Choose a Zendesk account, GitHub repository, Linear team, Bondren workspace, or Jira site and configure a ticket procedure to prepare cases here.</p>
         <div className="button-row">
           <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/tickets.md" target="_blank" rel="noreferrer">Zendesk setup ↗</a>
           <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/github-issues.md" target="_blank" rel="noreferrer">GitHub setup ↗</a>
           <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/linear-issues.md" target="_blank" rel="noreferrer">Linear setup ↗</a>
+          <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/bondren-issues.md" target="_blank" rel="noreferrer">Bondren setup ↗</a>
+          <a className="ticket-source" href="https://github.com/bondrenai/TriageLab/blob/main/docs/jira-issues.md" target="_blank" rel="noreferrer">Jira setup ↗</a>
         </div>
       </div>
     </Panel>}
     {data?.enabled && <div className="section-stack">
-      {linear ? <Panel title="Linear team" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
+      {jira ? <Panel title="Jira site" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
+        <div className="panel-body ticket-detail">
+          <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.account.replace("https://", "")} ↗</a></p>
+          <p>Import issue descriptions, comments, and supported text attachments from this Jira Cloud site. Jira always requires an Atlassian account email and API token configured on the server.</p>
+          {commentsEnabled && <p>Posting requires the configured API token. Clarifications are customer-visible replies on Jira Service Management issues; investigation summaries are internal notes.</p>}
+          {data.settings.internal_notes && <p>Completed investigations offer an internal note preview for you to review before posting to the issue.</p>}
+        </div>
+      </Panel> : bondren ? <Panel title="Bondren workspace" aside={<Stamp hue="blue">{commentsEnabled ? "Messages enabled" : "Read-only"}</Stamp>}>
+        <div className="panel-body ticket-detail">
+          <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.account.replace("https://", "")} ↗</a></p>
+          <p>Import issue conversations, requester messages, and supported text attachments from this Bondren workspace. Bondren always requires an agent token configured on the server.</p>
+          {commentsEnabled && <p>Posting requires the configured agent token. Clarifications are public messages; investigation summaries are internal notes.</p>}
+          {data.settings.internal_notes && <p>Completed investigations offer an internal note preview for you to review before posting to the issue.</p>}
+        </div>
+      </Panel> : linear ? <Panel title="Linear team" aside={<Stamp hue="blue">{commentsEnabled ? "Comments enabled" : "Read-only"}</Stamp>}>
         <div className="panel-body ticket-detail">
           <p><a className="ticket-source" href={data.account} target="_blank" rel="noreferrer">{data.account.replace("https://", "")} ↗</a></p>
           <p>Import issue descriptions, author comments and supported text attachments from this team in the configured workspace. Linear always requires an API key configured on the server.</p>
@@ -216,17 +243,22 @@ export function TicketsPage() {
         {editProcedure ? "Close editor" : "Edit procedures"}
       </Button>}>
         <div className="panel-body ticket-detail">
-          <p>Open {issue ? "issues" : "tickets"} use the first procedure whose match rules fit. Every run requires approval.</p>
-          <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}><code>{p.policy.tag}</code></li>)}</ol>
+          <p>Open {issue ? "issues" : "tickets"} use the first matching procedure. Review is the default.</p>
+          <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}>
+            <code>{p.policy.tag}</code>{data.settings.auto_runs_allowed && p.policy.auto_runs && " · Starts automatically"}
+          </li>)}</ol>
           {data.connected && canAct && <form className="ticket-form" onSubmit={inspect}>
-            <div><label className="field-label" htmlFor="ticket-id">{linear ? "Linear issue number" : github ? "GitHub issue number" : "Zendesk ticket ID"}</label>
-              <input className="field" id="ticket-id" inputMode="numeric" pattern="[1-9][0-9]{0,18}" maxLength={19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} /></div>
+            <div><label className="field-label" htmlFor="ticket-id">{jira ? "Jira issue key, URL, or id" : bondren ? "Bondren issue ID or number" : linear ? "Linear issue number" : github ? "GitHub issue number" : "Zendesk ticket ID"}</label>
+              <input className="field" id="ticket-id" inputMode={bondren || jira ? undefined : "numeric"} pattern={bondren || jira ? undefined : "[1-9][0-9]{0,18}"} maxLength={bondren || jira ? 512 : 19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} />
+              {jira && <p className="field-help">Enter an issue key like OPS-42, paste the issue URL, or use the numeric issue id.</p>}
+              {bondren && <p className="field-help">Paste the issue ID from the Bondren issue URL, the issue URL itself, or the issue number.</p>}</div>
             <Button type="submit" variant="primary" disabled={mutation.isPending}>Preview {kind}</Button>
           </form>}
         </div>
       </Panel>
       {editProcedure && data.procedure && <TicketProcedureEditor key={data.account} version={data.procedure}
         source={data.source} connected={data.connected} template={data.settings.template} clarificationLimit={data.settings.clarification_limit}
+        autoRunsAllowed={data.settings.auto_runs_allowed}
         renderPreview={(ticket, draft) => <TicketDetail ticket={ticket} settings={{ ...data.settings, policy: draft.policy }}
           mode="draft" busy={false} perform={perform} canAct={canAct} />} />}
       {mutation.isPending && <p role="status" className="quiet">Checking {kind}…</p>}

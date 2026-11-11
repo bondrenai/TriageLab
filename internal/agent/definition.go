@@ -289,7 +289,7 @@ func RenderMCPServerDefinition(namespace string, d MCPServer) ([]byte, error) {
 	return json.MarshalIndent(resource(namespace, "RemoteMCPServer", d.Name, spec), "", "  ")
 }
 
-// RenderDefinition emits native kagent rc3 configuration with the TriageLab
+// RenderDefinition emits native kagent 1.0.0 configuration with the TriageLab
 // sandbox binding. It performs no network, filesystem, or cluster operations.
 func RenderDefinition(namespace string, d Definition) ([]byte, error) {
 	return renderDefinition(namespace, d, false)
@@ -410,7 +410,7 @@ func renderDefinition(namespace string, d Definition, workspace bool) ([]byte, e
 			harness = fmt.Sprintf("%s-%x", d.Name, digest[:6])
 		}
 		add("Harness", harness, spec)
-		// rc3 only compiles the native output schema for the managed harness.
+		// kagent 1.0.0 only compiles the native output schema for the managed harness.
 		schema, _ := assets.ReadFile("schema.json")
 		template["systemPrompt"] = prompt + "\nRequired investigation report JSON schema:\n" + string(schema)
 	}

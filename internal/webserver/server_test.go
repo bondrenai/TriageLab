@@ -195,6 +195,11 @@ func TestHTTPRejectsForeignHostsOriginsAndUnmarkedMutations(t *testing.T) {
 	if w.Code != 200 || strings.Contains(w.Body.String(), "server-test-secret") {
 		t.Fatalf("settings: %d %s", w.Code, w.Body)
 	}
+	for _, directive := range []string{"script-src 'self';", "worker-src 'self';", "style-src 'self' 'unsafe-inline';"} {
+		if !strings.Contains(w.Header().Get("Content-Security-Policy"), directive) {
+			t.Fatalf("missing editor CSP directive %q", directive)
+		}
+	}
 	if !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("missing frame isolation")
 	}

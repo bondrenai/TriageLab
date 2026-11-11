@@ -82,6 +82,8 @@ type Case struct {
 	SelectedAgent     string                `json:"selected_agent,omitempty"`
 	SelectedFor       string                `json:"selected_for,omitempty"`
 	ProcedureRevision string                `json:"procedure_revision,omitempty"`
+	AutoRun           bool                  `json:"auto_run,omitempty"`
+	Unattended        bool                  `json:"unattended,omitempty"`
 
 	Requester             *Requester                `json:"requester,omitempty"`
 	ClarificationApproval string                    `json:"clarification_approval,omitempty"`
@@ -102,6 +104,8 @@ type Settings struct {
 	TimeoutSeconds        int    `json:"timeout_seconds"`
 	Template              string `json:"template"`
 	ClarificationLimit    int    `json:"clarification_limit"`
+	AutoRunsAllowed       bool   `json:"auto_runs_allowed"`
+	MaxAutoRunsPerDay     int    `json:"max_auto_runs_per_day"`
 }
 
 type Flow struct {
@@ -121,6 +125,9 @@ type Flow struct {
 	// ResolveTarget is configured before Start and returns the exact run target
 	// to put under approval. It performs no investigation or model call.
 	ResolveTarget func(context.Context, string, string) (RunTarget, error)
+	// AutoLaunch is configured at startup and uses the same workspace slot
+	// and durable ticket reservation as an explicitly approved run.
+	AutoLaunch Launch
 }
 
 func Open(config Config, dir string, runtime investigation.Config, secrets ...string) (*Flow, error) {
@@ -158,6 +165,39 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 			return nil, err
 		}
 		flow := newFlow(config, l, s, runtime, append(slices.Clone(secrets), token))
+		return flow, flow.checkSavedProcedure()
+	}
+	if config.provider() == "bondren" {
+		token := os.Getenv(config.TokenEnv)
+		if token == "" || !validOAuthToken(token) {
+			return nil, errors.New("the configured Bondren token environment variable is missing or invalid")
+		}
+		b := newBondren(config.Origin, token)
+		b.writable = config.Policy.AutoQuestions || config.InternalNotes
+		s, err := openStore(dir, b.account())
+		if err != nil {
+			b.client.CloseIdleConnections()
+			return nil, err
+		}
+		// Stored case URLs pin the issue IDs behind their numeric keys, so
+		// refreshes keep working through the by-ID endpoint after a restart.
+		b.seed(s.list())
+		flow := newFlow(config, b, s, runtime, append(slices.Clone(secrets), token))
+		return flow, flow.checkSavedProcedure()
+	}
+	if config.provider() == "jira" {
+		token := os.Getenv(config.TokenEnv)
+		if token == "" || !validOAuthToken(token) {
+			return nil, errors.New("the configured Jira token environment variable is missing or invalid")
+		}
+		j := newJira(config.Origin, config.Email, token)
+		j.writable = config.Policy.AutoQuestions || config.InternalNotes
+		s, err := openStore(dir, j.account())
+		if err != nil {
+			j.client.CloseIdleConnections()
+			return nil, err
+		}
+		flow := newFlow(config, j, s, runtime, append(slices.Clone(secrets), token))
 		return flow, flow.checkSavedProcedure()
 	}
 	z := newZendesk(config.Subdomain)
@@ -227,6 +267,7 @@ func (f *Flow) currentSecrets() []string {
 func newFlow(config Config, source source, store *store, runtime investigation.Config, secrets []string) *Flow {
 	f := &Flow{source: source, provider: config.provider(), store: store, runtime: runtime, secrets: secrets, settings: Settings{
 		Policy: config.Policy, PollSeconds: config.PollSeconds, MaxExperiments: runtime.MaxExperiments,
+		MaxAutoRunsPerDay:     config.MaxAutoRunsPerDay,
 		InternalNotes:         config.InternalNotes,
 		InvestigationComments: config.InvestigationComments,
 		TimeoutSeconds:        runtime.InvestigationTimeout, Template: runtime.Template,
@@ -238,8 +279,13 @@ func newFlow(config Config, source source, store *store, runtime investigation.C
 	return f
 }
 
-func (f *Flow) Settings() Settings { return f.settings }
-func (f *Flow) Cases() []Case      { return f.store.list() }
+func (f *Flow) Settings() Settings {
+	settings := f.settings
+	settings.AutoRunsAllowed = settings.Policy.AutoRuns && f.AutoLaunch != nil
+	return settings
+}
+
+func (f *Flow) Cases() []Case { return f.store.list() }
 
 func (f *Flow) Start(ctx context.Context) {
 	if f.settings.PollSeconds == 0 {
@@ -257,20 +303,7 @@ func (f *Flow) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if f.oauth != nil && !f.oauth.status().Connected {
-					continue
-				}
-				cases := f.Cases()
-				waiting := slices.DeleteFunc(cases, func(c Case) bool { return c.Paused || c.State != "waiting" })
-				if len(waiting) == 0 {
-					continue
-				}
-				index := slices.IndexFunc(waiting, func(c Case) bool { return c.TicketID > last })
-				if index < 0 {
-					index = 0
-				}
-				last = waiting[index].TicketID
-				_, _ = f.Refresh(ctx, last)
+				last = f.poll(ctx, last)
 			}
 		}
 	}()
@@ -292,6 +325,12 @@ func (f *Flow) Close() error {
 	}
 	if l, ok := f.source.(*linearSource); ok {
 		l.client.CloseIdleConnections()
+	}
+	if b, ok := f.source.(*bondrenSource); ok {
+		b.client.CloseIdleConnections()
+	}
+	if j, ok := f.source.(*jiraSource); ok {
+		j.client.CloseIdleConnections()
 	}
 	return f.store.lock.Close()
 }
@@ -320,6 +359,27 @@ func (f *Flow) Preview(ctx context.Context, id int64) (Case, error) {
 	c, err := f.preview(ctx, id)
 	finish(err)
 	return c, err
+}
+
+// ResolveTicket maps a source reference from the workspace to the numeric
+// case key. Bondren accepts the issue ID (UUID) from the issue URL in
+// addition to the issue number; Jira accepts an issue key, the issue URL, or
+// the numeric issue id. The other sources use numeric identifiers only and
+// the webserver never routes references here.
+func (f *Flow) ResolveTicket(ctx context.Context, reference string) (int64, error) {
+	if err := f.begin(); err != nil {
+		return 0, err
+	}
+	defer f.op.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 24*time.Second)
+	defer cancel()
+	switch source := f.source.(type) {
+	case *bondrenSource:
+		return source.resolveReference(ctx, reference)
+	case *jiraSource:
+		return source.resolveReference(ctx, reference)
+	}
+	return 0, ErrBlocked
 }
 
 func (f *Flow) preview(ctx context.Context, id int64) (Case, error) {
@@ -390,11 +450,12 @@ func (f *Flow) checkTicket(ctx context.Context, id int64, action ticketAction, r
 		}
 		return previous, nil
 	}
-	c, t, _, err := f.assess(ctx, id, previous)
+	c, t, input, err := f.assess(ctx, id, previous)
 	if err != nil {
 		if tracked {
 			previous.Reason = "Could not refresh the ticket. " + err.Error()
 			previous.Plan = ""
+			previous.AutoRun = false
 			if saveErr := f.save(previous); saveErr != nil {
 				return Case{}, saveErr
 			}
@@ -413,7 +474,7 @@ func (f *Flow) checkTicket(ctx context.Context, id int64, action ticketAction, r
 		return Case{}, ErrBlocked
 	}
 	if c.State != "ask" || enroll || (action == refreshTicket && c.ClarificationApproval == "") {
-		return c, f.save(c)
+		return f.saveAndMaybeLaunch(ctx, c, t, input)
 	}
 	// Persist a reservation before performing any external write. Unknown
 	// outcomes, including a crash after acceptance, are never retried.
@@ -450,7 +511,7 @@ func (f *Flow) Pause(id int64, paused bool) (Case, error) {
 	if c.RunID != "" {
 		return Case{}, ErrBlocked
 	}
-	c.Paused, c.Plan = paused, ""
+	c.Paused, c.Plan, c.AutoRun = paused, "", false
 	c.State, c.Reason = "review", "Refresh the ticket to reassess the next action."
 	return c, f.save(c)
 }
@@ -493,8 +554,15 @@ func (f *Flow) approve(ctx context.Context, id int64, plan string, launch Launch
 		}
 		return Case{}, ErrChanged
 	}
+	return f.launch(ctx, previous, c, t, input, launch, false)
+}
+
+// launch runs under op. A source freshness check and durable reservation
+// precede dispatch for both approval and automatic policy.
+func (f *Flow) launch(ctx context.Context, previous, c Case, t ticket, input casefile.Case, launch Launch, unattended bool) (Case, error) {
 	if err := f.source.confirm(ctx, t); err != nil {
-		previous.Plan, previous.State, previous.Reason = "", "review", "Ticket freshness could not be verified. Refresh before approving a run."
+		previous.Plan, previous.State, previous.Reason = "", "review", "Ticket freshness could not be verified. Refresh before starting a run."
+		previous.AutoRun = false
 		if saveErr := f.save(previous); saveErr != nil {
 			return Case{}, saveErr
 		}
@@ -507,16 +575,20 @@ func (f *Flow) approve(ctx context.Context, id int64, plan string, launch Launch
 	if !now.Before(previous.PlanExpires) {
 		return Case{}, ErrBlocked
 	}
-	input.Source["approval_plan"] = plan
+	input.Source["approval_plan"] = c.Plan
 	input.Source["approved_at"] = now.Format(time.RFC3339Nano)
 	input.Source["ticket_agent"] = c.Agent
 	if len(c.Matches) > 0 {
 		input.Source["routing_matches"] = c.Matches
 	}
 	c.RunID, c.ApprovedAt = input.ID, now
+	c.AutoRun, c.Unattended = false, unattended
 	c.State, c.Reason = "launched", "The operator approved this evidence. Open the investigation to see its status."
-	err = launch(input, c.target, func() error { return f.save(c) })
-	return c, err
+	if unattended {
+		input.Source["unattended"] = true
+		c.Reason = "The procedure policy started this investigation. Open the investigation to see its status."
+	}
+	return c, launch(input, c.target, func() error { return f.save(c) })
 }
 
 func (f *Flow) assess(ctx context.Context, id int64, previous Case) (Case, ticket, casefile.Case, error) {
@@ -529,7 +601,7 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		return Case{}, ticket{}, casefile.Case{}, err
 	}
 	t := s.Ticket
-	p, exclusion := version.match(f.provider, t)
+	p, exclusion, matchErr := version.match(ctx, f.provider, t)
 	c := previous
 	c.TicketID, c.Account, c.CheckedAt = id, f.source.account(), time.Now().UTC()
 	c.Source, c.URL = f.provider, t.URL
@@ -548,10 +620,11 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		Opening   string
 		Evidence  EvidenceRules
 	}{t.RequesterProfile, p.Policy, p.Clarification, p.Evidence})
-	if exclusion != "" || c.ClarificationApproval != c.clarificationRecipient {
+	if exclusion != "" || matchErr != nil || c.ClarificationApproval != c.clarificationRecipient {
 		c.ClarificationApproval = ""
 	}
 	c.State, c.Reason, c.Draft, c.Plan = "excluded", exclusion, "", ""
+	c.AutoRun = false
 	c.PlanExpires = time.Time{}
 	c.Facts, c.Files = nil, nil
 	c.Matches, c.AgentChoices, c.Missing = nil, nil, nil
@@ -567,6 +640,10 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	}{c.Account, t, t.RequesterProfile, p, s.Comments})
 	if previous.Paused || previous.RunID != "" {
 		return previous, t, casefile.Case{}, nil
+	}
+	if matchErr != nil {
+		c.State, c.Reason = "review", "The procedure match condition could not be evaluated. Review the condition and ticket attributes."
+		return c, t, casefile.Case{}, nil
 	}
 	if c.Reason != "" {
 		c.SelectedAgent, c.SelectedFor = "", ""
@@ -598,16 +675,22 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		if m.Author != t.Requester {
 			continue
 		}
-		// A GitHub or Linear issue can be authored by the same account that
-		// posts our clarifications. A confirmed outgoing comment is not a
+		// A GitHub, Linear, or Jira issue can be authored by the same account
+		// that posts our clarifications. A confirmed outgoing comment is not a
 		// requester reply.
-		if (f.provider == "github" || f.provider == "linear") && slices.ContainsFunc(c.Questions, func(q Question) bool {
+		if (f.provider == "github" || f.provider == "linear" || f.provider == "jira") && slices.ContainsFunc(c.Questions, func(q Question) bool {
 			if q.Status != "sent" || q.CommentID <= 0 || m.ID != q.CommentID {
 				return false
 			}
-			// Linear comment IDs derive from UUIDs; the GitHub check also
-			// pins the reconstructed comment URL.
-			return f.provider == "linear" || m.URL == c.URL+"#issuecomment-"+strconv.FormatInt(q.CommentID, 10)
+			// Linear comment IDs derive from UUIDs; the GitHub and Jira checks
+			// also pin the reconstructed comment URL.
+			switch f.provider {
+			case "linear":
+				return true
+			case "jira":
+				return m.URL == c.URL+"?focusedCommentId="+strconv.FormatInt(q.CommentID, 10)
+			}
+			return m.URL == c.URL+"#issuecomment-"+strconv.FormatInt(q.CommentID, 10)
 		}) {
 			continue
 		}
@@ -641,9 +724,21 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 			}
 		}
 	}
-	selectedFiles := p.Evidence.selectFiles(replies)
+	evidence := slices.Clone(p.Evidence)
+	for i, rule := range evidence {
+		if rule.RequiredWhen == "" {
+			continue
+		}
+		required, err := evaluateTicketCondition(ctx, rule.RequiredWhen, f.provider, t)
+		if err != nil {
+			c.State, c.Reason = "review", "An evidence requirement could not be evaluated. Review the condition and ticket attributes."
+			return c, t, casefile.Case{}, nil
+		}
+		evidence[i].Required = required
+	}
+	selectedFiles := evidence.selectFiles(replies)
 	var missing, lines []string
-	for _, rule := range p.Evidence {
+	for _, rule := range evidence {
 		switch rule.Kind {
 		case "field":
 			if fact, ok := facts[rule.Match]; ok {
@@ -730,6 +825,14 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		input.Source["linear_team"] = strings.TrimPrefix(c.Account, "https://linear.app/")
 		input.Source["linear_identifier"] = strings.TrimPrefix(c.URL, c.Account+"/issue/")
 	}
+	if f.provider == "bondren" {
+		input.Source["bondren_origin"] = c.Account
+		input.Source["bondren_issue"] = t.uuid
+	}
+	if f.provider == "jira" {
+		input.Source["jira_site"] = c.Account
+		input.Source["jira_issue"] = t.uuid
+	}
 	if len(redactions) > 0 {
 		slices.Sort(redactions)
 		input.Source["input_redactions"] = slices.Compact(redactions)
@@ -769,7 +872,8 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		Matches                         []RouteRule
 		Files                           []casefile.Attachment
 		FileEvidence                    []string
-	}{procedure, c.Account, input.Description, id, t.Requester, p, f.runtime, c.target, c.Matches, c.Files, fileEvidence})
+		EffectiveEvidence               string `json:",omitempty"`
+	}{procedure, c.Account, input.Description, id, t.Requester, p, f.runtime, c.target, c.Matches, c.Files, fileEvidence, conditionalEvidenceDigest(p.Evidence, evidence)})
 	if f.provider == "github" {
 		// Comment edits/deletions and changed attachment locations invalidate
 		// approval even when the selected file bytes remain identical.
@@ -777,6 +881,21 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	}
 	c.PlanExpires = c.CheckedAt.Add(approvalLifetime)
 	c.State, c.Reason = "approval", "Evidence is ready. Approve the proposed sandbox run."
+	if f.unattended(p) {
+		allowed, conditionErr := evaluateTicketCondition(ctx, p.Policy.AutoRunCondition, f.provider, t)
+		switch {
+		case conditionErr != nil:
+			c.Reason = "Evidence is ready, but the automatic run condition could not be evaluated. Review the condition and ticket attributes, or approve the run."
+		case !allowed:
+			c.Reason = "Evidence is ready. The automatic run condition did not match. You can approve this run manually."
+		default:
+			c.AutoRun = true
+			c.Reason = "Evidence is ready. The procedure policy can start this investigation automatically."
+			if p.Policy.AutoRunCondition != "" {
+				input.Source["auto_run_condition"] = p.Policy.AutoRunCondition
+			}
+		}
+	}
 	return c, t, input, nil
 }
 
@@ -786,6 +905,10 @@ func (f *Flow) commentReference(id, url string) string {
 		return "GitHub issue author at " + url
 	case "linear":
 		return "Linear issue author at " + url
+	case "bondren":
+		return "Bondren issue author at " + url
+	case "jira":
+		return "Jira issue author at " + url
 	}
 	return "Zendesk public requester comment " + id
 }
@@ -830,6 +953,12 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 	}
 	if f.provider == "linear" {
 		provider = "Linear"
+	}
+	if f.provider == "bondren" {
+		provider = "Bondren"
+	}
+	if f.provider == "jira" {
+		provider = "Jira"
 	}
 	desc := "Investigate this case reported in " + provider + "."
 	if title != "" {

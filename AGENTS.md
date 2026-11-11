@@ -18,8 +18,9 @@ or one OIDC provider) of the same workflow, reached over loopback.
 - `internal/report` serializes independently collected process evidence separately from
   model hypotheses. Keep the JSON report canonical and Markdown readable.
 - `internal/ticketflow` prepares helpdesk cases. Keep policy checks and durable
-  clarification reservations outside the investigator. Bind human approval to
-  the exact evidence and run settings before admitting a ticket run.
+  clarification reservations outside the investigator. Bind ticket launches
+  to the exact evidence and run settings. Default to approval and let
+  explicitly enabled procedures start automatically once evidence is ready.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Keep credentials server-side and route new runs through the existing investigator.
 - `internal/auth` owns workspace sign-in: local accounts with PBKDF2 hashes in

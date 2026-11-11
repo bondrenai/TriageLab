@@ -54,11 +54,11 @@ import SystemMap from "./diagrams/SystemMap.astro";
           label="A padlock whose shackle springs open"
         />
         <p class="stage-num">03</p>
-        <h3>Approve</h3>
+        <h3>Review or automate</h3>
         <p>
-          A person approves the exact sanitized facts, file hashes, agent,
-          and limits. The approval expires quickly and is checked again at
-          launch.
+          Review the sanitized facts, file hashes, agent, and limits, or
+          enable a policy to start when evidence is ready. Freshness is checked
+          again at launch.
         </p>
       </li>
       <li class="stage">
@@ -129,17 +129,16 @@ import SystemMap from "./diagrams/SystemMap.astro";
         >
       </div>
       <div class="feature">
-        <h3>A human approves every run</h3>
+        <h3>Review by default</h3>
         <p>
-          Approval covers the exact evidence and run settings. It expires
-          quickly and is checked again at launch, so an outdated plan cannot
-          start.
+          Review the exact evidence and run settings, or explicitly enable
+          automatic starts. Launch checks prevent outdated plans from starting.
         </p>
       </div>
       <div class="feature">
         <h3>Your tracker stays the record</h3>
         <p>
-          Zendesk, GitHub, and Linear tickets enter the same workflow through
+          Zendesk, GitHub, Linear, Bondren, and Jira tickets enter the same workflow through
           policy-checked sources. The conversation stays in your tracker.
         </p>
         <a class="feature-link" href="/TriageLab/guides/tickets-zendesk/"

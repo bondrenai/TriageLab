@@ -5,19 +5,26 @@
 
 # TriageLab
 
+**[Read the documentation](https://bondrenai.github.io/TriageLab/)** ·
+[Quickstart](https://bondrenai.github.io/TriageLab/start/quickstart/) ·
+[CLI reference](https://bondrenai.github.io/TriageLab/reference/cli/)
+
 TriageLab is a free, Apache 2.0 tool that automates technical investigations
 for tickets and issues on Kubernetes, with a Go CLI and a browser workspace
-styled by Bondren. When a case arrives from Zendesk, GitHub, or Linear,
-TriageLab routes it to a matching procedure, classifies what evidence is
-still missing, and—after a human approves the exact evidence and run
-settings—investigates it in a secure, disposable sandbox: one kagent
-investigator in a gVisor or microVM Agent Substrate sandbox with egress
-denied by default. Experiments are recorded independently of the model and
-saved as JSON and Markdown reports; a reviewed summary can return to the
-ticket with the full evidence trail. It is an early, single-user proof of
-concept—not a production support platform—and it ships with one procedure, a
-Python 3.12 timeout reproduction. Admins add procedures for other kinds of
-tickets in the workspace.
+styled by Bondren. When a case arrives from Zendesk, GitHub, Linear, Bondren,
+or Jira, TriageLab routes it to a matching procedure and identifies missing
+evidence. Ticket cases default to review before launch. A procedure can
+start an investigation automatically when its evidence is ready. External
+workflows and agents can also start investigations through the CLI or HTTP MCP.
+Each run uses one kagent investigator in a disposable gVisor or microVM Agent
+Substrate sandbox with egress denied by default. Experiments are recorded
+independently of the model and saved as JSON and Markdown reports. A reviewed
+summary can return to the ticket with the full evidence trail. TriageLab is
+an early, single-user pilot. It ships with one procedure, a Python 3.12
+timeout reproduction; admins add procedures for other kinds of tickets in the
+workspace.
+
+[Configure automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
 
 The included example is a small Python application with a timeout configuration
 error. A useful investigation reproduces the error, identifies the units mismatch,
@@ -26,9 +33,9 @@ or dependencies. There is no simulated agent or local command-execution backend.
 
 ## Architecture
 
-![TriageLab system map: ticket sources feed TriageLab, which routes, classifies, and holds the case for human approval; an approved run reaches kagent and a disposable Agent Substrate sandbox; evidence returns with the report](docs/system-map.svg)
+![TriageLab system map showing ticket routing and policy checks, investigation in a disposable Agent Substrate sandbox, and evidence collected in the report](docs/system-map.svg)
 
-TriageLab owns ticket routing, clarification policy, human approval, case
+TriageLab owns ticket routing, clarification policy, run admission, case
 normalization, input limits, investigation budgets, evidence
 validation, cleanup, and reports. kagent owns the agent loop, model access, tools,
 Sessions, SandboxTemplates, and standalone Sandbox lifecycle. Agent Substrate owns
@@ -55,16 +62,15 @@ example is only a reproduction fixture.
 
 - Go **1.27.3** or later in the supported 1.27 line.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
-  **kagent v1.0.0-rc3** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
+  **kagent v1.0.0** CLI. The initial target is 4 vCPU / 16 GB RAM; all cluster
   work and verification should run remotely on resource-constrained laptops.
-- kagent **v1.0.0-rc3** with the pinned **bondrenai retention controller patch**
-  (`9bf1a20d`), plus its matching **Substrate v1.0.0 packaging fork**.
-- A model credential configured in kagent. The example uses OpenAI's
-  `gpt-6.1-sol` through the Responses API.
+- kagent **v1.0.0** with the pinned **bondrenai retention controller patch**
+  (`048e1016`), plus its matching **Substrate v1.0.0 packaging fork**.
+- A model credential configured in kagent. The example uses `gpt-6.1-sol` through the Responses API.
 
 See [development setup](docs/development.md) for exact installation, private
-port-forwarding, credential setup, and teardown. The pinned interfaces are
-prerelease APIs; see [upstream contracts](docs/upstream.md) before upgrading.
+port-forwarding, credential setup, and teardown. The pinned Kubernetes interfaces
+are still alpha (`v1alpha3`); see [upstream contracts](docs/upstream.md) before upgrading.
 Do not install this development configuration into a production cluster.
 
 ## Quickstart
@@ -172,17 +178,24 @@ Choose a provider and model, attach specific MCP tools, and select the deployed
 agent for a manual run. See [defining agents](docs/agents.md).
 
 The [Zendesk ticket pilot](docs/tickets.md) adds a case queue, configurable ticket
-selection and clarification, and approval before the existing investigation run.
+selection and clarification, and policy-based launch from the queue.
 [GitHub issue support](docs/github-issues.md) brings issue and attachment imports,
 reviewed clarifications with bounded follow-ups, and reviewed investigation
 comments to one configured repository through the same workflow. GitHub comments
 are visible to everyone with repository access and public in public repositories.
 [Linear issue support](docs/linear-issues.md) brings the same workflow to one
 configured team through a server-side API key. Linear comments are visible to
-everyone with workspace access. Every source starts with the built-in Python
-3.12 timeout procedure, and admins can add others under **Ticket cases → Edit
-procedures**. Select the source with the configuration passed to
-`serve --tickets`.
+everyone with workspace access. [Bondren issue
+support](docs/bondren-issues.md) brings the same workflow to one Bondren
+workspace origin through a server-side agent token: clarifications are public
+messages and investigation summaries are internal notes. [Jira issue
+support](docs/jira-issues.md) brings the same workflow to one Jira Cloud
+site through a server-side Atlassian account email and API token:
+clarifications are customer-visible replies on Jira Service Management
+issues and investigation summaries are internal comments. Every source starts
+with the built-in Python 3.12 timeout procedure, and admins can add others
+under **Ticket cases → Edit procedures**. Select the source with the
+configuration passed to `serve --tickets`.
 
 For UI iteration, run `make dev-ui` alongside the Go server. Vite proxies `/api`
 to the Go server; see [UI development](docs/ui.md) for the forwarding setup.

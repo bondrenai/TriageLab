@@ -9,28 +9,21 @@ completed the real gVisor sandbox checks — nested upload, fixture failure,
 corrected run, DNS/HTTP egress denial, process termination, and deletion —
 and a separate live investigator demonstration is recorded in the
 [verification record](https://github.com/bondrenai/TriageLab/blob/main/docs/verification.md).
+The sandbox checks ran on rc3; the live investigator demonstration and the
+retention and pause/resume checks were repeated on the v1.0.0 pins.
 Do not use a live `main` branch as a dependency.
 
 | Component | Pin | Identity |
 | --- | --- | --- |
-| kagent CLI/charts/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
-| kagent controller | bondrenai retention patch on rc3 | `9bf1a20db0a165c477e893584c1904e58f361cd2` |
+| kagent CLI/charts/runtime | `v1.0.0` (chart `1.0.0`) | `a08cde76ad6482dd758a4220b14213d79185ac30` |
+| kagent controller | bondrenai retention patch on v1.0.0 | `048e1016d50b209dba01065d0d10dfd80b78fb41` |
 | kagent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
 | Agent Substrate core reviewed | `v1.0.0` | `agent-substrate/substrate`, `b34fbee742906494b5eb4f1f36987176bf8770a4` |
-| Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
+| Sandbox guest image | `sandbox-guest:1.0.0` | `sha256:354825706868fc4d39300fe7795f4fa04d1eb53c3c93fb5b65b5da76f8222db7` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
-| Development Kubernetes | `kindest/node:v1.35.0` | kagent rc3's development configuration |
+| Development Kubernetes | `kindest/node:v1.35.0` | kagent 1.0.0's development configuration |
 | TriageLab Go toolchain | `go1.27.3` | verified against the official release SHA-256 |
 | OpenTelemetry Go SDK | `v1.47.0` line | `sdk`, `sdk/metric`, `sdk/log`, OTLP/HTTP exporters, `otelslog` bridge, vendored |
-| OAuth client-credentials library | `zitadel/oidc v3.52.0` | OpenID-certified, Apache-2.0, vendored; only the token and revocation endpoints of `pkg/op` |
-
-The OAuth library owns the protocol at `/oauth/token` and `/oauth/revoke` —
-form decoding, client-credential rules, grant dispatch, and RFC-shaped
-errors — while TriageLab owns storage: client secrets and access tokens are
-its own 256-bit values retained only as SHA-256 hashes. The library's own
-token cryptography and its permissive default CORS policy are deliberately
-not used; see [API clients](/TriageLab/guides/api-clients/) for the surface
-an application sees.
 
 The two Substrate repositories are intentionally distinguished. kagent
 requires `go.ate.dev/substrate v1.0.0` and replaces it with

@@ -37,8 +37,10 @@ sandbox runtime, or agent framework.
   answers.
 - `internal/ticketflow` prepares helpdesk and issue-tracker cases. Policy
   checks and durable clarification reservations stay outside the
-  investigator; human approval binds to exact evidence and run settings
-  before a ticket run is admitted.
+  investigator. The ticket queue binds launches to exact evidence and run
+  settings. Review is the default, and procedures can opt into automatic
+  launch. External workflows can start standalone runs through the CLI or
+  HTTP MCP.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Credentials stay server-side and new runs route through the existing
   investigator.

@@ -1,0 +1,40 @@
+# agentgateway v1.7.0. Replace issuer, JWKS, resource URL, and subject before use.
+# Terminate HTTPS at your existing edge and forward only the MCP/OAuth paths.
+# Run beside TriageLab (or beside an explicitly established loopback tunnel).
+config:
+  # This recipe exposes only the authenticated MCP/OAuth listener below.
+  adminAddr: off
+  statsAddr: off
+  readinessAddr: off
+gateways:
+  default:
+    bindAddress: 127.0.0.1
+    port: 3001
+mcp:
+  policies:
+    mcpAuthentication:
+      mode: strict
+      issuer: https://identity.example.com/realms/triagelab
+      audiences:
+      - https://triagelab-mcp.example.com/mcp
+      jwks:
+        url: https://identity.example.com/realms/triagelab/protocol/openid-connect/certs
+      provider:
+        keycloak: {}
+      resourceMetadata:
+        resource: https://triagelab-mcp.example.com/mcp
+        authorizationServers:
+        - https://triagelab-mcp.example.com/mcp
+        scopesSupported: [triagelab]
+        bearerMethodsSupported: [header]
+    mcpAuthorization:
+      rules:
+      - allow: 'jwt.sub == "REPLACE_WITH_YOUR_SUBJECT"'
+  targets:
+  - name: triagelab
+    mcp:
+      host: http://127.0.0.1:8080/mcp
+    policies:
+      backendAuth:
+        key:
+          value: $TRIAGELAB_MCP_TOKEN

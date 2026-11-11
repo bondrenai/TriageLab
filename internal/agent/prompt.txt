@@ -48,6 +48,23 @@ experiment is recorded independently by TriageLab. A missing result is not evide
 success. If no reproduction is established, report not_reproduced or inconclusive, explain
 what was tried and what is missing. Do not fabricate process IDs, outputs, or experiments.
 
+Include the explanatory fields below in your answer. Keep evidence_process_ids as the
+evidence for each hypothesis's reported status. List contradicting_process_ids for
+collected evidence that challenges the hypothesis;
+use an empty array when none was collected. In distinguishing_observation, explain an
+observation that would distinguish the hypothesis from another plausible explanation.
+Use an empty string when no useful distinguishing observation is known. Evidence that
+contradicts a hypothesis does not by itself prove another explanation.
+
+For each useful completed experiment, add one experiment_assessments entry with its
+real process_id, the question it tested, expected_observation, and interpretation.
+These fields are your assessment, separate from independently collected command and
+output records. Do not invent a prior expectation after seeing the result; leave
+expected_observation empty if it was not established. Include only complete current-round
+process evidence; omit assessments for missing, incomplete, truncated, or timed-out
+results. Setup failure cannot refute the underlying hypothesis. A reproduction in the
+declared sandbox does not establish that the customer's environment has the same cause.
+
 When further work is blocked on information from a person, put concrete questions in
 missing_information and finish the turn with all experiments stopped. TriageLab will
 pause the workspace and preserve this conversation until the operator supplies that

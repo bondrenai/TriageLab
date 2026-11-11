@@ -41,12 +41,50 @@
             "items": {
               "type": "string"
             }
+          },
+          "contradicting_process_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "distinguishing_observation": {
+            "type": "string"
           }
         },
         "required": [
           "statement",
           "status",
-          "evidence_process_ids"
+          "evidence_process_ids",
+          "contradicting_process_ids",
+          "distinguishing_observation"
+        ]
+      }
+    },
+    "experiment_assessments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "process_id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "expected_observation": {
+            "type": "string"
+          },
+          "interpretation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "process_id",
+          "question",
+          "expected_observation",
+          "interpretation"
         ]
       }
     },
@@ -99,6 +137,7 @@
     "summary",
     "observations",
     "hypotheses",
+    "experiment_assessments",
     "reproduced_process_ids",
     "root_cause",
     "reproduction_steps",

@@ -24,11 +24,10 @@ unchanged (loopback listener, `kubectl port-forward` only).
   its socket is never mounted into an investigator or reproduction sandbox.
 - Go 1.27.3, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
-- kagent CLI **1.0.0-rc3**, matching the charts and runtime images. The installation
+- kagent CLI **1.0.0**, matching the charts and runtime images. The installation
   script builds the reviewed controller fork from source on this Linux host.
-- A provider account/key for the real agent. The example uses OpenAI's
-  `gpt-6.1-sol` model through the Responses API, with bounded investigation
-  limits. Model calls incur provider charges.
+- A provider account/key for the real agent. The example uses the upstream
+  `gpt-6.1-sol` model through the Responses API, with bounded investigation limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
@@ -37,9 +36,9 @@ by the installation script. For Linux amd64:
 
 ```sh
 mkdir -p .tools
-curl -fL https://github.com/kagent-dev/kagent/releases/download/v1.0.0-rc3/kagent-linux-amd64 \
+curl -fL https://github.com/kagent-dev/kagent/releases/download/v1.0.0/kagent-linux-amd64 \
   -o .tools/kagent
-echo '8d0ba56fe8382f20511ce585810cf1ac043b361482d15ac7163264699b882e63  .tools/kagent' \
+echo 'c1a0a37767c4c2526e6d42b7016cfc11e69e82e321f6b84c1499d539d0dd864d  .tools/kagent' \
   | sha256sum -c -
 chmod +x .tools/kagent
 export PATH="$PWD/.tools:$PATH"
@@ -72,8 +71,8 @@ This selects only the explicitly named `triagelab` Kind cluster, without using
 an ambient Kubernetes context. It uses kagent's installer for the pinned Substrate Helm distribution,
 its pod certificate controller, Atelet, the development PostgreSQL database,
 RustFS snapshot store, and kagent. It then builds controller commit
-`9bf1a20db0a165c477e893584c1904e58f361cd2` from
-[`bondrenai/kagent`](https://github.com/bondrenai/kagent/tree/9bf1a20db0a165c477e893584c1904e58f361cd2),
+`048e1016d50b209dba01065d0d10dfd80b78fb41` from
+[`bondrenai/kagent`](https://github.com/bondrenai/kagent/tree/048e1016d50b209dba01065d0d10dfd80b78fb41),
 loads the image into Kind, and waits for its rollout before installing TriageLab's
 Agent and SandboxTemplate. The source commit and local image ID are printed for
 the verification record. There is no published fork image to pull.
@@ -88,10 +87,10 @@ only ordinary kagent resources, rendered by `triagelab manifest`. The script
 requires Linux and selects only `kind-triagelab`.
 
 The patched controller is the only forked component. Its runtime filesystem uses
-the digest-pinned rc3 base; the investigator runtime, guest image, and Substrate
+the digest-pinned 1.0.0 base; the investigator runtime, guest image, and Substrate
 keep their released versions. The helper reuses the host's Go build cache and
-does not push an image or change a registry. To rebuild or reinstall the pinned
-controller in an existing deployment, use only this helper on the VM:
+does not push an image or change a registry. To reinstall only the pinned
+controller after a Helm install or upgrade, run on the VM:
 
 ```sh
 bash scripts/install-fork-controller.sh
@@ -114,7 +113,7 @@ and the snapshot store.
 
 The rendered `triagelab-tools` ClusterIP Service sends investigator MCP calls to
 the same controller through a separate hostname. Keep that hostname distinct
-from kagent's control-plane URL: rc3 replaces credentials at the control-plane
+from kagent's control-plane URL: kagent 1.0.0 replaces credentials at the control-plane
 origin with an actor token, which has no sandbox ownership. The tools Service
 preserves the short-lived caller token and the existing owner checks. It is
 internal only and selects the `kagent` Helm release's controller.
@@ -261,6 +260,9 @@ tests assert the exported OTLP payloads without a live collector; live export
 is exercised only to the extent recorded in docs/verification.md.
 
 ## Optional microVM backend
+
+The recorded live microVM check used the earlier kagent 1.0.0-rc3 pin.
+The current 1.0.0 pin needs a separate live microVM verification.
 
 Substrate's `microvm` sandbox class runs each actor as a KVM guest (Kata
 Containers on Cloud Hypervisor) instead of under gVisor. TriageLab needs no new

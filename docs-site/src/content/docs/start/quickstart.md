@@ -10,14 +10,13 @@ cluster work happens there; your laptop only needs an SSH tunnel and a browser.
 
 - Go **1.27.3** or later in the supported 1.27 line, and Node.js 24 for the UI.
 - A **dedicated Linux development VM** with Docker, kind, kubectl, Helm, and the
-  **kagent v1.0.0-rc3** CLI (4 vCPU / 16 GB RAM is the initial target).
-- kagent **v1.0.0-rc3** plus its matching **Substrate v1.0.0** packaging.
-- A model credential configured in kagent (the example uses OpenAI's
-  `gpt-6.1-sol` through the Responses API).
+  **kagent v1.0.0** CLI (4 vCPU / 16 GB RAM is the initial target).
+- kagent **v1.0.0** plus its matching **Substrate v1.0.0** packaging.
+- A model credential configured in kagent (the example uses `gpt-6.1-sol` through the Responses API).
 
 The exact installation, port-forwarding, credential, and teardown steps are in
 [development setup](https://github.com/bondrenai/TriageLab/blob/main/docs/development.md)
-in the repository. The pinned interfaces are prerelease APIs; read the
+in the repository. The pinned Kubernetes interfaces are still alpha (`v1alpha3`); read the
 [upstream compatibility record](/TriageLab/reference/upstream/) before upgrading anything.
 Do not install the development configuration into a production cluster.
 
