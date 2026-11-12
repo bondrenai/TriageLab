@@ -100,10 +100,13 @@ example:
 
 ```bash
 ./bin/triagelab investigate \
-  --description-file examples/config-bug/issue.md --repo examples/config-bug
+  --description-file examples/missing-orders/ticket.md \
+  --repo examples/missing-orders/repro
 ```
 
-The CLI prints where it saved the report. Keep the token out of logs and shell
+The example is a support ticket whose own diagnosis is wrong: a customer
+blames lock retries for orders that a nightly sync silently drops. A run takes
+about two minutes. The CLI prints where it saved the report. Keep the token out of logs and shell
 output, and create a new one when it expires.
 
 Without `--config`, the CLI uses the same settings as `triagelab.example.json`.

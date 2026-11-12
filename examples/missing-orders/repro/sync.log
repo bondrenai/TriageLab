@@ -1,0 +1,13 @@
+2026-11-11T00:30:00.412Z INFO  rowferry 2.8.1 starting: source=orders-replica table=orders cursor_columns=created_at page_size=100
+2026-11-11T00:30:00.455Z INFO  resuming after cursor 2026-11-10T00:28:51.630412Z
+2026-11-11T00:30:10.459Z WARN  page 1: lock wait timeout after 10000 ms on orders (attempt 1/5); retrying page
+2026-11-11T00:30:10.908Z INFO  page 1: 100 rows, cursor -> 2026-11-10T09:30:07.317259Z
+2026-11-11T00:30:20.912Z WARN  page 2: lock wait timeout after 10000 ms on orders (attempt 1/5); retrying page
+2026-11-11T00:30:21.398Z INFO  page 2: 100 rows, cursor -> 2026-11-10T14:43:12.535329Z
+2026-11-11T00:30:21.579Z INFO  page 3: 100 rows, cursor -> 2026-11-10T16:47:38.856446Z
+2026-11-11T00:30:21.771Z INFO  page 4: 100 rows, cursor -> 2026-11-10T18:00:06.849415Z
+2026-11-11T00:30:21.974Z INFO  page 5: 100 rows, cursor -> 2026-11-10T19:36:00.987341Z
+2026-11-11T00:30:22.188Z INFO  page 6: 100 rows, cursor -> 2026-11-10T22:30:06.101191Z
+2026-11-11T00:30:22.413Z INFO  page 7: 14 rows, cursor -> 2026-11-11T00:14:05.902620Z
+2026-11-11T00:30:22.509Z INFO  sync complete: 614 rows in 7 pages -> s3://larkspur-finance/orders/2026-11-10.csv (2 lock retries)
+2026-11-11T00:30:22.521Z INFO  saved cursor 2026-11-11T00:14:05.902620Z

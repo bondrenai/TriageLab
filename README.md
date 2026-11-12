@@ -25,8 +25,19 @@ summary back to the ticket. Other programs can start investigations through
 the CLI, an HTTP MCP endpoint, or OAuth API clients.
 
 TriageLab is free and Apache 2.0 licensed. It is an early, single-user pilot:
-it runs against a dedicated development cluster, and every ticket source
-currently uses one built-in procedure for a Python 3.12 timeout example.
+it runs against a dedicated development cluster, and the only ticket
+procedure that ships with it is a Python 3.12 timeout example. Admins add
+procedures for other kinds of tickets in the workspace.
+
+[![TriageLab walkthrough: a GitHub issue, reproduced in a sandbox (2:08)](docs-site/src/assets/walkthrough-poster.jpg)](https://www.youtube.com/watch?v=BXYmfvuqTPg)
+
+**[Watch the two-minute walkthrough](https://www.youtube.com/watch?v=BXYmfvuqTPg).**
+A customer's GitHub issue blames lock retries for 11 missing orders. A ticket
+procedure starts the investigation, a replay of the customer's own data loses
+the same orders with zero retries, adding the order ID to the cursor delivers
+all 625, and the reviewed findings go back to the issue. The case is
+[`examples/missing-orders`](examples/missing-orders/README.md), and `make demo`
+runs it.
 
 ## How it works
 
@@ -159,15 +170,20 @@ example:
 
 ```bash
 ./bin/triagelab investigate \
-  --description-file examples/config-bug/issue.md --repo examples/config-bug
+  --description-file examples/missing-orders/ticket.md \
+  --repo examples/missing-orders/repro
 ```
 
-The example is a small Python client whose request timeout is set in the wrong
-unit: the intended five seconds is configured as five milliseconds. A good
-investigation reproduces the failure, finds the unit mismatch, and
-verifies an exact corrected value. The CLI prints where it saved the report;
-[the example investigation](https://bondrenai.github.io/TriageLab/start/example/)
-explains how to read it.
+The example is a support ticket whose own diagnosis is wrong. A customer's
+nightly sync silently drops 11 orders, and they explain in detail why lock
+retries are to blame. A good investigation replays their data, shows the loss
+happens with no lock retry at all, finds the cause, and verifies a corrected
+configuration. A run takes about two minutes. The CLI prints where it saved the
+report; [the example investigation](https://bondrenai.github.io/TriageLab/start/example/)
+walks through a recorded one.
+
+A smaller smoke case, a client timeout configured in the wrong unit, is in
+[`examples/config-bug`](examples/config-bug/). The integration tests use it.
 
 Keep the token out of logs and shell output, and create a new one when it
 expires. Without `--config`, the CLI uses the same settings as

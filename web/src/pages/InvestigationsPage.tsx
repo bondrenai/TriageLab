@@ -5,7 +5,7 @@ import { useRuns } from "../hooks/use-investigations";
 import { useSession } from "../hooks/use-auth";
 import { APIError } from "../lib/api-client";
 import { roleAtLeast } from "../lib/auth";
-import { caseTitle, formatDate } from "../lib/investigations";
+import { caseTitle, exampleReport, formatDate } from "../lib/investigations";
 import type { RunSummary } from "../lib/types";
 
 const resourceLabels: Record<RunSummary["resource_state"], string> = {
@@ -56,8 +56,8 @@ export function InvestigationsPage() {
         </section>}
       </>}
     <section className="example-preview" aria-labelledby="example-heading">
-      <div className="example-intro"><FileCheck2 size={20} strokeWidth={1.5} aria-hidden="true" /><div><h2 id="example-heading">See what an investigation looks like</h2><p>A saved, real run against the included timeout fixture.</p></div></div>
-      <Link to="/example" className="example-row"><div><span className="example-provenance">Example investigation</span><h3>A healthy endpoint. A client that keeps timing out.</h3><p>A configuration value turns five seconds into five milliseconds.</p></div><div className="example-result"><Stamp hue="green">Reproduced</Stamp><span className="annotation">4 experiments</span><ArrowRight size={18} aria-hidden="true" /></div></Link>
+      <div className="example-intro"><FileCheck2 size={20} strokeWidth={1.5} aria-hidden="true" /><div><h2 id="example-heading">See what an investigation looks like</h2><p>A saved, real run of the included missing-orders case.</p></div></div>
+      <Link to="/example" className="example-row"><div><span className="example-provenance">Example investigation</span><h3>A sync that reports success. Eleven orders that never arrive.</h3><p>The customer blames lock retries. The replay loses the same orders without one.</p></div><div className="example-result"><Stamp hue="green">Reproduced</Stamp><span className="annotation">{exampleReport.experiments?.length ?? 0} experiments</span><ArrowRight size={18} aria-hidden="true" /></div></Link>
     </section>
   </>;
 }

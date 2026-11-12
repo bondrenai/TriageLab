@@ -201,7 +201,8 @@ Results chat is configured separately with `serve --chat`; it uses a tool-free
 completion endpoint to discuss saved evidence after a run finishes. Questions,
 answers, and interrupted/error state are stored in private `chat.json`, never
 in the canonical report. Viewers can read; users and admins can ask. The report
-page preserves literal text, saved questions after failures, and citations to
+page renders answers through the safe Markdown subset described below, and keeps
+saved questions after failures and citations to
 the exact evidence round. Questions are not automatically retried.
 
 `serve --mcp` adds a bearer-authenticated Streamable HTTP endpoint on the same
@@ -212,8 +213,13 @@ ticket-policy admission paths. Setup, bounds, and deployment instructions are in
 the [chat and MCP guide](../docs-site/src/content/docs/guides/chat-mcp.md).
 
 The browser uses an API transport module, typed domain functions, and query hooks
-before presentation components. Report text renders as text, including command
-output; it never becomes executable HTML. The Go service normalizes uploads with
+before presentation components. Command output and exact-text previews of
+ticket notes and clarifications render literally. Case descriptions, agent
+analysis and chat answers render through a small Markdown subset
+(`web/src/lib/markdown.ts`) built as React elements: headings, emphasis, code,
+lists and quotes. Raw HTML and image syntax stay literal, and links show their
+URL as text without becoming anchors, so imported text never becomes HTML and
+never makes the browser fetch anything. The Go service normalizes uploads with
 the existing ingestion package and invokes the existing investigator. JSON stays
 the canonical report. No database, queue service, browser model SDK, or alternate
 execution backend is introduced.

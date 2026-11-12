@@ -163,8 +163,10 @@ loopback port 5173 and proxies `/api` to the Go server; forward that port too
 and open `http://127.0.0.1:5173` for hot reload. Before landing a change, run
 `make check-ui`, `make build-ui`, and `make check` on the VM.
 
-The API is a local interface for a small team, not a hosted service. Report
-text renders as text, never executable HTML; the Go service normalizes uploads
+The API is a local interface for a small team, not a hosted service. Command
+output renders literally. Case descriptions, agent analysis and chat answers
+render a small Markdown subset as page elements: raw HTML and images stay literal
+text, and links show their URL without becoming clickable; the Go service normalizes uploads
 with the same ingestion package as the CLI and invokes the same investigator.
 No database, queue service, browser model SDK, or alternate execution backend
 is introduced.

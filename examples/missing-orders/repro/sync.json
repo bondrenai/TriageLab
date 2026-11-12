@@ -1,0 +1,11 @@
+{
+  "table": "orders",
+  "schema": "schema.sql",
+  "primary_key": "id",
+  "cursor_columns": ["created_at"],
+  "page_size": 100,
+  "lock_timeout_ms": 10000,
+  "max_retries": 5,
+  "sum_columns": ["total_cents"],
+  "sink": "out/orders.csv"
+}

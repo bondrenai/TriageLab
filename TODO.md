@@ -10,6 +10,18 @@
 - [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
       pod-projected API-token rotation. See [verification](docs/verification.md).
 
+- [ ] Start `examples/missing-orders` from the New investigation form and add
+      it to the scheduled live verification. A run started from a labelled
+      GitHub issue has been verified, including the posted comment. Since
+      2026-11-12 it is the main demonstration: the workspace's bundled
+      example, `make demo`, and the quickstart example, after three live runs
+      reproduced the loss, rejected the customer's theory, and verified a
+      correction. See
+      [verification](docs/verification.md) and the
+      [demonstration notes](docs/demo.md). Those runs used a local arm64
+      Docker Desktop cluster reached through a Linux container, a path that is
+      not documented or supported yet.
+
 - [x] Verify CEL automatic launch against live Jira and kagent on the build VM.
       The same synthetic issue exercised a blocking and an allowing rule.
 - [ ] Pilot CEL procedure routing and conditional evidence with more ticket types.

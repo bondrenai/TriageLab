@@ -1,6 +1,6 @@
 import { request } from "./api-client";
 import type { Settings, RunSummary, InvestigationReport, TicketNote } from "./types";
-import exampleJSON from "../../../docs/verification/agent-demo.json";
+import exampleJSON from "../../../docs/verification/missing-orders-demo.json";
 
 export const exampleReport: InvestigationReport = exampleJSON;
 export const getSettings = () => request<Settings>("/api/settings");
