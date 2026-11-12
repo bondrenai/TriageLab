@@ -1,0 +1,221 @@
+---
+/**
+ * The hero. Replaces Starlight's Hero and still reads its title, tagline,
+ * and actions from the page frontmatter.
+ *
+ * On the home page the right column is a recorded run of the bundled
+ * example (EvidenceRecord), framed by the inspection brackets from the
+ * TriageLab mark. Any other page with a hero (Starlight's 404) gets the
+ * title and the tagline on the same sheet.
+ */
+import EvidenceRecord from "./EvidenceRecord.astro";
+
+const route = Astro.locals.starlightRoute;
+const { data } = route.entry;
+const { title = data.title, tagline, actions = [] } = data.hero ?? {};
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const isHome = route.id === "" || route.id === "index";
+const isNotFound = route.id === "404";
+
+const links = isNotFound
+  ? [{ text: "Back to the start", link: `${base}/`, variant: "primary", attrs: {} }]
+  : actions.map(({ text, link, variant, attrs }) => ({
+      text,
+      link,
+      variant,
+      attrs: attrs ?? {},
+    }));
+
+const isExternal = (href: string) => /^https?:\/\//.test(href);
+---
+
+<section class:list={["tl-hero", { home: isHome }]}>
+  <div class="tl-wrap hero-grid">
+    <div class="hero-copy">
+      {
+        isHome && (
+          <p class="tl-eyebrow hero-rise" style="--rise: 0">
+            Evidence-driven investigations on Kubernetes
+          </p>
+        )
+      }
+      <h1
+        id="_top"
+        data-page-title
+        class="tl-hero-title hero-rise"
+        style="--rise: 1"
+        set:html={title}
+      />
+      {
+        tagline && (
+          <p class="hero-lede hero-rise" style="--rise: 2" set:html={tagline} />
+        )
+      }
+      {
+        links.length > 0 && (
+          <div class="hero-actions hero-rise" style="--rise: 3">
+            {links.map(({ text, link, variant, attrs }) => (
+              <a class:list={["tl-btn", variant]} href={link} {...attrs}>
+                {text}
+                {variant === "primary" && (
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M3 8h10M9 4l4 4-4 4"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                )}
+                {variant !== "primary" && isExternal(link) && (
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M5 11l6-6M6 5h5v5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                )}
+              </a>
+            ))}
+          </div>
+        )
+      }
+      {
+        isHome && (
+          <ul class="hero-facts hero-rise" style="--rise: 4" role="list">
+            <li>Apache-2.0</li>
+            <li>Go CLI and browser workspace</li>
+            <li>Runs beside kagent and Agent Substrate</li>
+          </ul>
+        )
+      }
+    </div>
+
+    {
+      isHome && (
+        <div class="hero-visual hero-rise" style="--rise: 3">
+          <EvidenceRecord />
+        </div>
+      )
+    }
+  </div>
+</section>
+
+<style>
+  .tl-hero {
+    padding-block: clamp(2.5rem, 1.5rem + 4.5vw, 5.5rem)
+      clamp(3rem, 2rem + 4vw, 5.5rem);
+    color: var(--tl-ink-1);
+  }
+
+  .hero-grid {
+    display: grid;
+    gap: 3rem;
+    align-items: center;
+  }
+
+  .hero-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  /* The headline: the serif at display size, sentence case, set tight.
+     The emphasis is a lighter italic, not a color. */
+  .tl-hero-title {
+    margin: 1.5rem 0 0;
+    font-family: var(--tl-font-display);
+    font-size: clamp(2.5rem, 1.45rem + 4.3vw, 4.25rem);
+    font-weight: 400;
+    line-height: 1.03;
+    letter-spacing: -0.028em;
+    text-wrap: balance;
+    color: var(--tl-ink);
+  }
+  .tl-hero-title:first-child {
+    margin-top: 0;
+  }
+
+  .hero-lede {
+    margin: 1.75rem 0 0;
+    max-width: 34rem;
+    font-size: 1.125rem;
+    line-height: 1.65;
+    text-wrap: pretty;
+    color: var(--tl-ink-muted);
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  /* Plain facts, in the mono, each led by a small mark. */
+  .hero-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1.25rem;
+    align-self: stretch;
+    margin: 2.5rem 0 0;
+    border-top: 1px solid var(--tl-line-object);
+    padding: 1.125rem 0 0;
+    list-style: none;
+    font-family: var(--tl-font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.01em;
+    color: var(--tl-ink-muted);
+  }
+  .hero-facts li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .hero-facts li::before {
+    content: "";
+    width: 4px;
+    height: 4px;
+    background: var(--tl-rule-cut);
+  }
+
+  .hero-visual {
+    min-width: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .hero-grid {
+      grid-template-columns: minmax(0, 11fr) minmax(0, 12fr);
+      gap: 3.5rem;
+    }
+    /* A hero with no figure (the 404) keeps a reading measure. */
+    .tl-hero:not(.home) .hero-grid {
+      grid-template-columns: minmax(0, 44rem);
+    }
+  }
+
+  /* --- Entrance: each block settles in turn --------------------------- */
+
+  .hero-rise {
+    animation: settle var(--tl-base) var(--tl-ease) both;
+    animation-delay: calc(var(--rise, 0) * 70ms + 60ms);
+  }
+
+  @keyframes settle {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>

@@ -1,0 +1,357 @@
+---
+/**
+ * The end of the home page: the closing call to action and the site
+ * footer.
+ *
+ * The call to action shows the command from step 5 of the quickstart in a
+ * midnight terminal panel, inside the inspection brackets. Keep the command
+ * in step with start/quickstart.md.
+ */
+import HairlineFigure from "./HairlineFigure.astro";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const columns = [
+  {
+    title: "Start",
+    links: [
+      { text: "Quickstart", href: `${base}/start/quickstart/` },
+      { text: "The example investigation", href: `${base}/start/example/` },
+    ],
+  },
+  {
+    title: "Guides",
+    links: [
+      { text: "Browser workspace", href: `${base}/guides/workspace/` },
+      { text: "Defining agents", href: `${base}/guides/agents/` },
+      { text: "Sign-in and roles", href: `${base}/guides/sign-in/` },
+      { text: "Helm deployment", href: `${base}/guides/helm/` },
+    ],
+  },
+  {
+    title: "Reference",
+    links: [
+      { text: "CLI", href: `${base}/reference/cli/` },
+      { text: "Configuration", href: `${base}/reference/configuration/` },
+      { text: "Reports", href: `${base}/reference/reports/` },
+      { text: "Architecture", href: `${base}/reference/architecture/` },
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      { text: "GitHub", href: "https://github.com/bondrenai/TriageLab" },
+      { text: "Blog", href: `${base}/blog/` },
+      {
+        text: "Evidence, not answers",
+        href: `${base}/articles/evidence-not-answers/`,
+      },
+    ],
+  },
+];
+---
+
+<div class="close not-content">
+  <section class="section cta" aria-labelledby="cta-title">
+    <div class="tl-wrap">
+      <div class="cta-frame tl-brackets" data-reveal>
+        <div class="cta-copy">
+          <p class="tl-eyebrow">Get started</p>
+          <h2 class="tl-display" id="cta-title">
+            Start with the included example
+          </h2>
+          <p class="tl-lede">
+            The quickstart runs the case from the walkthrough: an order sync
+            that silently drops 11 orders. In the recorded runs, TriageLab
+            reproduced the loss, rejected the customer&rsquo;s lock-retry
+            theory with the evidence, and verified a fix.
+          </p>
+          <div class="cta-actions">
+            <a class="tl-btn primary" href={`${base}/start/quickstart/`}>
+              Run the quickstart
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M3 8h10M9 4l4 4-4 4"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+              </svg>
+            </a>
+            <a class="tl-btn secondary" href={`${base}/reference/cli/`}>
+              Browse the CLI reference
+            </a>
+          </div>
+        </div>
+
+        <div class="cta-side">
+          <div class="loupe">
+            <HairlineFigure
+              name="loupe"
+              label="A stand loupe sliding across a ruled sheet, the rules magnified under the glass"
+              play
+              intensity={0.7}
+            />
+          </div>
+          <div class="terminal ink-frame">
+            <p class="terminal-bar">
+              <span>Quickstart, step 5</span>
+              <span>about two minutes</span>
+            </p>
+            <pre><code><span class="prompt">$</span> ./bin/triagelab investigate \
+    --description-file examples/missing-orders/ticket.md \
+    --repo examples/missing-orders/repro</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer ink-frame">
+    <div class="tl-wrap footer-grid">
+      <div class="brand">
+        <a class="wordmark" href={`${base}/`}>
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" aria-hidden="true">
+            <path
+              d="M4 13V4H13M35 4H44V13M44 35V44H35M13 44H4V35"
+              stroke-width="2.5"
+              stroke-linecap="square"></path>
+            <path
+              d="M17.5 10.5H30.5M20.5 10.5V19L11.5 37.5H36.5L27.5 19V10.5M15.5 29.5H32.5"
+              stroke-width="2.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+            <circle cx="24" cy="33.5" r="2.4" class="dot" stroke="none"></circle>
+          </svg>
+          TriageLab
+        </a>
+        <p>
+          Evidence-driven investigations for technical tickets, run in
+          disposable sandboxes on Kubernetes.
+        </p>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        {
+          columns.map((column) => (
+            <div>
+              <p class="col-title">{column.title}</p>
+              <ul role="list">
+                {column.links.map((link) => (
+                  <li>
+                    <a href={link.href}>{link.text}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </div>
+    <div class="tl-wrap footer-bar">
+      <p>Open source under the Apache License 2.0.</p>
+      <p>An early, single-user pilot, not a production support platform.</p>
+    </div>
+  </footer>
+</div>
+
+<style>
+  .close {
+    font-family: var(--tl-font-sans);
+    color: var(--tl-ink-1);
+  }
+
+  .close :where(h2, p, ul, pre) {
+    margin: 0;
+  }
+
+  .section {
+    padding-block: var(--tl-section-y);
+  }
+
+  /* --- Call to action: a plate under inspection ------------------------- */
+
+  .cta-frame {
+    --bracket-gap: 0.875rem;
+    display: grid;
+    gap: 2.5rem;
+    align-items: center;
+    margin: 0.875rem;
+    border-radius: var(--tl-radius-xl);
+    padding: clamp(1.5rem, 1rem + 2.5vw, 3.5rem);
+    background: var(--tl-plate);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .cta-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.125rem;
+    min-width: 0;
+  }
+  .cta-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.625rem;
+  }
+
+  .cta-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    min-width: 0;
+  }
+
+  .loupe {
+    width: min(100%, 15rem);
+    margin-inline: auto;
+  }
+  .loupe :global(.hairline-figure) {
+    --hairline-plate: var(--tl-plate);
+  }
+
+  .terminal {
+    overflow: hidden;
+    border-radius: var(--tl-radius-lg);
+    background: var(--tl-paper);
+    box-shadow: var(--shadow-plate);
+    color: var(--tl-ink-1);
+  }
+  .terminal-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    border-bottom: 1px solid var(--tl-line-object);
+    padding: 0.625rem 1rem;
+    font-family: var(--tl-font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--tl-hinge);
+  }
+  .terminal pre {
+    overflow-x: auto;
+    padding: 1rem 1rem 1.125rem;
+    font-family: var(--tl-font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+  }
+  .terminal code {
+    font-family: inherit;
+  }
+  .prompt {
+    color: var(--tl-accent);
+    user-select: none;
+  }
+
+  @media (max-width: 40rem) {
+    .cta-frame {
+      --bracket-gap: 0.5rem;
+      margin: 0.5rem;
+    }
+  }
+  @media (min-width: 64rem) {
+    .cta-frame {
+      grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+      gap: 3.5rem;
+    }
+  }
+
+  /* --- Footer: the midnight frame ---------------------------------------- */
+
+  .site-footer {
+    border-top: 2px solid var(--tl-ink-1);
+    padding-block: clamp(3rem, 2.25rem + 3vw, 4.5rem) 2rem;
+    background: var(--tl-paper);
+    color: var(--tl-ink-muted);
+    font-size: 0.9375rem;
+  }
+
+  .footer-grid {
+    display: grid;
+    gap: 2.5rem 3rem;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 24rem;
+  }
+  .brand p {
+    line-height: 1.6;
+  }
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: fit-content;
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    color: var(--tl-ink);
+    text-decoration: none;
+  }
+  .wordmark svg {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .wordmark .dot {
+    fill: var(--tl-accent);
+  }
+
+  .footer-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem 1.5rem;
+  }
+  .col-title {
+    font-family: var(--tl-font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tl-hinge);
+  }
+  .footer-nav ul {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.875rem;
+    padding: 0;
+    list-style: none;
+  }
+  .footer-nav a {
+    color: var(--tl-ink-2);
+    text-decoration: none;
+    transition: color var(--tl-fast) var(--tl-ease);
+  }
+  .footer-nav a:hover {
+    color: var(--tl-accent-press);
+  }
+
+  .footer-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    margin-top: clamp(2.5rem, 2rem + 2vw, 4rem);
+    border-top: 1px solid var(--tl-line-object);
+    padding-top: 1.25rem;
+    font-family: var(--tl-font-mono);
+    font-size: 0.75rem;
+    color: var(--tl-hinge);
+  }
+
+  @media (min-width: 48rem) {
+    .footer-nav {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 64rem) {
+    .footer-grid {
+      grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    }
+  }
+</style>

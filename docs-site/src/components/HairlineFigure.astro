@@ -1,12 +1,12 @@
 ---
 /**
  * Container for an isometric line figure from @lucasmarkes/hairline.
- * The figure is drawn client-side by the initializer script in
- * layouts/Landing.astro; without JavaScript the element stays empty,
- * so it must never carry information the page depends on.
+ * The figure is drawn client-side by the script below; without JavaScript
+ * the element stays empty, so it must never carry information the page
+ * depends on. Astro bundles the script once however many figures a page has.
  */
 interface Props {
-  /** Figure name; must exist in the initializer's import map. */
+  /** Figure name; must exist in the script's import map. */
   name: string;
   /** Accessible name, passed to the library's `label` option. */
   label: string;
@@ -28,3 +28,42 @@ const { name, label, play = false, intensity } = Astro.props;
   aria-label={label}
 >
 </div>
+
+<script>
+  import {
+    loupe,
+    sieve,
+    query,
+    padlock,
+    terminal,
+    format,
+  } from "@lucasmarkes/hairline";
+
+  const figures = { loupe, sieve, query, padlock, terminal, format };
+
+  for (const el of document.querySelectorAll<HTMLElement>("[data-hairline]")) {
+    const draw = figures[el.dataset.hairline as keyof typeof figures];
+    if (!draw) continue;
+    const intensity = Number.parseFloat(el.dataset.intensity ?? "");
+    draw(el, {
+      play: el.dataset.play === "true",
+      intensity: Number.isFinite(intensity) ? intensity : undefined,
+      label: el.getAttribute("aria-label") ?? undefined,
+    });
+  }
+</script>
+
+<style is:global>
+  /* Graphite ink on whatever surface the figure sits on. The tokens swap in
+     dark mode and inside a blueprint field; a panel sets --hairline-plate to
+     its own fill. */
+  .hairline-figure {
+    --hairline-plate: var(--tl-paper);
+    --hairline-hi: var(--tl-ink);
+    --hairline-edge: var(--tl-ink-2);
+    --hairline-mid: var(--tl-ink-muted);
+    --hairline-lo: var(--tl-line-frame);
+    --hairline-stroke: 1.15;
+    width: 100%;
+  }
+</style>

@@ -1,0 +1,50 @@
+---
+/**
+ * Page title block: an engraved label naming the section the page belongs
+ * to, the title in the display face, and the heavy cut rule that closes a
+ * title block. Replaces Starlight's bare <h1>.
+ */
+const route = Astro.locals.starlightRoute;
+
+type SidebarEntry = (typeof route.sidebar)[number];
+
+/** The label of the top-level sidebar group that holds the current page. */
+function currentGroup(entries: SidebarEntry[]): string | undefined {
+  const holdsCurrent = (entry: SidebarEntry): boolean =>
+    entry.type === "group"
+      ? entry.entries.some(holdsCurrent)
+      : entry.isCurrent;
+  return entries.find(
+    (entry) => entry.type === "group" && holdsCurrent(entry),
+  )?.label;
+}
+
+const isBlog = route.id === "blog" || route.id.startsWith("blog/");
+const section = isBlog ? "Blog" : currentGroup(route.sidebar);
+---
+
+<header class="title-block">
+  {section && <p class="tl-eyebrow">{section}</p>}
+  <h1 id="_top">{route.entry.data.title}</h1>
+</header>
+
+<style>
+  .title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    border-bottom: 2px solid var(--tl-ink-1);
+    padding-bottom: 1.5rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--tl-font-display);
+    font-size: var(--sl-text-h1);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+    color: var(--tl-ink);
+  }
+</style>

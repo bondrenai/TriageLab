@@ -1,8 +1,35 @@
 # TriageLab documentation site
 
 Astro + Starlight site for TriageLab's public documentation: start guides,
-workflow guides, technical reference, articles, and a blog. Styled with the
-Bondren drafting-ink tokens shared with the product UI.
+workflow guides, technical reference, articles, and a blog.
+
+## Design
+
+The site looks like the tool it documents. `src/styles/tokens.css` holds the
+palette: the workspace's cool paper, graphite ink, and ultramarine accent
+(`web/src/styles.css`), calibrated lighter for long reading, with the
+workspace's midnight ramp as dark mode. `src/styles/global.css` lays those
+tokens over Starlight and defines the shared `tl-*` pieces.
+
+The site's own voice sits on top of that shared system:
+
+- **Type.** IBM Plex Serif for display (page titles, section heads), set in
+  sentence case with italic emphasis. Plex Sans for body, Plex Mono for
+  labels, numerals, and code. Fonts are self-hosted.
+- **Marks from the logo.** A label opens with the evidence dot
+  (`.tl-eyebrow`); a figure under examination sits inside the four corner
+  brackets (`.tl-brackets`).
+- **Solid and dashed.** Solid means observed or settled; dashed means a
+  hypothesis or not yet. The hero's recorded run, the fit cards, and the
+  stamps (`.tl-stamp`) all follow it.
+- **Rules.** Title blocks, section heads, and table heads close with a 2px
+  cut rule. The primary button is ink; ultramarine marks links and focus and
+  is never a fill.
+
+`src/components/Hero.astro` and `PageTitle.astro` override Starlight's
+components. The hero's recorded run (`EvidenceRecord.astro`) quotes
+`start/example.md`, and the closing command (`LandingClose.astro`) quotes
+step 5 of `start/quickstart.md`; change them together.
 
 ## Keep the technical bits current
 
