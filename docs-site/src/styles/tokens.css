@@ -1,0 +1,238 @@
+/* ============================================================
+   TriageLab documentation tokens.
+
+   The site looks like the tool it documents: cool bench paper,
+   graphite ink, and one ultramarine accent, the same ramp as the
+   TriageLab workspace (web/src/styles.css) calibrated lighter
+   for long reading. It shares that drafting-ink system with
+   Bondren but keeps its own voice: a serif "lab report" display
+   face, the evidence dot and inspection brackets from the
+   TriageLab mark, and solid-versus-dashed for what was observed
+   versus what is only a hypothesis.
+
+   Dark mode is the workspace's midnight "ink frame". The same
+   values are available as an `.ink-frame` scope, so a midnight
+   panel (a terminal, the footer) can sit inside the light page
+   and everything in it restyles itself.
+   ============================================================ */
+
+:root {
+  /* --- Surfaces: bench paper -> sunken well -> raised plate --- */
+  --tl-paper: #edf1f7;
+  --tl-well: #e0e6ef;
+  --tl-fill: #e3e8f1; /* quiet fills: inline code, hovers */
+  --tl-plate: #fafcff;
+
+  /* --- Graphite ink --- */
+  --tl-ink: #0e131a; /* headings, primary buttons */
+  --tl-ink-1: #1e232a; /* body text; also the 2px cut rule */
+  --tl-ink-2: #2f343b;
+  --tl-ink-muted: #474c56; /* secondary text and labels (AA on paper) */
+  --tl-hinge: #657082; /* quietest text; marks and rules */
+  --tl-on-ink: #f6faff; /* text on an ink fill */
+
+  /* --- Line weights, faintest to heaviest --- */
+  --tl-line-construction: #e0e6ef;
+  --tl-line-object: #d0d8e4;
+  --tl-line-frame: #b4bdcb;
+  --tl-rule-cut: #7a8595;
+
+  /* --- Ultramarine: links, focus, the evidence dot. Never a button fill. --- */
+  --tl-accent: #1f3fd8;
+  --tl-accent-press: #1a34b0; /* link and label text */
+  --tl-accent-deep: #172b8c;
+  --tl-accent-soft: #e6ebfd;
+
+  /* --- Status hues mark state only --- */
+  --tl-danger: #ad2817;
+  --tl-danger-soft: #fdf0ee;
+  --tl-caution: #946608;
+  --tl-caution-soft: #fbf4e3;
+  --tl-success: #1a7a50;
+  --tl-success-soft: #ebf5f0;
+
+  /* --- Shadows: a ring and a soft lift, tinted with the ink --- */
+  --shadow-plate:
+    0 0 0 1px rgba(14, 19, 26, 0.05), 0 1px 2px rgba(30, 35, 42, 0.05),
+    0 4px 12px rgba(30, 35, 42, 0.06);
+  --shadow-pop:
+    0 0 0 1px rgba(14, 19, 26, 0.06), 0 2px 6px rgba(30, 35, 42, 0.08),
+    0 18px 44px rgba(30, 35, 42, 0.14);
+  --tl-scrim: rgba(30, 35, 42, 0.4);
+
+  /* --- Graph paper: a fine grid with a heavier line every fifth --- */
+  --tl-grid-minor: rgba(31, 63, 216, 0.04);
+  --tl-grid-major: rgba(31, 63, 216, 0.07);
+
+  /* --- Asides borrow the status hues --- */
+  --sl-color-orange-high: #775208;
+  --sl-color-orange: #b07908;
+  --sl-color-orange-low: #f5e7c2;
+  --sl-color-red-high: #8e2113;
+  --sl-color-red: #c8321e;
+  --sl-color-red-low: #fadcd7;
+  --sl-color-green-high: #166344;
+  --sl-color-green: #1e8a5b;
+  --sl-color-green-low: #d4ebdf;
+  --sl-color-blue-high: #172b8c;
+  --sl-color-blue: #1f3fd8;
+  --sl-color-blue-low: #dce2fb;
+  --sl-color-purple-high: #172b8c;
+  --sl-color-purple: #1f3fd8;
+  --sl-color-purple-low: #dce2fb;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"],
+.ink-frame {
+  --tl-paper: #111623;
+  --tl-well: #0b0e15;
+  --tl-fill: #1d2433;
+  --tl-plate: #1d2433;
+
+  --tl-ink: #eaeef7;
+  --tl-ink-1: #d5dbe9;
+  --tl-ink-2: #c2cadd;
+  --tl-ink-muted: #a7b1c9;
+  --tl-hinge: #8b97b4;
+  --tl-on-ink: #111623;
+
+  --tl-line-construction: #232b3b;
+  --tl-line-object: #333c50;
+  --tl-line-frame: #4f5769;
+  --tl-rule-cut: #6e768a;
+
+  --tl-accent: #91a4fd;
+  --tl-accent-press: #a8b7f7;
+  --tl-accent-deep: #c3cdfa;
+  --tl-accent-soft: #1b2552;
+
+  --tl-danger: #ff9a82;
+  --tl-danger-soft: rgba(255, 135, 107, 0.12);
+  --tl-caution: #d9b14e;
+  --tl-caution-soft: rgba(217, 177, 78, 0.12);
+  --tl-success: #6fc7a1;
+  --tl-success-soft: rgba(79, 177, 137, 0.14);
+
+  --shadow-plate:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4),
+    0 6px 18px rgba(0, 0, 0, 0.3);
+  --shadow-pop:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.5),
+    0 20px 48px rgba(0, 0, 0, 0.6);
+  --tl-scrim: rgba(4, 7, 14, 0.66);
+
+  --tl-grid-minor: rgba(234, 238, 247, 0.03);
+  --tl-grid-major: rgba(234, 238, 247, 0.055);
+
+  --sl-color-orange-high: #e9cf87;
+  --sl-color-orange: #c49a2c;
+  --sl-color-orange-low: #2c2412;
+  --sl-color-red-high: #f2b7ad;
+  --sl-color-red: #ff876b;
+  --sl-color-red-low: #36181a;
+  --sl-color-green-high: #a8d8c0;
+  --sl-color-green: #4fb189;
+  --sl-color-green-low: #102a26;
+  --sl-color-blue-high: #c3cdfa;
+  --sl-color-blue: #91a4fd;
+  --sl-color-blue-low: #1b2552;
+  --sl-color-purple-high: #c3cdfa;
+  --sl-color-purple: #91a4fd;
+  --sl-color-purple-low: #1b2552;
+
+  color-scheme: dark;
+}
+
+/* Everything below is derived from the raw tokens above. It is declared on
+   `.ink-frame` as well as the root because a custom property that refers to
+   another one resolves where it is declared: without the second selector a
+   midnight panel would inherit the light page's computed values. */
+:root,
+.ink-frame {
+  /* --- Corners by role. xs: stamps and chips; sm: inputs, inline code,
+     nav items; md: buttons; lg: plates and cards; xl: the trays that hold
+     cards. --- */
+  --tl-radius-xs: 3px;
+  --tl-radius-sm: 4px;
+  --tl-radius-md: 6px;
+  --tl-radius-lg: 8px;
+  --tl-radius-xl: 12px;
+
+  /* --- Typefaces: one superfamily. The serif is the site's own voice
+     (the workspace sets its titles in the sans). --- */
+  --tl-font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --tl-font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --tl-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Motion: one curve, three durations --- */
+  --tl-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tl-fast: 120ms;
+  --tl-base: 200ms;
+  --tl-slow: 500ms;
+
+  /* --- Landing-page column: header and content share it --- */
+  --tl-column: 76rem;
+  --tl-gutter: clamp(1rem, 0.5rem + 2vw, 3rem);
+  --tl-section-y: clamp(4rem, 2.5rem + 4.5vw, 7rem);
+
+  /* --- Map onto Starlight's semantic tokens. Starlight's white/black are
+     the foreground/background pair, not literal colors, and its gray ramp
+     runs from strongest text (1) to faintest fill (7). --- */
+  --sl-font: var(--tl-font-sans);
+  --sl-font-mono: var(--tl-font-mono);
+  --sl-color-white: var(--tl-ink);
+  --sl-color-gray-1: var(--tl-ink-1);
+  --sl-color-gray-2: var(--tl-ink-2);
+  --sl-color-gray-3: var(--tl-ink-muted);
+  --sl-color-gray-4: var(--tl-hinge);
+  --sl-color-gray-5: var(--tl-line-frame);
+  --sl-color-gray-6: var(--tl-fill);
+  --sl-color-gray-7: var(--tl-plate);
+  --sl-color-black: var(--tl-paper);
+
+  --sl-color-text: var(--tl-ink-1);
+  --sl-color-text-accent: var(--tl-accent-press);
+  --sl-color-text-invert: var(--tl-on-ink);
+  --sl-color-accent: var(--tl-accent);
+  --sl-color-accent-high: var(--tl-accent-press);
+  --sl-color-accent-low: var(--tl-accent-soft);
+  --sl-color-bg: var(--tl-paper);
+  --sl-color-bg-nav: var(--tl-paper);
+  --sl-color-bg-sidebar: var(--tl-paper);
+  --sl-color-bg-inline-code: var(--tl-fill);
+  --sl-color-bg-accent: var(--tl-accent);
+  --sl-color-hairline-light: var(--tl-line-construction);
+  --sl-color-hairline: var(--tl-line-object);
+  --sl-color-hairline-shade: var(--tl-line-frame);
+  --sl-color-backdrop-overlay: var(--tl-scrim);
+  --sl-shadow-sm: var(--shadow-plate);
+  --sl-shadow-md: var(--shadow-plate);
+  --sl-shadow-lg: var(--shadow-pop);
+}
+
+:root {
+  /* --- Reading layout --- */
+  --sl-content-width: 46rem;
+  --sl-sidebar-width: 17.5rem;
+  --sl-line-height: 1.7;
+  --sl-line-height-headings: 1.2;
+
+  /* Page titles and section heads are set in the serif; h3 and below in
+     the sans, so the scale steps down from Starlight's defaults. */
+  --sl-text-h1: 2.25rem;
+  --sl-text-h2: 1.625rem;
+  --sl-text-h3: 1.1875rem;
+  --sl-text-h4: 1.0625rem;
+  --sl-text-h5: 1rem;
+}
+
+@media (min-width: 50em) {
+  :root {
+    --sl-text-h1: 2.75rem;
+    --sl-text-h2: 1.75rem;
+    --sl-text-h3: 1.25rem;
+    --sl-text-h4: 1.0625rem;
+  }
+}

@@ -1,0 +1,60 @@
+---
+/**
+ * The home page's prose notes, set as columns on a quiet band. The words
+ * stay in index.mdx: wrap each note (a heading and its paragraphs) in a
+ * <div> inside this component.
+ */
+---
+
+<section class="notes">
+  <div class="tl-wrap">
+    <p class="tl-eyebrow">In more detail</p>
+    <div class="notes-grid"><slot /></div>
+  </div>
+</section>
+
+<style>
+  .notes {
+    border-block: 1px solid var(--tl-line-object);
+    padding-block: clamp(3rem, 2.25rem + 3vw, 5rem);
+    background: color-mix(in srgb, var(--tl-plate) 55%, transparent);
+  }
+
+  .notes-grid {
+    display: grid;
+    gap: 2.5rem 3rem;
+    margin-top: 2rem;
+  }
+
+  /* The slotted notes come from Markdown, so they are styled from here. */
+  .notes-grid > :global(div) {
+    min-width: 0;
+    margin-top: 0;
+    border-top: 2px solid var(--tl-ink-1);
+    padding-top: 1.25rem;
+  }
+
+  .notes-grid :global(.sl-heading-wrapper) {
+    margin-top: 0;
+    font-size: 1.3125rem;
+  }
+
+  .notes-grid :global(h2) {
+    font-size: 1.3125rem;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
+  }
+
+  .notes-grid :global(p) {
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    text-wrap: pretty;
+    color: var(--tl-ink-muted);
+  }
+
+  @media (min-width: 60rem) {
+    .notes-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+</style>

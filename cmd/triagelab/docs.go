@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/bondrenai/TriageLab/internal/investigation"
@@ -144,12 +145,25 @@ func flagTable(flags *flag.FlagSet) string {
 		case "[]":
 			def = "(repeatable)"
 		}
-		fmt.Fprintf(&b, "| --%s | %s | %s |\n", f.Name, def, markdownCell(f.Usage))
+		fmt.Fprintf(&b, "| `--%s` | %s | %s |\n", f.Name, def, markdownCell(f.Usage))
 	})
 	return b.String()
 }
 
+// flagReference matches an existing code span or a bare --flag. Markdown
+// renderers with smart punctuation turn a bare double hyphen into a dash, so
+// a flag named in running text must be a code span to stay copyable.
+var flagReference = regexp.MustCompile("`[^`]*`|\\B--[a-z][a-z0-9-]*")
+
+// markdownCell prepares text for a Markdown table cell: bare --flag
+// references become code spans and pipes are escaped.
 func markdownCell(s string) string {
+	s = flagReference.ReplaceAllStringFunc(s, func(match string) string {
+		if strings.HasPrefix(match, "`") {
+			return match
+		}
+		return "`" + match + "`"
+	})
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 

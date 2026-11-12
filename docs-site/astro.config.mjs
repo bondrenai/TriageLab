@@ -39,7 +39,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Browser workspace", slug: "guides/workspace" },
-			{ label: "Results chat and MCP", slug: "guides/chat-mcp" },
+            { label: "Results chat and MCP", slug: "guides/chat-mcp" },
             { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
             { label: "API clients (OAuth)", slug: "guides/api-clients" },
@@ -75,6 +75,10 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/global.css"],
+      components: {
+        Hero: "./src/components/Hero.astro",
+        PageTitle: "./src/components/PageTitle.astro",
+      },
       plugins: [
         starlightLinksValidator(),
         blog({
