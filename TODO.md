@@ -103,21 +103,26 @@
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
-- [ ] Extend the opt-in live integration workflow with repeatable, cost-bounded
-      disposable infrastructure across kagent upgrades and
-      failure scenarios (connection loss, model errors, TTL expiry, cancellation).
-      The 1.0.0 upgrade re-ran the demonstration, retention, and pause/resume
-      checks by hand; DNS/HTTP egress denial and process termination were last
-      exercised on rc3.
-      Exercise a declarative custom investigator and a BYO runtime with a
-      reviewed external MCP tool on the pinned release.
+- [ ] Run the scheduled `Live verification` workflow and record its first
+      results in docs/verification.md. It builds the disposable gVisor
+      deployment on a GitHub runner and runs the sandbox boundary check
+      (nested upload, DNS/HTTP egress denial, termination, deletion; no model),
+      the live investigation, and pause/resume. Drafted 2026-11-12 and not yet
+      executed: the 1.0.0 upgrade re-ran the demonstration, retention, and
+      pause/resume checks by hand, and DNS/HTTP egress denial and process
+      termination were last exercised on rc3.
+      Then extend it to failure scenarios (connection loss, model errors, TTL
+      expiry, cancellation), and exercise a declarative custom investigator
+      and a BYO runtime with a reviewed external MCP tool on the pinned release.
 - [ ] Add exact binary artifact export through upstream gRPC file transfer, with
       size limits, checksums, and interruption recovery. MCP read-file content and
       command outputs are currently captured in the report.
-- [ ] Repeat the opt-in `microvm` CI job enough times to measure reliability:
-      one of the first five runs failed with an unrecorded cause, before reports
-      kept `task_failure`. Repeat the sandbox lifecycle and egress-denial
-      checks on that backend.
+- [ ] Repeat the `microvm` class of the `Live verification` workflow enough
+      times to measure reliability: one of the first five runs of the earlier
+      `microvm` CI job (on rc3) failed with an unrecorded cause, before reports
+      kept `task_failure`. The workflow now also runs the sandbox lifecycle and
+      egress-denial checks and pause/resume on that backend; none of it has run
+      there on the 1.0.0 pins.
 - [ ] Validate additional templates for networking/Kubernetes reproductions.
       Cover templates authored through the Sandboxes and Egress editors,
       including one egress-granted reproduction against a disposable deployment.

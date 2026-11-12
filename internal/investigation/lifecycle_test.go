@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/bondrenai/TriageLab/internal/casefile"
@@ -209,6 +210,66 @@ func TestResumeAfterRestartPreservesRoundsAndNeverReadsOldHandles(t *testing.T) 
 	state, err := LoadState(dir)
 	if err != nil || state.Phase != "closed" || state.Round != 2 || state.ResumeFromRound != 1 {
 		t.Fatalf("state=%+v error=%v", state, err)
+	}
+}
+
+func TestUpstreamRunCompletesWhenInformationIsMissing(t *testing.T) {
+	f := newLifecycleFixture()
+	f.retention = false
+	i := &Investigator{Client: f, Config: fixtureConfig()}
+	dir := t.TempDir()
+	r, err := i.Run(context.Background(), casefile.Case{ID: "release-controller", Description: "Release controller blocks"}, dir)
+	if err != nil || r["status"] != "completed" {
+		t.Fatalf("result=%v error=%v", r, err)
+	}
+	analysis := obj(r["analysis"])
+	if listLen(analysis["missing_information"]) == 0 {
+		t.Fatal("missing information was dropped from the report")
+	}
+	state, err := LoadState(dir)
+	if err != nil || state.Phase != "closed" || state.Retention {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	if obj(r["cleanup"])["sandbox_deleted"] != true || obj(r["cleanup"])["session_deleted"] != true {
+		t.Fatalf("release-controller run retained resources: %v", r["cleanup"])
+	}
+	for _, operation := range f.operations {
+		if operation == "suspend_sandbox" {
+			t.Fatal("release-controller run suspended its sandbox")
+		}
+	}
+}
+
+func TestPauseRequiresDurableRetention(t *testing.T) {
+	base := State{Version: 1, Config: fixtureConfig(), RunID: "11111111-1111-4111-8111-111111111111", Round: 1, Phase: "running", TaskID: "task"}
+	for _, retention := range []bool{false, true} {
+		state := base
+		state.Retention = retention
+		dir := t.TempDir()
+		if err := saveState(dir, &state); err != nil {
+			t.Fatal(err)
+		}
+		lock, err := os.OpenFile(filepath.Join(dir, ".lifecycle.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			t.Fatal(err)
+		}
+		err = RequestPause(dir)
+		lock.Close()
+		if !retention {
+			if !errors.Is(err, ErrRetentionUnsupported) {
+				t.Fatalf("release controller pause err=%v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "pause-request.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("pause request survived a retention refusal")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("fork pause err=%v", err)
+		}
 	}
 }
 

@@ -240,6 +240,41 @@ history and logs. This checks real restoration and continuation, not weeks of
 elapsed uptime. The fork's separate retention integration test covers passing
 the original sandbox expiry deadline.
 
+The opt-in sandbox boundary test needs the deployment and a caller token, but
+no agent and no model credential:
+
+```sh
+make test-sandbox-integration
+```
+
+It creates an ordinary Sandbox from the configured template, uploads a nested
+file and reads it back from a process, repeats the DNS and direct-IP HTTP
+probes recorded in [sandbox-smoke.json](verification/sandbox-smoke.json), kills
+a long-running process and observes exit 137, then deletes the Sandbox and
+confirms the deletion with a separate read. A probe that fails in an unrecorded
+way fails the test for review; it is not counted as a denial. With
+`TRIAGELAB_REPORT_DIR` set, it saves a record in the same shape as that file.
+
+`scripts/live-verify.sh sandbox|investigation|pause` runs one of the three
+opt-in checks against the kind deployment with its own loopback port-forward
+and one-hour caller token, for a VM without a standing port-forward.
+
+### Scheduled live verification
+
+The `Live verification` workflow (`.github/workflows/live.yml`) performs the
+fresh-cluster installation above on a GitHub-hosted runner and runs all three
+checks through `scripts/live-verify.sh`. It runs daily, after pushes to `main`
+that change the deployment files, scripts, fixture, or the agent,
+investigation, and kagent packages, and on manual dispatch. Each check runs
+even when an earlier one failed. It needs the `OPENAI_API_KEY` repository
+secret. The investigation and pause/resume checks incur provider charges on
+every run, so the schedule is the cost control. Reports and the sandbox record
+are kept as a run artifact for seven days.
+
+A passing run shows that the pinned deployment still installs and behaves as
+recorded on that day's runner. It does not replace reviewing the upstream
+source before changing a pin, and it is not a hostile-workload test.
+
 ### Inspecting telemetry export locally
 
 The OpenTelemetry SDK exports only when a telemetry configuration is supplied.
@@ -313,10 +348,11 @@ Then run the demonstration and `make test-integration` unchanged. These checks
 show which pool class served the run; the report itself does not record the
 isolation backend.
 
-GitHub-hosted Linux runners expose `/dev/kvm`, so the opt-in `microvm` CI job
-(the `run_microvm` input of a manually dispatched run) performs these steps on
-a disposable runner. It needs an `OPENAI_API_KEY` repository secret, incurs
-provider charges, and uploads the investigation report as a run artifact.
+GitHub-hosted Linux runners expose `/dev/kvm`, so the `Live verification`
+workflow performs these steps on a disposable runner when a manually dispatched
+run selects `microvm` (or `both`) for its `sandbox_class` input. It runs the
+same three checks as the scheduled gVisor run, incurs provider charges, and
+uploads the reports as a run artifact.
 
 Live investigations have passed on this path in four of five runs. See
 [verification.md](verification.md#microvm-backend-verification) for what ran,

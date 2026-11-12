@@ -35,10 +35,19 @@ type fixtureBackend struct {
 	failureReply   string
 	readError      error
 	additionalTool string
+	retention      bool
+	probeError     error
 }
 
 func newFixture() *fixtureBackend {
-	return &fixtureBackend{state: "TASK_STATE_COMPLETED", deleteFailures: map[string]int{}, killed: map[string]bool{}}
+	return &fixtureBackend{state: "TASK_STATE_COMPLETED", deleteFailures: map[string]int{}, killed: map[string]bool{}, retention: true}
+}
+
+func (f *fixtureBackend) SandboxRetention(context.Context) (bool, error) {
+	if f.probeError != nil {
+		return false, f.probeError
+	}
+	return f.retention, nil
 }
 
 func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
@@ -56,7 +65,11 @@ func (f *fixtureBackend) CallTool(ctx context.Context, name string, args map[str
 				return nil, err
 			}
 		}
-		return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE", "retain_while_suspended": true}, nil
+		created := map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE"}
+		if f.retention {
+			created["retain_while_suspended"] = true
+		}
+		return created, nil
 	case "write_sandbox_file":
 		data, err := base64.StdEncoding.DecodeString(args["data_base64"].(string))
 		return map[string]any{"bytes_written": len(data)}, err
@@ -329,6 +342,55 @@ func TestProcessTimeoutRequestsKill(t *testing.T) {
 	}
 	if r["experiments"].([]map[string]any)[0]["timed_out"] != true {
 		t.Fatal("timeout not preserved")
+	}
+}
+
+func TestUpstreamControllerRunsInvestigationWithoutRetention(t *testing.T) {
+	f := newFixture()
+	f.retention = false
+	r, err, dir := runFixture(t, f)
+	if err != nil || r["status"] != "completed" || r["outcome"] != "reproduced" {
+		t.Fatalf("result=%v err=%v", r, err)
+	}
+	if obj(r["upstream"])["sandbox_retention"] != false {
+		t.Fatalf("report did not record the probed capability: %v", r["upstream"])
+	}
+	for _, call := range f.calls {
+		if call.name != "create_sandbox" {
+			continue
+		}
+		if _, present := call.args["retain_while_suspended"]; present {
+			t.Fatal("release controller received the fork-only retention input")
+		}
+		if call.args["request_id"] != r["run_id"] || call.args["ttl_seconds"] == nil {
+			t.Fatalf("lost baseline creation inputs: %v", call.args)
+		}
+	}
+	if obj(r["cleanup"])["sandbox_deleted"] != true || obj(r["cleanup"])["session_deleted"] != true {
+		t.Fatalf("cleanup=%v", r["cleanup"])
+	}
+	state, err := LoadState(dir)
+	if err != nil || state.Retention {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+}
+
+func TestUpstreamProbeFailureFailsBeforeCreatingResources(t *testing.T) {
+	f := newFixture()
+	f.probeError = errors.New("controller unreachable")
+	i := Investigator{Client: f, Config: fixtureConfig()}
+	dir := t.TempDir()
+	_, err := i.Run(context.Background(), casefile.Case{ID: "case", Description: "case"}, dir)
+	if err == nil || !strings.Contains(err.Error(), "retention support") {
+		t.Fatalf("err=%v", err)
+	}
+	for _, call := range f.calls {
+		if strings.HasPrefix(call.name, "create_") {
+			t.Fatalf("probe failure still created resources: %v", call.name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "lifecycle.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed probe left lifecycle state behind")
 	}
 }
 
