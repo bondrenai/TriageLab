@@ -1,6 +1,9 @@
 # Investigation pause and resume
 
 Status: upstream retention patch and TriageLab workflow implemented, 2026-11-10.
+Since 2026-11-12 TriageLab treats retention as an optional controller
+capability: it probes the controller at run start and runs the same workflow
+without pause and resume when only a release controller is installed.
 The controller pin is
 [`bondrenai/kagent` commit `048e1016d50b209dba01065d0d10dfd80b78fb41`](https://github.com/bondrenai/kagent/commit/048e1016d50b209dba01065d0d10dfd80b78fb41),
 based on kagent `v1.0.0`, commit

@@ -3,6 +3,7 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -161,10 +162,29 @@ func TestContinuationRejectsStaleReviewIdentityAndTicketBypass(t *testing.T) {
 	}
 }
 
+func TestPauseWithoutRetentionForkIsUnavailable(t *testing.T) {
+	s := newTestServer(t, nil)
+	state := retainedState(s)
+	state.Phase, state.TaskID, state.Retention = "running", "task-1", false
+	saveRetainedRun(t, s, state)
+	s.activeID, s.active = state.RunID, &runningCase{cancel: func() {}, done: make(chan struct{})}
+	defer func() { s.activeID, s.active = "", nil }()
+	if view := s.lifecycle(state.RunID, state, true); view.CanPause {
+		t.Fatal("release-controller run advertised pause")
+	}
+	w := request(s, "POST", "/api/runs/"+state.RunID+"/pause", nil)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "controller fork") {
+		t.Fatalf("pause=%d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.directory, state.RunID, "pause-request.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("pause request survived a retention refusal")
+	}
+}
+
 func TestPauseRequestsSettlementWithoutCancelingRun(t *testing.T) {
 	s := newTestServer(t, nil)
 	state := retainedState(s)
-	state.Phase, state.TaskID = "running", "task-1"
+	state.Phase, state.TaskID, state.Retention = "running", "task-1", true
 	saveRetainedRun(t, s, state)
 	lock, err := os.OpenFile(filepath.Join(s.directory, state.RunID, ".lifecycle.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

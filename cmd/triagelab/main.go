@@ -348,7 +348,16 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 4
 		}
-		fmt.Fprintln(out, "kagent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
+		retention, err := client.SandboxRetention(probe)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 4
+		}
+		capability := "this release controller does not retain suspended sandboxes, so pause and resume are unavailable"
+		if retention {
+			capability = "the controller fork's durable pause retention is available"
+		}
+		fmt.Fprintf(out, "kagent sandbox API reachable; %s. A live investigation is needed to verify runtime and model access.\n", capability)
 		return 0
 	case "investigate":
 		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(opts.manualAgent)

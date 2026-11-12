@@ -31,7 +31,7 @@ triagelab investigate [options]
 
 ## pause
 
-Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.
+Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused. Requires the TriageLab kagent controller fork; release controllers keep running without pausing.
 
 ```text
 triagelab pause --report <report.json> [options]
@@ -131,7 +131,7 @@ triagelab serve [options]
 
 ## doctor
 
-Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.
+Check that the kagent sandbox API is reachable with the configured credentials, and report whether durable pause retention is available or a release controller runs without it. A live investigation is still needed to verify runtime and model access.
 
 ```text
 triagelab doctor [options]

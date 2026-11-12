@@ -31,6 +31,7 @@ type Backend interface {
 	CallTool(context.Context, string, map[string]any) (map[string]any, error)
 	TaskItems(context.Context, string, string) ([]map[string]any, error)
 	CancelTask(context.Context, string, string) error
+	SandboxRetention(context.Context) (bool, error)
 }
 
 type Investigator struct {
@@ -148,12 +149,19 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if _, err := LoadState(dir); !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("investigation directory already has lifecycle state; resume or close it")
 	}
-	state := State{Version: 1, Config: i.Config, AdditionalTools: append([]string(nil), i.AdditionalTools...), Trigger: i.Trigger, Actor: i.Actor, RunID: c.ID, Round: 1, Phase: "creating"}
+	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
+	defer cancel()
+	// Retention is a controller capability, not a setting: probe it before any
+	// resource exists. A release controller runs the investigation without the
+	// fork's durable suspended-sandbox retention, so pausing stays unavailable.
+	retention, err := i.Client.SandboxRetention(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("determine sandbox retention support: %w", err)
+	}
+	state := State{Version: 1, Config: i.Config, AdditionalTools: append([]string(nil), i.AdditionalTools...), Trigger: i.Trigger, Actor: i.Actor, RunID: c.ID, Round: 1, Phase: "creating", Retention: retention}
 	if err := saveState(dir, &state); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
-	defer cancel()
 	trigger := i.Trigger
 	if trigger == "" {
 		trigger = "unlabeled"
@@ -175,7 +183,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		"warnings": []string{}, "errors": []string{},
 		"connection": map[string]any{"endpoint": i.Config.Endpoint, "user_id": i.Config.UserID, "namespace": i.Config.Namespace},
 		"cleanup":    map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}},
-		"upstream":   map[string]any{"kagent": kagent.Version, "substrate": "v1.0.0"},
+		"upstream":   map[string]any{"kagent": kagent.Version, "substrate": "v1.0.0", "sandbox_retention": state.Retention},
 	}
 	if i.Actor != "" {
 		result["started_by"] = i.Actor
@@ -293,7 +301,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		if err = i.persist(dir, result); err != nil {
 			return result, err
 		}
-		if sandbox["retain_while_suspended"] != true {
+		if state.Retention && sandbox["retain_while_suspended"] != true {
 			return result, fmt.Errorf("kagent did not enable retain_while_suspended; install the compatible TriageLab kagent fork")
 		}
 		if sandbox["failure"] != nil {
