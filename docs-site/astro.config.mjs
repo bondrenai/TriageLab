@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mdx from "@astrojs/mdx";
 import starlightLinksValidator from "starlight-links-validator";
 import blog from "starlight-blog";
 
@@ -11,8 +12,20 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "TriageLab",
+      logo: {
+        light: "./src/assets/triagelab-mark-light.svg",
+        dark: "./src/assets/triagelab-mark-dark.svg",
+      },
+      favicon: "/favicon.svg",
       description:
         "A Kubernetes-based tool that automates technical investigations for tickets and issues — routing, classification, and sandboxed investigation with recorded evidence.",
+      social: [
+        {
+          icon: "github",
+          label: "TriageLab on GitHub",
+          href: "https://github.com/bondrenai/TriageLab",
+        },
+      ],
       sidebar: [
         {
           label: "Start",
@@ -26,11 +39,16 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Browser workspace", slug: "guides/workspace" },
+			{ label: "Results chat and MCP", slug: "guides/chat-mcp" },
+            { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
+            { label: "API clients (OAuth)", slug: "guides/api-clients" },
             { label: "Defining agents", slug: "guides/agents" },
             { label: "Zendesk tickets", slug: "guides/tickets-zendesk" },
             { label: "GitHub issues", slug: "guides/tickets-github" },
             { label: "Linear issues", slug: "guides/tickets-linear" },
+            { label: "Bondren issues", slug: "guides/tickets-bondren" },
+            { label: "Jira issues", slug: "guides/tickets-jira" },
             { label: "Helm deployment", slug: "guides/helm" },
             { label: "Telemetry", slug: "guides/telemetry" },
           ],
@@ -64,5 +82,8 @@ export default defineConfig({
         }),
       ],
     }),
+    // mdx must come after starlight so expressive-code (registered by
+    // starlight) applies to code blocks on .mdx pages.
+    mdx(),
   ],
 });

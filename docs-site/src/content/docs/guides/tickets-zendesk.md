@@ -1,11 +1,11 @@
 ---
 title: Zendesk tickets
-description: Prepare Zendesk tickets for investigation with policy-checked clarifications and approval before a sandbox run.
+description: Prepare Zendesk tickets for investigation with policy-checked clarifications and configurable launch.
 ---
 
 The Zendesk source handles a small, dependency-free Python 3.12 timeout
 reproduction. It checks what the requester has already provided, drafts or
-sends a clarification under policy, and hands approved evidence to the
+sends a clarification under policy, and prepares evidence for the
 existing kagent investigator. Zendesk remains the ticket and conversation
 record; TriageLab keeps preparation decisions and the linked investigation
 report.
@@ -35,7 +35,10 @@ agent, and sandbox; the first matching procedure applies. An open ticket must
 carry the procedure's tag, match its priorities if provided, and match an
 optional custom-field condition.
 
-## Clarify and approve
+Zendesk connections can also be added in the workspace UI on the
+**Connections** page, which then offers the same browser authorization flow.
+
+## Clarify and launch
 
 With `auto_questions: false`, review the draft and reply in Zendesk yourself.
 With `auto_questions: true`, track the ticket and review the requester,
@@ -67,7 +70,10 @@ Attach only the sanitized files the procedure needs (`.py`, `.json`, `.txt`,
 `.log`; append `.txt` if Zendesk rejects an extension). At most four files of
 1 MiB each enter a run, and the report records the source of each.
 
-Once evidence is ready, review its source references, file hashes, and run
+A procedure can start automatically when the evidence is ready.
+[Automatic ticket investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, check the source references, file hashes, and run
 limits, then choose **Approve and start investigation**. Approval expires
 after 15 minutes and is rechecked against current ticket access, evidence,
 procedure, and run settings — a stale plan cannot launch work. Each tracked

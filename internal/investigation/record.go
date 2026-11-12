@@ -30,10 +30,15 @@ const (
 	// StatusQueued is saved by the workspace before the investigator starts.
 	StatusQueued      Status = "queued"
 	StatusRunning     Status = "running"
+	StatusPausing     Status = "pausing"
+	StatusPaused      Status = "paused"
+	StatusResuming    Status = "resuming"
 	StatusCompleted   Status = "completed"
 	StatusError       Status = "error"
 	StatusInterrupted Status = "interrupted"
 	StatusTimedOut    Status = "timed_out"
+	StatusClosing     Status = "closing"
+	StatusClosed      Status = "closed"
 )
 
 // Outcome is a run's validated result: the outcome enum of the investigator's
@@ -90,6 +95,25 @@ type Report struct {
 	// TaskFailure is kagent's bounded failure text for a turn that stopped
 	// without completing. It is untrusted upstream text.
 	TaskFailure string `json:"task_failure,omitempty"`
+
+	// Round numbers the turn this report records. A fresh run starts at 1;
+	// each authorized continuation increments it. A queued placeholder has none.
+	Round int `json:"round,omitempty"`
+	// Rounds archives the frozen reports of earlier rounds while a
+	// continuation runs. A round's own archive omits them, so history stays
+	// flat and process IDs remain scoped to their round.
+	Rounds []*Report `json:"rounds,omitempty"`
+	// RoundStartedAt marks when the current round was authorized.
+	RoundStartedAt *time.Time `json:"round_started_at,omitempty"`
+	// ResumedBy is the workspace account that authorized this round. It is
+	// absent for CLI continuations.
+	ResumedBy string `json:"resumed_by,omitempty"`
+	// Continuation is the bounded additional information that authorized the
+	// round after the first. It is untrusted case material.
+	Continuation *casefile.Case `json:"continuation,omitempty"`
+	// HistoryIncomplete marks that an earlier round's archive could not be
+	// loaded while closing; its existing files were left unchanged.
+	HistoryIncomplete bool `json:"history_incomplete,omitempty"`
 
 	Experiments []Experiment      `json:"experiments"`
 	ToolCalls   []kagent.ToolCall `json:"tool_calls,omitzero"`
@@ -160,6 +184,9 @@ type Experiment struct {
 	*Output
 	OutputsComplete bool `json:"outputs_complete,omitempty"`
 	TimedOut        bool `json:"timed_out,omitempty"`
+	// StoppedForPause marks a process TriageLab killed to settle the round
+	// before suspension.
+	StoppedForPause bool `json:"stopped_for_pause,omitempty"`
 }
 
 // Output is a process's bounded standard output and error.
@@ -182,7 +209,7 @@ func isSet(value *bool) bool { return value != nil && *value }
 // newReport is the record Run journals before any kagent call.
 func newReport(c casefile.Case, config Config, sandboxRequest map[string]any) *Report {
 	return &Report{
-		SchemaVersion: SchemaVersion, RunID: c.ID, Case: c, StartedAt: time.Now().UTC(),
+		SchemaVersion: SchemaVersion, RunID: c.ID, Case: c, Round: 1, StartedAt: time.Now().UTC(),
 		Status: StatusRunning, Outcome: OutcomeInconclusive, Sandbox: map[string]any{}, Session: map[string]any{},
 		Agent:           &AgentRef{Namespace: config.Namespace, Name: config.Agent},
 		SandboxTemplate: config.Template,

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../lib/query-keys";
 import { beginZendeskOAuth, previewProcedure, readTicketWorkspace, saveProcedure, takeTicketAction } from "../lib/tickets";
-import type { TicketProcedure, TicketWorkspace } from "../lib/types/ticket";
+import type { ProcedureVersion, TicketProcedure } from "../lib/types/ticket";
 
 export function useTicketWorkspace() {
   return useQuery({ queryKey: queryKeys.tickets, queryFn: readTicketWorkspace, refetchInterval: 10000 });
@@ -29,16 +29,15 @@ export function useZendeskOAuth() {
 export function useSaveProcedure() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: saveProcedure,
-    onSuccess: procedure => {
-      client.setQueryData<TicketWorkspace>(queryKeys.tickets, previous => previous?.enabled ? {
-        ...previous, procedure, settings: { ...previous.settings, policy: procedure.procedure.policy },
-      } : previous);
-    },
+    mutationFn: ({ connection, version }: { connection: string; version: ProcedureVersion }) =>
+      saveProcedure(connection, version),
     onSettled: () => { void client.invalidateQueries({ queryKey: queryKeys.tickets }); },
   });
 }
 
 export function usePreviewProcedure() {
-  return useMutation({ mutationFn: ({ id, procedure }: { id: string; procedure: TicketProcedure }) => previewProcedure(id, procedure) });
+  return useMutation({
+    mutationFn: ({ connection, id, procedure }: { connection: string; id: string; procedure: TicketProcedure }) =>
+      previewProcedure(connection, id, procedure),
+  });
 }

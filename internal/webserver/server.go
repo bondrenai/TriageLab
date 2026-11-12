@@ -59,13 +59,39 @@ type Server struct {
 	mu             sync.Mutex
 	activeID       string
 	active         *runningCase
+	actionErrors   map[string]string
 	closed         bool
 	cleaning       *runCleanup
 	cleanupFailure map[string]string
-	tickets        *ticketflow.Flow
+	secretMu       sync.Mutex
+	ticketMu       sync.RWMutex
+	ticketConns    []*ticketConn
 	deployments    *kagent.DeploymentReader
 	resourceWrites bool
 	auth           *gate
+	mcp            *mcpAccess
+	chat           chatGenerator
+	chatClose      func()
+	chatActive     *chatJob
+	chatErrors     map[string]string
+}
+
+// secretList returns the current redaction list. Stored ticket credentials
+// join it at runtime, so reads copy under the secrets lock, which never nests
+// inside the workspace state lock.
+func (s *Server) secretList() []string {
+	s.secretMu.Lock()
+	defer s.secretMu.Unlock()
+	return s.secrets
+}
+
+func (s *Server) addSecret(value string) {
+	if value == "" {
+		return
+	}
+	s.secretMu.Lock()
+	s.secrets = append(s.secrets, value)
+	s.secretMu.Unlock()
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -122,6 +148,10 @@ func (s *Server) Close(ctx context.Context) error {
 	if cleaning != nil {
 		cleaning.cancel()
 	}
+	chat := s.chatActive
+	if chat != nil {
+		chat.cancel()
+	}
 	s.mu.Unlock()
 	if active != nil {
 		select {
@@ -137,9 +167,19 @@ func (s *Server) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	if chat != nil {
+		select {
+		case <-chat.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if s.chatClose != nil {
+		s.chatClose()
+	}
 	var ticketErr error
-	if s.tickets != nil {
-		ticketErr = s.tickets.Close()
+	for _, conn := range s.ticketConnections() {
+		ticketErr = errors.Join(ticketErr, conn.flow.Close())
 	}
 	return errors.Join(ticketErr, s.reports.Close(), s.assets.Close())
 }
@@ -166,8 +206,8 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 	if err != nil {
 		return err
 	}
-	if s.tickets != nil {
-		s.tickets.Start(ctx)
+	for _, conn := range s.ticketConnections() {
+		conn.flow.Start(ctx)
 	}
 	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	result := make(chan error, 1)
@@ -235,9 +275,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	// Monaco uses runtime styles for layout and syntax colors. Scripts and workers
+	// remain same-origin; no inline script, eval, blob worker, or CDN is allowed.
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 	if !allowedHost(r.Host) {
 		fail(w, http.StatusForbidden, "Only a loopback host is allowed")
+		return
+	}
+	if r.URL.Path == "/mcp" {
+		s.serveMCP(w, r)
 		return
 	}
 	// OAuth is a top-level navigation from Zendesk. The callback has its
@@ -265,7 +311,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-TriageLab-Request") != "1" {
+	// The OAuth endpoints authenticate the caller in the request itself, so
+	// they need no session and no cross-site request marker.
+	if r.URL.Path == auth.OAuthTokenPath || r.URL.Path == auth.OAuthRevocationPath {
+		if s.auth == nil || s.auth.oauth == nil {
+			fail(w, http.StatusServiceUnavailable, "API clients are not configured for this workspace")
+			return
+		}
+		s.auth.oauth.ServeHTTP(w, r)
+		return
+	}
+	// A Bearer token is a credential in the request itself, so a cross-site
+	// page cannot supply one and the request marker that protects session
+	// cookies is not needed. Session routes under /api/auth/ keep the marker.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && !bearerRequest(r) &&
+		r.Header.Get("X-TriageLab-Request") != "1" {
 		fail(w, http.StatusForbidden, "Missing request header")
 		return
 	}
@@ -452,10 +512,10 @@ func (s *Server) decodeReport(content []byte, id string) (map[string]any, error)
 	if err != nil {
 		return nil, err
 	}
-	return report.Redact(saved, s.secrets...).(map[string]any), nil
+	return report.Redact(saved, s.secretList()...).(map[string]any), nil
 }
 
-func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	directory, err := s.reports.Open(".")
 	if err != nil {
 		fail(w, 500, "Could not read report history")
@@ -469,8 +529,12 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
 	}
 	s.mu.Lock()
 	activeID := s.activeID
+	failedActions := make(map[string]bool, len(s.actionErrors))
+	for id := range s.actionErrors {
+		failedActions[id] = true
+	}
 	s.mu.Unlock()
-	runs := []map[string]any{}
+	runs := []runSummary{}
 	for _, entry := range entries {
 		if !entry.IsDir() || !runID.MatchString(entry.Name()) {
 			continue
@@ -479,11 +543,15 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request) {
 		if err != nil {
 			continue
 		}
-		c, _ := saved["case"].(map[string]any)
-		experiments, _ := saved["experiments"].([]any)
-		runs = append(runs, map[string]any{"id": entry.Name(), "description": c["description"], "status": saved["status"], "outcome": saved["outcome"], "started_at": saved["started_at"], "finished_at": saved["finished_at"], "experiment_count": len(experiments), "active": entry.Name() == activeID})
+		// A client without read scope sees only the runs it started.
+		if grant, client := clientFrom(r.Context()); client && !grant.Allows(auth.ScopeRead) &&
+			saved["started_by"] != auth.ClientActor(grant.ClientID) {
+			continue
+		}
+		s.projectLifecycle(entry.Name(), saved, entry.Name() == activeID)
+		runs = append(runs, summarizeRun(entry.Name(), saved, entry.Name() == activeID, failedActions[entry.Name()]))
 	}
-	sort.Slice(runs, func(i, j int) bool { return fmt.Sprint(runs[i]["started_at"]) > fmt.Sprint(runs[j]["started_at"]) })
+	sort.Slice(runs, func(i, j int) bool { return runs[i].StartedAt > runs[j].StartedAt })
 	jsonResponse(w, 200, map[string]any{"runs": runs})
 }
 
@@ -494,6 +562,20 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	if len(parts) == 2 && parts[1] == "chat" {
+		s.chatRoute(w, r, id)
+		return
+	}
+	if len(parts) == 2 && r.Method == http.MethodPost {
+		switch parts[1] {
+		case "pause":
+			s.pauseRun(w, r, id)
+			return
+		case "resume", "close":
+			s.continueRun(w, r, id, parts[1])
+			return
+		}
+	}
 	if len(parts) == 2 && parts[1] == "ticket-note" && r.Method == http.MethodPost {
 		s.postTicketNote(w, r, id)
 		return
@@ -538,13 +620,21 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		saved["cleanup_error"] = message
 	}
 	saved["progress"] = []string{}
+	delete(saved, "action_error")
+	if message := s.actionErrors[id]; message != "" {
+		saved["action_error"] = message
+	}
 	if s.activeID == id && s.active != nil {
 		saved["progress"] = append([]string{}, s.active.progress...)
 	}
 	s.mu.Unlock()
-	if s.tickets != nil && saved["active"] == false {
-		if note := s.tickets.NotePreview(id, saved); note != nil {
-			saved["ticket_note"] = note
+	s.projectLifecycle(id, saved, saved["active"] == true)
+	if saved["active"] == false {
+		for _, conn := range s.ticketConnections() {
+			if note := conn.flow.NotePreview(id, saved); note != nil {
+				saved["ticket_note"] = note
+				break
+			}
 		}
 	}
 	jsonResponse(w, 200, saved)
@@ -589,7 +679,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, id, name strin
 		content = append(content, '\n')
 		w.Header().Set("Content-Type", "application/json")
 	} else {
-		content = []byte(report.Redact(string(content), s.secrets...).(string))
+		content = []byte(report.Redact(string(content), s.secretList()...).(string))
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="triagelab-%s-%s"`, id, name))
@@ -731,13 +821,20 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	config.Template = template
 	c, err := s.ingestUpload(w, r)
 	if err != nil {
-		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secrets...)))
+		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
 	if r.Context().Err() != nil {
 		return
 	}
-	if err := s.launchRun(c, nil, config, extraTools, actorFrom(r.Context()).Username, "ui"); err != nil {
+	actor := actorFrom(r.Context())
+	trigger := "ui"
+	if _, client := clientFrom(r.Context()); client {
+		trigger = "api"
+	} else if actor.Via == "mcp" {
+		trigger = "mcp"
+	}
+	if err := s.launchRun(c, nil, config, extraTools, actor.Username, trigger); err != nil {
 		writeLaunchError(w, err)
 		return
 	}
@@ -783,7 +880,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 	}
 	queued := investigation.QueuedReport(c, config)
 	queued.StartedBy = actor
-	if err := report.Write(dir, queued, s.secrets...); err != nil {
+	if err := report.Write(dir, queued, s.secretList()...); err != nil {
 		_ = s.reports.RemoveAll(c.ID)
 		s.mu.Unlock()
 		return errRunStore
@@ -795,35 +892,11 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 			return err
 		}
 	}
-	ctx, cancel := context.WithCancel(s.ctx)
-	active := &runningCase{cancel: cancel, done: make(chan struct{}), progress: []string{"Investigation queued"}}
-	s.activeID, s.active = c.ID, active
+	s.startOperationLocked(c.ID, config, extraTools, actor, trigger, "Investigation queued", func(ctx context.Context, runner *investigation.Investigator) error {
+		_, err := runner.Run(ctx, c, dir)
+		return err
+	})
 	s.mu.Unlock()
-	go func() {
-		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: extraTools, Secrets: s.secrets, Actor: actor, Trigger: trigger, Progress: func(message string) {
-			safe := fmt.Sprint(report.Redact(message, s.secrets...))
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if len(active.progress) >= 100 {
-				active.progress = active.progress[1:]
-			}
-			active.progress = append(active.progress, safe)
-		}}
-		_, runErr := runner.Run(ctx, c, dir)
-		if runErr != nil {
-			// The investigator normally persists errors itself. Keep an explicit
-			// diagnostic even if a final write failed, without reporting success.
-			s.mu.Lock()
-			active.progress = append(active.progress, "Investigation ended; inspect the report for errors")
-			s.mu.Unlock()
-		}
-		s.mu.Lock()
-		s.activeID = ""
-		s.active = nil
-		close(active.done)
-		s.mu.Unlock()
-	}()
 	return nil
 }
 

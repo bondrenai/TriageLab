@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, FlaskConical, KeyRound } from "lucide-react";
+import { ArrowRight, KeyRound } from "lucide-react";
 import { useSession, useSignIn } from "../hooks/use-auth";
+import { BrandMark } from "../components/brand-mark";
 import { Button } from "../components/ui";
 
 export function LoginPage() {
@@ -28,7 +29,7 @@ export function LoginPage() {
 
   return <div className="login-shell">
     <main className="login-plate plate">
-      <div className="login-brand"><span className="brand-mark"><FlaskConical size={26} strokeWidth={1.5} /></span><span className="login-title">TriageLab</span></div>
+      <div className="login-brand"><span className="brand-mark"><BrandMark /></span><span className="login-title">TriageLab</span></div>
       <p className="login-copy">Sign in to the investigation workspace.</p>
       {error && <div className="login-error" role="alert">{error}</div>}
       <form onSubmit={submit} className="login-form">

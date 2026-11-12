@@ -1,9 +1,9 @@
 ---
 title: Pinning alpha upstreams
-description: How TriageLab integrates kagent rc3 and Substrate 1.0 without inheriting their churn.
+description: How TriageLab integrates kagent 1.0 and Substrate 1.0 without inheriting their churn.
 ---
 
-TriageLab sits on two young upstreams: kagent `v1.0.0-rc3` and its matching
+TriageLab sits on two young upstreams: kagent `v1.0.0` and its matching
 Agent Substrate `v1.0.0` packaging. Both are moving — the current 1.x alpha
 schemas differ meaningfully from older public examples — and an investigation
 tool whose substrate shifts underneath it is worse than no tool. This is the
@@ -13,8 +13,8 @@ discipline we use to depend on alpha software without inheriting its churn.
 
 The [upstream compatibility record](/TriageLab/reference/upstream/) lists each
 dependency's version *and* the exact commit identity it was reviewed against.
-A tag can be moved; a commit hash cannot. When we say "kagent rc3," we mean
-`3548b7aaf4d91ec86b0565df2bd8a9950e9a276d`, and every interface claim in the
+A tag can be moved; a commit hash cannot. When we say "kagent 1.0.0," we mean
+`a08cde76ad6482dd758a4220b14213d79185ac30`, and every interface claim in the
 record was read at that commit — not copied from a README that may predate a
 breaking change.
 

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { ArrowUpRight, FlaskConical, FolderOpen, Bot, Github, Inbox, LogOut, Users } from "lucide-react";
+import { ArrowUpRight, FolderOpen, Bot, Github, Inbox, KeyRound, LogOut, Plug, Users } from "lucide-react";
+import { BrandMark } from "./components/brand-mark";
 import { AgentsPage } from "./pages/AgentsPage";
 import { InvestigationsPage } from "./pages/InvestigationsPage";
 import { NewInvestigationPage } from "./pages/NewInvestigationPage";
@@ -8,6 +9,8 @@ import { TicketsPage } from "./pages/TicketsPage";
 import { ReportPage } from "./pages/ReportPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
+import { ApiClientsPage } from "./pages/ApiClientsPage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { PageTitle, ButtonLink, Stamp } from "./components/ui";
 import { useSession, useSignOut } from "./hooks/use-auth";
 import { roleAtLeast } from "./lib/auth";
@@ -54,13 +57,15 @@ export function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar ink-frame">
-      <Link className="brand" to="/" aria-label="TriageLab home"><span className="brand-mark"><FlaskConical size={23} strokeWidth={1.5} /></span><span>TriageLab</span></Link>
+      <Link className="brand" to="/" aria-label="TriageLab home"><span className="brand-mark"><BrandMark /></span><span>TriageLab</span></Link>
       <div className="workspace-label engraved">Workbench</div>
       <nav className="main-nav" aria-label="Main navigation">
         <NavLink to="/" end><FolderOpen size={17} aria-hidden="true" />Investigations</NavLink>
         <NavLink to="/agents"><Bot size={17} aria-hidden="true" />Agents</NavLink>
         <NavLink to="/tickets"><Inbox size={17} aria-hidden="true" />Ticket cases</NavLink>
+        {isAdmin && <NavLink to="/connections"><Plug size={17} aria-hidden="true" />Connections</NavLink>}
         {isAdmin && <NavLink to="/accounts"><Users size={17} aria-hidden="true" />Accounts</NavLink>}
+        {isAdmin && <NavLink to="/clients"><KeyRound size={17} aria-hidden="true" />API clients</NavLink>}
       </nav>
       <div className="sidebar-footer">
         <IdentityFooter username={session.data.username} role={session.data.role} />
@@ -78,7 +83,9 @@ export function App() {
           <Route path="/new" element={<NewInvestigationPage />} />
           <Route path="/agents/*" element={<AgentsPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
+          <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/accounts" element={<UsersPage />} />
+          <Route path="/clients" element={<ApiClientsPage />} />
           <Route path="/example" element={<ReportPage example />} />
           <Route path="/runs/:id" element={<ReportPage />} />
           <Route path="*" element={<><PageTitle title="Page not found" description="This workspace page does not exist." /><ButtonLink to="/">Back to investigations</ButtonLink></>} />

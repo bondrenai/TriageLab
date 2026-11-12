@@ -95,9 +95,10 @@ func TestRoleEnforcement(t *testing.T) {
 		{"POST", "/api/runs", strings.NewReader("")},
 		{"POST", "/api/runs/" + workerUUID + "/cancel", nil},
 		{"POST", "/api/runs/" + workerUUID + "/cleanup", nil},
-		{"POST", "/api/tickets/1/preview", nil},
+		{"POST", "/api/tickets/c/0a1b2c3d/1/preview", nil},
 		{"POST", "/api/agents/definition", strings.NewReader(`{}`)},
 		{"GET", "/api/auth/admin/users", nil},
+		{"GET", "/api/tickets/connections", nil},
 	} {
 		if w := requestAs(s, viewer, attempt.method, attempt.path, attempt.body); w.Code != 403 {
 			t.Fatalf("viewer mutation %s %s: %d %s", attempt.method, attempt.path, w.Code, w.Body)
@@ -117,8 +118,10 @@ func TestRoleEnforcement(t *testing.T) {
 	}{
 		{"POST", "/api/agents/definition", strings.NewReader(`{"name":"x","model_ref":"m"}`)},
 		{"POST", "/api/sandboxes/definition", strings.NewReader(`{}`)},
-		{"POST", "/api/tickets/procedure", strings.NewReader(`{}`)},
-		{"POST", "/api/tickets/oauth/start", nil},
+		{"POST", "/api/tickets/c/0a1b2c3d/procedure", strings.NewReader(`{}`)},
+		{"POST", "/api/tickets/c/0a1b2c3d/oauth/start", nil},
+		{"POST", "/api/tickets/connections", strings.NewReader(`{}`)},
+		{"DELETE", "/api/tickets/connections/0a1b2c3d", nil},
 		{"GET", "/api/auth/admin/users", nil},
 		{"POST", "/api/auth/admin/users", strings.NewReader(`{}`)},
 	} {

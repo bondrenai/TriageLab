@@ -1,0 +1,57 @@
+---
+title: What is TriageLab
+description: "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an investigation in a disposable sandbox."
+template: splash
+tableOfContents: false
+hero:
+  title: 'Every ticket gets a <span class="hero-accent">real investigation.</span>'
+  tagline: "TriageLab routes each ticket to a procedure, gathers the evidence it is missing, and starts after review or according to policy. Then it investigates in a disposable sandbox on Kubernetes and reports what it found, with the evidence behind every finding."
+  actions:
+    - text: Start the quickstart
+      link: /TriageLab/start/quickstart/
+      variant: primary
+    - text: See the architecture
+      link: /TriageLab/reference/architecture/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/bondrenai/TriageLab
+      variant: minimal
+  image:
+    html: '<div class="hairline-hero" data-hairline="loupe" data-play="true" data-intensity="0.7" role="img" aria-label="A stand loupe sliding across a ruled sheet, the rules magnified under the glass"></div>'
+---
+
+import LandingSections from "../../components/LandingSections.astro";
+
+<LandingSections />
+
+## How the pieces fit
+
+TriageLab runs beside kagent and Agent Substrate on a dedicated cluster.
+kagent runs the investigator agent and its model, Agent Substrate provides the
+isolated sandbox (gVisor or microVM, with egress denied by default), and
+TriageLab handles everything between the ticket and the report. The Go CLI and
+the browser workspace share one workflow: you can submit a description and
+files yourself, or let a ticket source start the case. Inputs are capped at 64
+files, 1 MiB per file and 4 MiB in total, and unsafe inputs are rejected before
+anything is transferred.
+
+## Review or automate
+
+Ticket cases default to review before launch. TriageLab binds sanitized facts,
+file hashes, the chosen agent, and run limits to each run. An explicitly enabled
+policy can start an investigation once evidence is ready and source freshness
+checks pass. Sandbox isolation and egress policy enforce the boundaries.
+[Configure automatic investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+## Status and scope
+
+TriageLab is an early, single-user pilot, not a production support platform.
+The workflow is general, but the only procedure that ships with it is a Python
+3.12 timeout reproduction. Admins add procedures for other kinds of tickets in
+the workspace. There is no database, operator, custom sandbox runtime, or
+agent framework, and nothing is simulated. A failed run keeps its partial
+report, so a nonzero exit code is no reason to discard it. Infrastructure
+failures are never reported as "not reproduced."
+
+Next, run the included example with the [quickstart](/TriageLab/start/quickstart/),
+or see every command in the [CLI reference](/TriageLab/reference/cli/).

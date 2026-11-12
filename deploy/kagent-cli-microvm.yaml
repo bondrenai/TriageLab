@@ -5,7 +5,7 @@ install:
   defaultModelProvider: OpenAI
   kagent:
     repository: oci://ghcr.io/kagent-dev/kagent/helm/
-    version: 1.0.0-rc3
+    version: 1.0.0
     valuesFiles: [kagent-values.yaml, kagent-values-microvm.yaml]
   substrate:
     repository: oci://ghcr.io/kagent-dev/substrate/helm/

@@ -1,0 +1,12 @@
+{
+  "source": "bondren",
+  "origin": "https://app.bondren.example",
+  "token_env": "TRIAGELAB_BONDREN_TOKEN",
+  "poll_seconds": 60,
+  "internal_notes": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}

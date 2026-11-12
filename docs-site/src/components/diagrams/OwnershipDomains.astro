@@ -1,0 +1,111 @@
+---
+/**
+ * Ownership strip: a drafting title block showing what each of the three
+ * systems owns. HTML rather than SVG so the lists stay selectable and
+ * reflow on small screens.
+ */
+---
+
+<figure class="ownership" aria-labelledby="own-title">
+  <div class="own-grid">
+    <div class="own-card">
+      <p class="own-band">TRIAGELAB</p>
+      <ul>
+        <li>ticket routing + policy</li>
+        <li>clarification reservations</li>
+        <li>launch evidence binding</li>
+        <li>bounded case inputs</li>
+        <li>watchdog budgets</li>
+        <li>evidence validation</li>
+        <li>reports + cleanup</li>
+      </ul>
+    </div>
+    <div class="own-card">
+      <p class="own-band">KAGENT</p>
+      <ul>
+        <li>investigator agent + tools</li>
+        <li>sessions</li>
+        <li>sandbox templates</li>
+        <li>sandbox lifecycle</li>
+        <li>model gateway</li>
+      </ul>
+    </div>
+    <div class="own-card">
+      <p class="own-band">AGENT SUBSTRATE</p>
+      <ul>
+        <li>worker pools</li>
+        <li>gvisor / microvm</li>
+        <li>snapshots</li>
+        <li>resource limits</li>
+        <li>deny-by-default egress</li>
+      </ul>
+    </div>
+  </div>
+  <figcaption id="own-title">
+    Three systems, one case: TriageLab owns everything between the ticket
+    and the report; kagent owns the agent and its sandbox API; Agent
+    Substrate owns the isolation the sandbox runs on.
+  </figcaption>
+</figure>
+
+<style>
+  .ownership {
+    margin: 1.25rem 0 0;
+  }
+  .own-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+    gap: 1px;
+    background: var(--bondren-line-frame);
+    border: 1px solid var(--bondren-line-frame);
+    border-radius: var(--bondren-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-plate);
+  }
+  .own-card {
+    background: var(--bondren-plate);
+    display: flex;
+    flex-direction: column;
+    /* Starlight's markdown styles give siblings a top margin; keep the
+       title-block row flush. */
+    margin-top: 0;
+  }
+  .own-band {
+    margin: 0;
+    background: var(--bondren-ink);
+    color: var(--bondren-paper);
+    font-family: var(--bondren-font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    padding: 0.5rem 0.875rem;
+  }
+  .own-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0.875rem 0.875rem 1rem;
+    display: grid;
+    gap: 0.4375rem;
+  }
+  .own-card li {
+    font-family: var(--bondren-font-mono);
+    font-size: 0.76rem;
+    letter-spacing: 0.02em;
+    color: var(--bondren-ink-2);
+    position: relative;
+    padding-left: 1rem;
+  }
+  .own-card li::before {
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--bondren-accent);
+  }
+  .ownership figcaption {
+    font-family: var(--bondren-font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--bondren-ink-muted);
+    padding: 0.625rem 0.25rem 0;
+  }
+</style>

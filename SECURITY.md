@@ -30,6 +30,21 @@ the backstop if the CLI crashes, loses connectivity, or is killed without cleanu
 
 ## Identity and credentials
 
+Optional results chat uses a separately configured, tool-free completion client.
+It receives bounded saved report excerpts and conversation text, not a live
+investigator session. Model answers remain untrusted interpretations in a
+separate private journal. Validated evidence references establish attribution,
+not correctness; redaction and prompt-injection resistance remain best effort.
+
+The optional `/mcp` endpoint uses separate named bearer principals with viewer
+or user permissions. It never trusts browser cookies or forwarded identity/role
+headers. It remains on loopback; remote OAuth/TLS belongs at an explicitly
+configured gateway. A gateway backend credential identifies a shared workspace
+principal, not the original OAuth user, and all principals share report access.
+Gateway credentials grant no browser API session or account administration.
+The gateway must restrict users, audiences, origins and rates for its deployment.
+See [results chat and MCP](docs-site/src/content/docs/guides/chat-mcp.md).
+
 The example installation deliberately uses kagent's development authentication mode.
 Keep it private behind loopback port forwarding or an SSH tunnel. A development
 `user_id` is an ownership partition, not an authentication credential; never expose
@@ -48,7 +63,7 @@ SandboxTemplate environment variables. TriageLab reads its API token from a name
 environment variable and does not place it in the reproduction environment. The
 trusted sandbox MCP binding forwards the verified invocation token to preserve
 ownership. Keep global runtime token propagation disabled before attaching MCP
-servers. In rc3 it forwards the caller credential and identity to all MCP
+servers. In kagent 1.0.0 it forwards the caller credential and identity to all MCP
 servers. Custom runtime images can receive the invocation credential and must be
 trusted. Review model and server references for explicit caller passthrough.
 See [custom agent deployment](docs/agents.md#deploy-and-use).
@@ -119,6 +134,13 @@ OpenID Connect flow verifies ID-token signatures against the provider's JWKS
 with PKCE, one-time state, and nonce checks. Sign-in attempts are rate-limited
 per account, and each report records who started it.
 
+Ticket connections are defined and edited by admins in the workspace UI. A
+pasted source token rests only in the connection registry, a mode-0600 file
+inside the private `.tickets` directory beside the reports; it is registered
+for redaction, never returned by an API, and never logged. Connections that
+read a token from the process environment keep only that variable name in
+the registry, never the value.
+
 These are workspace roles, not isolation between accounts: everyone signed in
 reads the same shared report volume. Anyone who can reach the local port can
 attempt sign-in, so keep the port forward private; use an SSH tunnel for a
@@ -127,6 +149,24 @@ the configured API token. Selected uploads use the same ingestion limits and
 credential screening as CLI inputs. There is no per-user action audit log
 yet, and a running server does not pick up CLI account changes (manage
 accounts in the UI or restart).
+
+### API clients (OAuth)
+
+Programs authenticate separately from people, through OAuth client
+credentials an admin creates in the workspace. Only the client credentials
+grant exists, at `/oauth/token`, backed by the pinned zitadel/oidc library.
+Client secrets are generated 256-bit values stored as SHA-256 hashes; only
+the hash of an access token is retained, and tokens are memory-only like
+sessions. Bearer tokens carry scopes rather than roles, never open account,
+ticket, agent, or settings routes, and never act as the human approval for
+ticket continuations. A client with `investigations:run` steers only the
+runs it started (`started_by: client:<id>`); `investigations:read` is a
+deliberate workspace-wide read grant, including ticket reports. Any change
+to a client's grant, secret, or enabled state ends its tokens at once. The
+OAuth endpoints sit inside the same loopback, request-host, and same-origin
+rules as the rest of the API and send no CORS headers, so an integration is
+a server-side program reaching the same port forward — not a web app on
+another origin.
 
 The optional [Helm chart](docs/helm.md) runs the same workspace as one pod in
 a dedicated cluster. The loopback rule is unchanged: the UI is reached through
@@ -171,9 +211,10 @@ unauthenticated download path with a bounded body and one narrowly allowed
 GitHub attachment redirect. Private attachments and arbitrary linked downloads
 are unsupported. Facts and reproduction files come only from the issue author.
 Issue and comment contents, attachment references and bytes, policy, and run
-settings bind the investigation approval and are checked again before launch.
-Imported data remains untrusted, and approval does not establish that the
-reproduction is safe. See the [GitHub setup and limits](docs/github-issues.md).
+settings bind the launch plan. Manual approval rechecks that plan, and an
+automatic launch uses a fresh assessment and confirms the source before
+dispatch. Imported data remains untrusted and runs inside the configured
+sandbox. See the [GitHub setup and limits](docs/github-issues.md).
 
 ## Telemetry export
 

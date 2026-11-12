@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,7 +27,8 @@ import (
 )
 
 const (
-	Version            = "v1.0.0-rc3"
+	Version            = "v1.0.0+bondrenai.048e1016"
+	ControllerRevision = "048e1016d50b209dba01065d0d10dfd80b78fb41"
 	MCPVersion         = "2026-07-28"
 	tasksExtension     = "io.modelcontextprotocol/tasks"
 	maxResponseBytes   = 12 << 20
@@ -303,7 +305,8 @@ func unwrap(body []byte, id string) (map[string]any, error) {
 }
 
 // CallTool returns declared structured output; text is never promoted to trusted
-// evidence. read_sandbox_file is the upstream's content-only exception.
+// evidence. invoke_agent task receipts become verified session/task identifiers.
+// read_sandbox_file is the upstream's content-only exception.
 func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
 	result, err := c.rpc(ctx, "tools/call", map[string]any{"name": name, "arguments": args})
 	if err != nil {
@@ -311,6 +314,9 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 	}
 	if failed, _ := result["isError"].(bool); failed {
 		return nil, &Error{Kind: "tool", Message: "kagent tool " + name + " failed; inspect controller diagnostics"}
+	}
+	if name == "invoke_agent" {
+		return invocationTask(result, args)
 	}
 	if output, ok := result["structuredContent"].(map[string]any); ok {
 		return output, nil
@@ -321,6 +327,53 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 		}
 	}
 	return nil, protocolError("kagent tool " + name + " omitted structured output; check pinned version")
+}
+
+type taskReference struct {
+	Session string `json:"sessionId"`
+	Task    string `json:"taskId"`
+}
+
+var taskUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// The advertised tasks extension makes invoke_agent return an asynchronous
+// receipt, not a tool result. Its IDs identify accepted work; decoding must not
+// cause another invocation when a receipt is malformed or the response is lost.
+func invocationTask(result, args map[string]any) (map[string]any, error) {
+	if result["resultType"] != "task" {
+		return nil, protocolError("kagent invocation omitted its task receipt; check pinned version")
+	}
+	value, ok := result["taskId"].(string)
+	if !ok || len(value) > 1024 {
+		return nil, protocolError("kagent invocation returned an invalid task reference")
+	}
+	prefix, encoded, ok := strings.Cut(value, ".")
+	if !ok || prefix != "v1" {
+		return nil, protocolError("kagent invocation returned an invalid task reference")
+	}
+	data, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+	if err != nil || base64.RawURLEncoding.EncodeToString(data) != encoded {
+		return nil, protocolError("kagent invocation returned an invalid task reference")
+	}
+	var reference taskReference
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&reference); err != nil {
+		return nil, protocolError("kagent invocation returned an invalid task reference")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, protocolError("kagent invocation returned an invalid task reference")
+	}
+	for _, id := range []string{reference.Session, reference.Task} {
+		if !taskUUID.MatchString(id) || id == "00000000-0000-0000-0000-000000000000" {
+			return nil, protocolError("kagent invocation returned invalid session or task IDs")
+		}
+	}
+	if session, ok := args["session_id"].(string); !ok || session != reference.Session {
+		return nil, protocolError("kagent invocation task does not match the requested session")
+	}
+	return map[string]any{"session_id": reference.Session, "task_id": reference.Task}, nil
 }
 
 // TaskItems reads complete durable A2A messages/artifacts. Any omitted evidence
@@ -397,16 +450,13 @@ func nonzero(value any) bool {
 	return !ok || number != 0
 }
 
-// CancelTask uses the rc3 MCP task extension reference. The caller must observe
+// CancelTask uses the kagent 1.0.0 MCP task extension reference. The caller must observe
 // cancellation before declaring the task stopped; acknowledgement alone is not exit.
 func (c *Client) CancelTask(ctx context.Context, session, task string) error {
 	if session == "" || task == "" {
 		return fmt.Errorf("session and task IDs are required")
 	}
-	reference, err := json.Marshal(struct {
-		Session string `json:"sessionId"`
-		Task    string `json:"taskId"`
-	}{session, task})
+	reference, err := json.Marshal(taskReference{Session: session, Task: task})
 	if err != nil {
 		return err
 	}

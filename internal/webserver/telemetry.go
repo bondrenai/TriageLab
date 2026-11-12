@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
@@ -80,10 +81,14 @@ func (r *statusRecorder) statusCode() int {
 // segments (run and ticket identifiers) become {id}; every other segment is
 // part of a fixed route vocabulary.
 func routePattern(path string) string {
+	if path == "/mcp" {
+		return "/mcp"
+	}
 	if !strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/oauth/") && path != "/healthz" {
 		return "static"
 	}
-	if path == "/healthz" || path == ticketflow.OAuthCallbackPath {
+	if path == "/healthz" || path == ticketflow.OAuthCallbackPath ||
+		path == auth.OAuthTokenPath || path == auth.OAuthRevocationPath {
 		return path
 	}
 	segments := strings.Split(strings.Trim(strings.TrimSuffix(path, "/"), "/"), "/")
@@ -97,6 +102,8 @@ func routePattern(path string) string {
 		return "/" + strings.Join(segments, "/")
 	case segments[1] == "auth" && len(segments) >= 4 && segments[2] == "admin" && segments[3] == "users":
 		return "/api/auth/admin/users"
+	case segments[1] == "auth" && len(segments) >= 4 && segments[2] == "admin" && segments[3] == "clients":
+		return "/api/auth/admin/clients"
 	case segments[1] == "auth" && len(segments) == 4 && segments[2] == "oidc":
 		return "/api/auth/oidc/callback"
 	case segments[1] == "auth":
@@ -107,10 +114,18 @@ func routePattern(path string) string {
 		return "/api/runs/{id}/" + strings.Join(segments[3:], "/")
 	case segments[1] == "tickets" && len(segments) == 3:
 		return "/" + strings.Join(segments, "/")
-	case segments[1] == "tickets" && len(segments) == 4 && segments[2] == "oauth":
-		return "/" + strings.Join(segments, "/")
+	case segments[1] == "tickets" && segments[2] == "connections":
+		return "/api/tickets/connections"
+	case segments[1] == "tickets" && segments[2] == "c" && len(segments) == 4:
+		return "/api/tickets/c/{id}/" + segments[3]
+	case segments[1] == "tickets" && segments[2] == "c" && len(segments) >= 5:
+		rest := segments[4:]
+		if rest[0] != "procedure" && rest[0] != "oauth" {
+			rest[0] = "{ref}"
+		}
+		return "/api/tickets/c/{id}/" + strings.Join(rest, "/")
 	case segments[1] == "tickets":
-		return "/api/tickets/{id}/" + strings.Join(segments[3:], "/")
+		return "/api/tickets/other"
 	default:
 		if len(segments) == 3 {
 			return "/" + strings.Join(segments, "/")

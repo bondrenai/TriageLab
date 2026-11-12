@@ -2,11 +2,20 @@
 
 The first ticket procedure handles a small, dependency-free Python 3.12 timeout
 reproduction. It checks what the requester has already provided, drafts or
-sends a clarification under policy, and hands approved evidence to the existing
+sends a clarification under policy, and prepares evidence for the existing
 kagent investigator. The helpdesk remains the ticket and conversation record.
 TriageLab keeps preparation decisions and the linked investigation report.
 
 ## Connect a test account
+
+Connections are managed on the workspace **Connections** page by an admin.
+The workspace can keep several sources connected at once (up to eight), each
+with its own tracked cases and procedures. Credentials stay on the server:
+Zendesk authorizes through its browser OAuth flow, and the other sources
+either store a token pasted by the admin or read one from a named environment
+variable. Connections persist in `<output>/.tickets/registry.json` (mode
+0600) and reopen on restart. Changing a connection's account or repository
+resets that connection's tracked cases after an explicit confirmation.
 
 1. In Zendesk Admin Center, open **Apps and integrations → APIs → OAuth clients**.
    Create a [Public client](https://developer.zendesk.com/documentation/authentication/oauth-migration/#setting-up-an-oauth-client)
@@ -15,24 +24,31 @@ TriageLab keeps preparation decisions and the linked investigation report.
    ticket details and comments, and `ticket_attachments:read` for downloading
    evidence files. Also allow `tickets:write` for public clarifications or
    internal notes.
-2. Build the Go binary and browser assets as described in [UI setup](ui.md).
-   Copy `tickets.example.json` to `tickets.local.json`. Set the Zendesk
-   subdomain, client identifier, and exact registered redirect URI. Existing
-   pilot configurations should replace the old `email` and `token_env`
-   settings with `client_id` and `redirect_uri`.
-3. Start `bin/triagelab serve --tickets tickets.local.json`. Keep its listener
+2. Build the Go binary and browser assets as described in [UI setup](ui.md)
+   and start `bin/triagelab serve`. Keep its listener
    on loopback. For a remote VM, forward local port 8080 to VM loopback port
-   8080 over SSH. Open `http://127.0.0.1:8080/tickets` in the browser, using
-   the same hostname and port registered for OAuth.
-4. Choose **Connect Zendesk** and approve access as a Zendesk agent who can
+   8080 over SSH.
+3. Open `http://127.0.0.1:8080/connections` in the browser, using
+   the same hostname and port registered for OAuth. Add a Zendesk connection
+   with the subdomain, client identifier, and exact registered redirect URI,
+   then save it.
+4. Choose **Connect** and approve access as a Zendesk agent who can
    read the selected tickets and, when enabled, post replies or internal notes.
    TriageLab uses an authorization code with PKCE and requests
    `tickets:read` and `ticket_attachments:read`. It adds `tickets:write`
    when `auto_questions` or `internal_notes` is enabled. The browser handles
    consent.
-5. Preview a ticket by numeric ID. Preview does not enroll the ticket, send
+5. Preview a ticket by numeric ID on **Ticket cases**. Preview does not enroll the ticket, send
    a message, or start a run. Track a matching ticket to start applying the
-   procedure. Configure kagent separately before approving a lab.
+   procedure. Configure kagent separately before launching an investigation.
+
+A `--tickets` configuration file remains for headless bootstrap. It may hold
+one configuration object or a JSON array of up to eight. The file seeds the
+connection registry the first time the workspace starts against a fresh
+output directory; once connections exist the registry is canonical and edits
+happen in the UI (the flag is ignored with a note on the console). Each
+connection keeps its cases, procedures, and Zendesk OAuth state under
+`<output>/.tickets/<connection id>/`.
 
 Configure the source and initial policy in the JSON file. Use **Ticket cases →
 Edit procedures** to add or edit procedures and save them while the workspace
@@ -47,10 +63,10 @@ value. This slice uses those typed conditions and a fixed sequence of actions.
 The editor starts with a removable Python timeout checklist. Add, edit, or
 remove text fields and attachment rules. Text fields match `Label: value`
 lines and can validate the value with a regular expression. Attachments match
-a filename or a supported extension. Set which items are required for approval,
+a filename or a supported extension. Set which items are required for investigation,
 write the question for each required item, and optionally add an opening message.
 Only missing required items generate questions. An empty checklist lets a
-matching ticket reach approval without collecting fields or attachments.
+matching ticket proceed without collecting fields or attachments.
 **Preview draft on ticket** checks the selected procedure on its own.
 The main ticket preview uses the saved order and shows the matched procedure.
 Preview does not track the ticket, send a question, or start a run.
@@ -58,8 +74,8 @@ Preview does not track the ticket, send a question, or start a run.
 Set a default agent and a sandbox template. Add routing rules to
 select agents by exact tag. If matching tags select different agents, track the
 case and choose one of the matching agents. The proposed run displays the agent,
-sandbox, and matching tags. Changes to the procedure, route, or reviewed run
-target require fresh approval. An unavailable target holds the case for review.
+sandbox, and matching tags. Changes to the procedure, route, or run target
+invalidate the previous plan. An unavailable target holds the case for review.
 Saved agents and alternative sandbox templates use the workspace's kagent
 deployment connection. Allow `get` and `list` on `sandboxtemplates` in its
 namespace Role. The source's startup policy sets the maximum clarification
@@ -117,14 +133,19 @@ to a numbered Zendesk attachment host and fetches it without the OAuth token.
 A ticket with more than 100 comments, unsupported attachments, or unsafe
 evidence requires review.
 
-The server checks one waiting ticket each configured polling interval
+The server checks one eligible tracked ticket each configured polling interval
 (60–3600 seconds, round robin). Set `poll_seconds: 0` to refresh manually.
 In draft mode, use **Refresh ticket** after a reply. **Pause tracking** stops
 automatic work for a case. An unanswered clarification is escalated for review
 after seven days when checked. Waiting and drafting never allocate a sandbox
 or call a model.
 
-Once evidence is ready, review its source references, file hashes, and run
+A procedure can start automatically when the evidence is ready. Set
+`policy.auto_run_condition` to a boolean CEL expression over ticket attributes
+to restrict automatic launches, such as `"reproduce" in ticket.tags`.
+[Automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, check the source references, file hashes, and run
 limits, then choose **Approve and start investigation**. Approval expires after
 15 minutes. It is checked against current ticket access, evidence, procedure,
 and run settings. A stale plan cannot launch work. Each tracked case can

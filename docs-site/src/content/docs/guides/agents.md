@@ -57,7 +57,7 @@ Harness for the cluster operator to clean up.
 ## Custom runtime images
 
 Select **Bring your own image** to use a SHA-256-pinned image with an explicit
-command array. The image must implement kagent rc3's private A2A gRPC,
+command array. The image must implement kagent 1.0.0's private A2A gRPC,
 readiness, and durable TaskStore contract, preserve caller authentication for
 the sandbox tool server, record tool activity in the canonical transcript, and
 return the investigation JSON as terminal A2A text or a canonical structured

@@ -22,25 +22,25 @@ unchanged (loopback listener, `kubectl port-forward` only).
 
 - Linux with Docker or a compatible kind provider. Docker is used to host kind;
   its socket is never mounted into an investigator or reproduction sandbox.
-- Go 1.27.3, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
+- Go 1.27.4, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
 - A C compiler (`gcc` or `clang`) for `make race`, which runs the tests with
   the race detector and needs cgo; the released binary is built without it.
-- kagent CLI **1.0.0-rc3**, matching the charts and runtime images.
-- A provider account/key for the real agent. The example uses OpenAI's
-  `gpt-6.1-sol` model through the Responses API, with bounded investigation
-  limits. Model calls incur provider charges.
+- kagent CLI **1.0.0**, matching the charts and runtime images. The installation
+  script builds the reviewed controller fork from source on this Linux host.
+- A provider account/key for the real agent. The example uses the upstream
+  `gpt-6.1-sol` model through the Responses API, with bounded investigation limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
-Install the released kagent binary rather than compiling the large upstream
-project. For Linux amd64:
+Install the released kagent CLI binary. The controller fork is built separately
+by the installation script. For Linux amd64:
 
 ```sh
 mkdir -p .tools
-curl -fL https://github.com/kagent-dev/kagent/releases/download/v1.0.0-rc3/kagent-linux-amd64 \
+curl -fL https://github.com/kagent-dev/kagent/releases/download/v1.0.0/kagent-linux-amd64 \
   -o .tools/kagent
-echo '8d0ba56fe8382f20511ce585810cf1ac043b361482d15ac7163264699b882e63  .tools/kagent' \
+echo 'c1a0a37767c4c2526e6d42b7016cfc11e69e82e321f6b84c1499d539d0dd864d  .tools/kagent' \
   | sha256sum -c -
 chmod +x .tools/kagent
 export PATH="$PWD/.tools:$PATH"
@@ -69,16 +69,53 @@ bash scripts/install-dev.sh
 unset OPENAI_API_KEY
 ```
 
-This uses kagent's installer to install the pinned Substrate Helm distribution,
+This selects only the explicitly named `triagelab` Kind cluster, without using
+an ambient Kubernetes context. It uses kagent's installer for the pinned Substrate Helm distribution,
 its pod certificate controller, Atelet, the development PostgreSQL database,
-RustFS snapshot store, and kagent. It also configures Substrate's ingress
+RustFS snapshot store, and kagent. It then builds controller commit
+`048e1016d50b209dba01065d0d10dfd80b78fb41` from
+[`bondrenai/kagent`](https://github.com/bondrenai/kagent/tree/048e1016d50b209dba01065d0d10dfd80b78fb41),
+loads the image into Kind, and waits for its rollout before installing TriageLab's
+Agent and SandboxTemplate. The source commit and local image ID are printed for
+the verification record. There is no published fork image to pull.
+
+The installer refuses an existing kagent controller before making cluster
+changes. It is for fresh clusters only: temporarily running the released
+controller would allow its expiration worker to delete retained investigations.
+
+The installation also configures Substrate's ingress
 identity, controller access grants, and required preview gates. TriageLab adds
 only ordinary kagent resources, rendered by `triagelab manifest`. The script
-refuses any Kubernetes context except `kind-triagelab`.
+requires Linux and selects only `kind-triagelab`.
+
+The patched controller is the only forked component. Its runtime filesystem uses
+the digest-pinned 1.0.0 base; the investigator runtime, guest image, and Substrate
+keep their released versions. The helper reuses the host's Go build cache and
+does not push an image or change a registry. To reinstall only the pinned
+controller after a Helm install or upgrade, run on the VM:
+
+```sh
+bash scripts/install-fork-controller.sh
+```
+
+The chart still describes the released controller image. Do not run a chart
+install, upgrade, or rollback that replaces the fork while investigations are
+retained: even a short interval with the released controller can delete them,
+and reinstalling the fork afterward cannot recover them. Close retained
+investigations before changing the deployment through an upstream chart
+operation. Keep the helper's pinned image loaded in the single-node Kind
+cluster. For another cluster, publish a reviewed image and pin that deployment
+explicitly before enabling resumable investigations.
+
+The values set `config.sessions.idleTtl: 0s`. Waiting investigator Sessions can
+therefore survive weeks without activity, while kagent still suspends idle
+runtimes automatically. TriageLab must explicitly delete completed and closed
+Sessions. Retained Sandbox files and Session state depend on keeping PostgreSQL
+and the snapshot store.
 
 The rendered `triagelab-tools` ClusterIP Service sends investigator MCP calls to
 the same controller through a separate hostname. Keep that hostname distinct
-from kagent's control-plane URL: rc3 replaces credentials at the control-plane
+from kagent's control-plane URL: kagent 1.0.0 replaces credentials at the control-plane
 origin with an actor token, which has no sandbox ownership. The tools Service
 preserves the short-lived caller token and the existing owner checks. It is
 internal only and selects the `kagent` Helm release's controller.
@@ -188,11 +225,66 @@ default controller hostname changes the outgoing identity to an actor token.
 Keep `config.runtimeDefaults.tokenPropagation.enabled` set to `false` so the Go
 ADK runtime forwards the token only to tools with explicit passthrough.
 
-kagent's sandbox TTL expires even if the CLI disappears. Normal and interrupted
-runs also explicitly delete their sandbox. A process-kill acknowledgment is not
+kagent's active Sandbox TTL expires even if the CLI disappears. An opted-in
+Sandbox is retained only after suspension completes; resuming it starts a fresh
+bounded active TTL. Ordinary interrupted runs still explicitly delete their
+sandbox, while a successful pause keeps the same Sandbox and Session until resume
+or close. A process-kill acknowledgment is not
 proof it exited; the CLI observes completion and records cleanup failures. If a
 controller outage prevents cleanup, retain the report's IDs and retry against
 the same controller once it recovers.
+
+The opt-in pause/resume test requires this disposable deployment with a real
+model credential and the patched controller:
+
+```sh
+TRIAGELAB_CONFIG=/absolute/path/to/triagelab.json \
+  TRIAGELAB_REPORT_DIR=/absolute/path/to/private-test-reports make test-pause-integration
+```
+
+It starts and pauses a real investigation, exits that process, resumes from a
+new process, verifies the same sandbox/session and retained/new file bytes,
+pauses again, then closes and verifies deletion. The first round's evidence
+archive must remain byte-identical. `TRIAGELAB_PAUSE_RESUME_TOKEN` can supply a
+refreshed caller token for the resume/close processes; keep it out of shell
+history and logs. This checks real restoration and continuation, not weeks of
+elapsed uptime. The fork's separate retention integration test covers passing
+the original sandbox expiry deadline.
+
+The opt-in sandbox boundary test needs the deployment and a caller token, but
+no agent and no model credential:
+
+```sh
+make test-sandbox-integration
+```
+
+It creates an ordinary Sandbox from the configured template, uploads a nested
+file and reads it back from a process, repeats the DNS and direct-IP HTTP
+probes recorded in [sandbox-smoke.json](verification/sandbox-smoke.json), kills
+a long-running process and observes exit 137, then deletes the Sandbox and
+confirms the deletion with a separate read. A probe that fails in an unrecorded
+way fails the test for review; it is not counted as a denial. With
+`TRIAGELAB_REPORT_DIR` set, it saves a record in the same shape as that file.
+
+`scripts/live-verify.sh sandbox|investigation|pause` runs one of the three
+opt-in checks against the kind deployment with its own loopback port-forward
+and one-hour caller token, for a VM without a standing port-forward.
+
+### Scheduled live verification
+
+The `Live verification` workflow (`.github/workflows/live.yml`) performs the
+fresh-cluster installation above on a GitHub-hosted runner and runs all three
+checks through `scripts/live-verify.sh`. It runs daily, after pushes to `main`
+that change the deployment files, scripts, fixture, or the agent,
+investigation, and kagent packages, and on manual dispatch. Each check runs
+even when an earlier one failed. It needs the `OPENAI_API_KEY` repository
+secret. The investigation and pause/resume checks incur provider charges on
+every run, so the schedule is the cost control. Reports and the sandbox record
+are kept as a run artifact for seven days.
+
+A passing run shows that the pinned deployment still installs and behaves as
+recorded on that day's runner. It does not replace reviewing the upstream
+source before changing a pin, and it is not a hostile-workload test.
 
 ### Inspecting telemetry export locally
 
@@ -214,6 +306,9 @@ tests assert the exported OTLP payloads without a live collector; live export
 is exercised only to the extent recorded in docs/verification.md.
 
 ## Optional microVM backend
+
+The recorded live microVM check used the earlier kagent 1.0.0-rc3 pin.
+The current 1.0.0 pin needs a separate live microVM verification.
 
 Substrate's `microvm` sandbox class runs each actor as a KVM guest (Kata
 Containers on Cloud Hypervisor) instead of under gVisor. TriageLab needs no new
@@ -264,10 +359,11 @@ Then run the demonstration and `make test-integration` unchanged. These checks
 show which pool class served the run; the report itself does not record the
 isolation backend.
 
-GitHub-hosted Linux runners expose `/dev/kvm`, so the opt-in `microvm` CI job
-(the `run_microvm` input of a manually dispatched run) performs these steps on
-a disposable runner. It needs an `OPENAI_API_KEY` repository secret, incurs
-provider charges, and uploads the investigation report as a run artifact.
+GitHub-hosted Linux runners expose `/dev/kvm`, so the `Live verification`
+workflow performs these steps on a disposable runner when a manually dispatched
+run selects `microvm` (or `both`) for its `sandbox_class` input. It runs the
+same three checks as the scheduled gVisor run, incurs provider charges, and
+uploads the reports as a run artifact.
 
 Live investigations have passed on this path in four of five runs. See
 [verification.md](verification.md#microvm-backend-verification) for what ran,

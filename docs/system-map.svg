@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 452" role="img" aria-labelledby="sm-t sm-d">
+  <!-- TriageLab system map, drawn in the Bondren drafting-ink palette.
+       Keep in sync with docs-site/src/components/diagrams/SystemMap.astro,
+       which renders the same drawing from CSS tokens on the docs site. -->
+  <title id="sm-t">TriageLab system map</title>
+  <desc id="sm-d">Ticket sources (Zendesk, GitHub, Linear, Bondren, or a local case) feed TriageLab, which routes, classifies, clarifies, and prepares the case for review or an automatic policy. A run reaches kagent, which runs the investigator session against a standalone sandbox provided by Agent Substrate with egress denied by default. Tool events and process results flow back into reports that keep evidence and hypothesis separate; a reviewed summary returns to the ticket.</desc>
+
+  <style>
+    text {
+      font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      text-anchor: middle;
+    }
+    .side-note { text-anchor: start; }
+    .plate-bg { fill: #fbfaf6; stroke: #c6bfae; stroke-width: 1; }
+    .band { fill: #1b1916; stroke: none; }
+    .band-fill { fill: #1b1916; stroke: none; }
+    .band-text { fill: #efebe2; font-size: 10px; letter-spacing: 1.6px; }
+    .sub-text { fill: #565248; font-size: 8.5px; letter-spacing: 0.4px; }
+    .chip { fill: #efebe2; stroke: #dbd5c7; stroke-width: 1; }
+    .chip-text { fill: #403c35; font-size: 9px; letter-spacing: 0.8px; }
+    .gate { stroke: #1f3fd8; stroke-width: 1.5; fill: #eef1fd; }
+    .gate-text { fill: #1a34b0; }
+    .ghost { stroke-dasharray: 4 3; stroke: #c6bfae; }
+    .ghost-text { fill: #565248; }
+    .deny { stroke: #ad2817; fill: transparent; }
+    .deny-text { fill: #ad2817; }
+    .arrow { stroke: #9a9488; stroke-width: 1.25; fill: none; }
+    .arrow.accent { stroke: #1f3fd8; stroke-width: 1.5; }
+    .arrow-head { fill: #9a9488; }
+    .arrow-head-accent { fill: #1f3fd8; }
+    .arrow-label { fill: #565248; font-size: 8.5px; letter-spacing: 0.4px; }
+    .arrow-label.accent { fill: #1f3fd8; }
+    @media (prefers-color-scheme: dark) {
+      .plate-bg { fill: #1b1916; stroke: #565248; }
+      .band { fill: #efebe2; }
+      .band-fill { fill: #efebe2; }
+      .band-text { fill: #100f0c; }
+      .sub-text { fill: #9a9488; }
+      .chip { fill: #100f0c; stroke: #403c35; }
+      .chip-text { fill: #dbd5c7; }
+      .gate { stroke: #6a7ce6; fill: #152570; }
+      .gate-text { fill: #92a1ee; }
+      .ghost { stroke: #565248; }
+      .ghost-text { fill: #9a9488; }
+      .deny { stroke: #e78a7a; }
+      .deny-text { fill: #e78a7a; }
+      .arrow { stroke: #716c61; }
+      .arrow.accent { stroke: #6a7ce6; }
+      .arrow-head { fill: #716c61; }
+      .arrow-head-accent { fill: #6a7ce6; }
+      .arrow-label { fill: #9a9488; }
+      .arrow-label.accent { fill: #6a7ce6; }
+    }
+  </style>
+
+  <defs>
+    <marker id="sm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L8,4 L0,8 z" class="arrow-head" />
+    </marker>
+    <marker id="sm-arrow-accent" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L8,4 L0,8 z" class="arrow-head-accent" />
+    </marker>
+  </defs>
+
+  <!-- sources -->
+  <g>
+    <rect x="6" y="30" width="132" height="188" class="plate-bg" rx="3" />
+    <rect x="6" y="30" width="132" height="20" class="band" rx="3" />
+    <rect x="6" y="42" width="132" height="8" class="band-fill" />
+    <text x="72" y="44" class="band-text">TICKET SOURCES</text>
+    <rect x="18" y="60" width="108" height="20" class="chip" rx="2" />
+    <text x="72" y="74" class="chip-text">ZENDESK</text>
+    <rect x="18" y="86" width="108" height="20" class="chip" rx="2" />
+    <text x="72" y="100" class="chip-text">GITHUB</text>
+    <rect x="18" y="112" width="108" height="20" class="chip" rx="2" />
+    <text x="72" y="126" class="chip-text">LINEAR</text>
+    <rect x="18" y="138" width="108" height="20" class="chip" rx="2" />
+    <text x="72" y="152" class="chip-text">BONDREN</text>
+    <rect x="18" y="164" width="108" height="20" class="chip" rx="2" />
+    <text x="72" y="178" class="chip-text">LOCAL CASE</text>
+  </g>
+
+  <!-- triagelab -->
+  <g>
+    <rect x="204" y="30" width="250" height="188" class="plate-bg" rx="3" />
+    <rect x="204" y="30" width="250" height="20" class="band" rx="3" />
+    <rect x="204" y="42" width="250" height="8" class="band-fill" />
+    <text x="329" y="44" class="band-text">TRIAGELAB</text>
+    <text x="329" y="58" class="sub-text">go cli + browser workspace</text>
+    <rect x="274" y="66" width="110" height="20" class="chip" rx="2" />
+    <text x="329" y="80" class="chip-text">ROUTE</text>
+    <line x1="329" y1="86" x2="329" y2="96" class="arrow" marker-end="url(#sm-arrow)" />
+    <rect x="274" y="98" width="110" height="20" class="chip" rx="2" />
+    <text x="329" y="112" class="chip-text">CLASSIFY</text>
+    <line x1="329" y1="118" x2="329" y2="128" class="arrow" marker-end="url(#sm-arrow)" />
+    <rect x="274" y="130" width="110" height="20" class="chip" rx="2" />
+    <text x="329" y="144" class="chip-text">CLARIFY</text>
+    <line x1="329" y1="150" x2="329" y2="160" class="arrow" marker-end="url(#sm-arrow)" />
+    <rect x="274" y="162" width="110" height="20" class="gate" rx="2" />
+    <text x="329" y="176" class="chip-text gate-text">POLICY</text>
+    <text x="390" y="176" class="sub-text side-note">human</text>
+    <text x="329" y="206" class="sub-text">bounded inputs · watchdog limits · reports</text>
+  </g>
+
+  <!-- kagent -->
+  <g>
+    <rect x="520" y="30" width="230" height="188" class="plate-bg" rx="3" />
+    <rect x="520" y="30" width="230" height="20" class="band" rx="3" />
+    <rect x="520" y="42" width="230" height="8" class="band-fill" />
+    <text x="635" y="44" class="band-text">KAGENT</text>
+    <text x="635" y="58" class="sub-text">pinned upstream, own cluster role</text>
+    <rect x="534" y="66" width="202" height="20" class="chip" rx="2" />
+    <text x="635" y="80" class="chip-text">MCP / A2A API</text>
+    <rect x="534" y="94" width="202" height="20" class="chip" rx="2" />
+    <text x="635" y="108" class="chip-text">investigator session</text>
+    <rect x="534" y="122" width="202" height="20" class="chip" rx="2" />
+    <text x="635" y="136" class="chip-text">sandbox lifecycle</text>
+    <rect x="534" y="158" width="202" height="40" class="chip ghost" rx="2" />
+    <text x="635" y="175" class="chip-text ghost-text">model gateway</text>
+    <text x="635" y="189" class="chip-text ghost-text">to provider</text>
+  </g>
+
+  <!-- substrate -->
+  <g>
+    <rect x="816" y="30" width="158" height="188" class="plate-bg" rx="3" />
+    <rect x="816" y="30" width="158" height="20" class="band" rx="3" />
+    <rect x="816" y="42" width="158" height="8" class="band-fill" />
+    <text x="895" y="44" class="band-text">SUBSTRATE</text>
+    <text x="895" y="58" class="sub-text">isolation + egress</text>
+    <rect x="828" y="66" width="134" height="32" class="chip" rx="2" />
+    <text x="895" y="79" class="chip-text">standalone</text>
+    <text x="895" y="92" class="chip-text">sandbox</text>
+    <rect x="828" y="106" width="134" height="32" class="chip" rx="2" />
+    <text x="895" y="119" class="chip-text">gvisor or</text>
+    <text x="895" y="132" class="chip-text">microvm</text>
+    <rect x="828" y="146" width="134" height="32" class="deny" rx="2" />
+    <text x="895" y="159" class="deny-text chip-text">egress</text>
+    <text x="895" y="172" class="deny-text chip-text">default deny</text>
+  </g>
+
+  <!-- top flow -->
+  <line x1="140" y1="124" x2="200" y2="124" class="arrow" marker-end="url(#sm-arrow)" />
+  <text x="170" y="112" class="arrow-label">ticket</text>
+  <text x="170" y="146" class="arrow-label">or issue</text>
+
+  <line x1="456" y1="124" x2="516" y2="124" class="arrow accent" marker-end="url(#sm-arrow-accent)" />
+  <text x="486" y="104" class="arrow-label accent">admitted</text>
+  <text x="486" y="146" class="arrow-label accent">run</text>
+
+  <line x1="752" y1="124" x2="812" y2="124" class="arrow" marker-end="url(#sm-arrow)" />
+  <text x="782" y="104" class="arrow-label">process</text>
+  <text x="782" y="146" class="arrow-label">tools</text>
+
+  <!-- reports -->
+  <g>
+    <rect x="204" y="300" width="360" height="118" class="plate-bg" rx="3" />
+    <rect x="204" y="300" width="360" height="20" class="band" rx="3" />
+    <rect x="204" y="312" width="360" height="8" class="band-fill" />
+    <text x="384" y="312" class="band-text">REPORTS · JSON + MARKDOWN</text>
+    <rect x="220" y="330" width="158" height="56" class="chip" rx="2" />
+    <text x="299" y="351" class="chip-text">EVIDENCE</text>
+    <text x="299" y="367" class="sub-text">observed processes</text>
+    <rect x="390" y="330" width="158" height="56" class="chip" rx="2" />
+    <text x="469" y="351" class="chip-text">HYPOTHESIS</text>
+    <text x="469" y="367" class="sub-text">labeled as such</text>
+    <text x="384" y="406" class="sub-text">kept separate in both formats</text>
+  </g>
+
+  <!-- evidence return -->
+  <polyline points="635,218 635,252 320,252 320,296" class="arrow" marker-end="url(#sm-arrow)" />
+  <text x="470" y="246" class="arrow-label">tool events</text>
+
+  <polyline points="895,218 895,282 520,282 520,296" class="arrow" marker-end="url(#sm-arrow)" />
+  <text x="704" y="276" class="arrow-label">process results, fetched independently</text>
+
+  <polyline points="204,359 72,359 72,224" class="arrow" marker-end="url(#sm-arrow)" />
+  <text x="138" y="352" class="arrow-label">reviewed summary</text>
+</svg>

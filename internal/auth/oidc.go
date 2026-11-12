@@ -364,6 +364,9 @@ func (p *OIDCProvider) identityFrom(claims map[string]any, nonce string) (Identi
 	if len(username) > 64 {
 		username = username[:64]
 	}
+	if strings.HasPrefix(username, ClientActorPrefix) {
+		return Identity{}, fmt.Errorf("%w: usernames starting with %q are reserved for API clients", ErrOIDCToken, ClientActorPrefix)
+	}
 	role, err := p.roleFrom(claims)
 	if err != nil {
 		return Identity{}, err

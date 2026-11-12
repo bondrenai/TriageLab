@@ -25,6 +25,53 @@ triagelab investigate [options]
 | --repo | (none) | small local repository or fixture directory |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
+## pause
+
+Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.
+
+```text
+triagelab pause --report <report.json> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+
+## resume
+
+Continue a paused manual investigation in its saved sandbox and session with a fresh bounded turn. Saved settings and tools are reused; ticket continuations require review in the signed-in workspace.
+
+```text
+triagelab resume --report <report.json> --description <new-information> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --description | (none) | local issue description |
+| --description-file | (none) | UTF-8 issue description file |
+| --file | (repeatable) | attachment (repeatable) |
+| --log | (repeatable) | log file (repeatable) |
+| --repo | (none) | small local repository or fixture directory |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+
+## close
+
+Release an investigation's retained session and sandbox using its private lifecycle record. Keep the reports and previous rounds.
+
+```text
+triagelab close --report <report.json> [options]
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| --config | (none) | JSON configuration (default: built-in localhost settings) |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
+| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+
 ## serve
 
 Serve the authenticated browser workspace on loopback, sharing the CLI's investigation workflow and report directory.
@@ -38,13 +85,16 @@ triagelab serve [options]
 | --allow-resource-writes | false | allow the workspace to save kagent definitions in the configured namespace |
 | --assets | web/dist | built frontend directory |
 | --auth | (none) | optional sign-in configuration JSON with an oidc section |
+| --chat | (none) | optional results chat model configuration JSON |
+| --clients | (none) | API client file for OAuth access (default <output>/.auth/clients.json) |
 | --config | (none) | JSON configuration (default: built-in localhost settings) |
 | --listen | 127.0.0.1:8080 | loopback address for the private web UI |
+| --mcp | (none) | optional HTTP MCP credentials and origins configuration JSON |
 | --output | reports | parent directory for private reports |
 | --status-context | (none) | Kubernetes context for live deployment status |
 | --status-kubeconfig | (none) | explicit Kubernetes config for live deployment status and optional saves |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, or Linear case configuration |
+| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
 | --users | (none) | account file for web sign-in (default <output>/.auth/users.json) |
 
 ## doctor
@@ -71,7 +121,7 @@ triagelab cleanup [options]
 | Flag | Default | Description |
 | --- | --- | --- |
 | --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --report | (none) | saved report.json for cleanup |
+| --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## manifest
@@ -130,7 +180,7 @@ A nonzero exit never means the report should be discarded.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Command succeeded; an investigation reproduced the reported symptom |
+| 0 | Command succeeded; an investigation reproduced the reported symptom, paused, or closed |
 | 1 | Investigation completed; the symptom was not reproduced |
 | 2 | Invalid input, configuration, or usage |
 | 3 | Investigation finished inconclusive |

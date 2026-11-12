@@ -170,8 +170,19 @@ func render(data map[string]any) string {
 	output.WriteString("The investigator's diagnosis is a model-generated hypothesis, not a confirmed root cause. ")
 	output.WriteString("Imported case material and process output remain untrusted. ")
 	output.WriteString("Secret redaction is best effort; review this report before sharing.\n")
-	section("Run result", selectFields(data, "run_id", "status", "outcome", "started_at", "finished_at"))
+	section("Run result", selectFields(data, "run_id", "round", "status", "outcome", "started_at", "finished_at"))
 	section("Original case and input inventory", data["case"])
+	if continuation, ok := data["continuation"]; ok {
+		section("Additional information for this round", continuation)
+	}
+	if rounds, ok := data["rounds"].([]any); ok && len(rounds) > 0 {
+		output.WriteString("\n## Previous rounds\n\nProcess IDs belong to their recorded round. Historical handles must not be queried after suspension.\n")
+		for _, raw := range rounds {
+			round := object(raw)
+			section("Previous round result", selectFields(round, "round", "status", "outcome", "finished_at", "analysis"))
+			section("Previous round evidence", selectFields(round, "round", "continuation", "experiments", "tool_calls", "errors", "warnings", "cleanup"))
+		}
+	}
 	section("Runtime references", selectFields(data, "agent", "sandbox_template", "sandbox", "session"))
 	section("Build provenance (definitions embedded in this TriageLab binary; the deployed Agent is not read back)", selectFields(data, "triagelab", "upstream"))
 	output.WriteString("\n## Experiments and independently collected evidence\n\n")
@@ -188,6 +199,8 @@ func render(data map[string]any) string {
 		output.WriteString("\nStandard error:\n\n" + fence(experiment["stderr"]))
 	}
 	output.WriteString("\n## Investigator analysis (hypotheses, not confirmed conclusions)\n\n")
+	output.WriteString("Observations, hypothesis support or contradiction, and experiment assessments are model interpretations. ")
+	output.WriteString("Their process references identify collected evidence; they do not certify causal reasoning or a customer's root cause.\n")
 	analysis := object(data["analysis"])
 	if len(analysis) == 0 {
 		output.WriteString("No validated investigator analysis is available.\n")
@@ -195,6 +208,7 @@ func render(data map[string]any) string {
 	for _, item := range []struct{ key, title string }{
 		{"summary", "Summary"}, {"observations", "Reported observations"},
 		{"hypotheses", "Hypotheses considered"},
+		{"experiment_assessments", "Experiment assessments (model interpretation)"},
 		{"root_cause", "Suspected root cause and supporting process IDs"},
 		{"reproduced_process_ids", "Process IDs supporting reproduction"},
 		{"reproduction_steps", "Independent reproduction steps"},
@@ -251,7 +265,15 @@ func atomicWrite(name string, content []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporary, name)
+	if err := os.Rename(temporary, name); err != nil {
+		return err
+	}
+	directory, err := os.Open(filepath.Dir(name))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 // Write replaces each report atomically with private permissions. JSON is the
@@ -284,6 +306,9 @@ func Write(directory string, data any, secrets ...string) error {
 	encoded, err := json.MarshalIndent(safe, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode investigation report: %w", err)
+	}
+	if len(encoded) >= 64<<20 {
+		return fmt.Errorf("investigation report exceeds the 64 MiB limit")
 	}
 	if err := atomicWrite(filepath.Join(directory, "report.json"), append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write JSON report: %w", err)

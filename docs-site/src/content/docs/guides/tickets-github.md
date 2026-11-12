@@ -1,13 +1,14 @@
 ---
 title: GitHub issues
-description: Prepare issues from one GitHub.com repository with reviewed clarifications, summaries, and approval before a run.
+description: Prepare issues from one GitHub.com repository with reviewed clarifications, and investigation summaries.
 ---
 
 TriageLab reads issues from one GitHub.com repository and prepares them for
-the existing Python 3.12 timeout investigation procedure. The workspace
-provides preview, tracking, reviewed clarification comments, evidence review,
-and approval before a sandbox run; completed investigations can publish a
-reviewed summary to the linked issue. GitHub remains the issue and
+investigation. Each issue goes through the first matching procedure: the
+built-in Python 3.12 timeout procedure, or one an admin adds. The workspace
+provides preview, tracking, reviewed clarification comments, and an evidence
+checklist; completed investigations can publish a reviewed summary to the
+linked issue. GitHub remains the issue and
 conversation record.
 
 ## Configure a repository
@@ -50,7 +51,11 @@ Use an SSH tunnel to open `http://127.0.0.1:8080/tickets`. One workspace has
 one source and one repository; use a separate report directory per
 repository and preserve its private `.tickets` directory across restarts.
 
-## Prepare and approve evidence
+Admins can also add GitHub connections in the workspace UI on the
+**Connections** page, pasting the token there; the server stores it in the
+private connection registry. Anonymous read remains available without a token.
+
+## Prepare evidence and launch
 
 **Edit procedures** in Ticket cases sets up a procedure per label with its own
 evidence requirements, clarification policy, agent, and sandbox; the first
@@ -79,7 +84,10 @@ held for manual inspection. GitHub has no conditional writes for comments, so
 TriageLab rechecks the issue before posting but cannot guarantee an atomic
 compare-and-send.
 
-Once evidence is ready, **Approve and start investigation** binds approval to
+A procedure can start automatically when the evidence is ready.
+[Automatic ticket investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+For the default review path, **Approve and start investigation** binds approval to
 the selected evidence and run settings, expires after 15 minutes, and
 rereads the issue before launch. Each tracked issue consumes one
 investigation attempt and shares the workspace's single run slot.

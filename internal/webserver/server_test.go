@@ -20,6 +20,7 @@ import (
 	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
 // sessionCookies caches one admin session per server so request() stays
@@ -94,6 +95,18 @@ func addAuth(t *testing.T, s *Server) *http.Cookie {
 		t.Fatal(err)
 	}
 	return loginAs(t, s, "admin", "admin-password-1")
+}
+
+// seedTickets saves one ticket connection with a fixed id and opens it, so
+// tests can address its routes and state directory deterministically.
+func seedTickets(t *testing.T, s *Server, id string, config ticketflow.Config) {
+	t.Helper()
+	if err := ticketflow.SaveConnections(s.ticketRoot(), []ticketflow.Connection{{ID: id, Config: config}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.EnableTicketConnections(nil); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // loginAs signs in a test account and returns the session cookie.
@@ -194,6 +207,11 @@ func TestHTTPRejectsForeignHostsOriginsAndUnmarkedMutations(t *testing.T) {
 	w := request(s, "GET", "/api/settings", nil)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "server-test-secret") {
 		t.Fatalf("settings: %d %s", w.Code, w.Body)
+	}
+	for _, directive := range []string{"script-src 'self';", "worker-src 'self';", "style-src 'self' 'unsafe-inline';"} {
+		if !strings.Contains(w.Header().Get("Content-Security-Policy"), directive) {
+			t.Fatalf("missing editor CSP directive %q", directive)
+		}
 	}
 	if !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("missing frame isolation")

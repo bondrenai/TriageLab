@@ -11,14 +11,14 @@ import (
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
+const zendeskConnection = "2e0de5c0"
+
 func TestZendeskOAuthRoutes(t *testing.T) {
 	s := newTestServer(t, nil)
-	if err := s.EnableTickets(ticketflow.Config{
+	seedTickets(t, s, zendeskConnection, ticketflow.Config{
 		Subdomain: "example", ClientID: "triagelab-local", RedirectURI: "http://127.0.0.1:8080" + ticketflow.OAuthCallbackPath,
 		Policy: ticketflow.Policy{Tag: "reproduce"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	call := func(method, host, path, site string, header bool, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequestWithContext(context.Background(), method, "http://"+host+path, nil)
@@ -34,7 +34,7 @@ func TestZendeskOAuthRoutes(t *testing.T) {
 		return w
 	}
 	const host = "127.0.0.1:8080"
-	const start = "/api/tickets/oauth/start"
+	const start = "/api/tickets/c/" + zendeskConnection + "/oauth/start"
 	for _, attempt := range []struct {
 		host, site string
 		header     bool

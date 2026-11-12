@@ -1,27 +1,35 @@
 # Upstream compatibility record
 
-Research date: 2026-11-08. These are **source-reviewed integration pins**, not a
+Research updated: 2026-11-10. These are **source-reviewed integration pins**, not a
 claim that every backend was exercised. The dedicated Linux development VM
 completed the real gVisor sandbox checks recorded in
 [sandbox-smoke.json](verification/sandbox-smoke.json): nested upload, fixture
 failure, corrected run, DNS/HTTP egress denial, process termination, and deletion.
 That record explicitly marks `agent_invoked: false`; it is a sandbox integration
 check, not the agent demonstration. The separate [live investigator report](verification/agent-demo.md)
-and [verification record](verification.md) document the completed real agent demonstration. Do not use a live `main` branch as a dependency.
+and [verification record](verification.md) document the completed real agent demonstration.
+Both records ran on rc3. On the v1.0.0 pins, a fresh installation, the live
+investigator demonstration, and the retention and pause/resume checks passed;
+DNS/HTTP egress denial and process termination were not re-run. The Substrate
+distribution and kagent's egress policy source are unchanged from that check.
+Do not use a live `main` branch as a dependency.
 
 | Component | Pin | Identity |
 | --- | --- | --- |
-| kagent CLI/charts/controller/runtime | `v1.0.0-rc3` (chart `1.0.0-rc3`) | `3548b7aaf4d91ec86b0565df2bd8a9950e9a276d` |
+| kagent CLI/charts/runtime | `v1.0.0` (chart `1.0.0`) | `a08cde76ad6482dd758a4220b14213d79185ac30` |
+| TriageLab kagent controller fork | v1.0.0 plus retained suspended sandboxes, [bondrenai/kagent#1](https://github.com/bondrenai/kagent/pull/1) | `048e1016d50b209dba01065d0d10dfd80b78fb41` |
+| Controller runtime base image | `controller:1.0.0` | `sha256:a85cc7452b403e879f592a094dfb3fb3f40b3552a2c1c91956184c7280850ed5` |
 | kagent's Substrate Helm distribution | `v1.0.0` (chart `1.0.0`) | `kagent-dev/substrate`, `563df06f6be751c101539986896c17c55aa22a9d` |
 | Agent Substrate core reviewed | `v1.0.0` | `agent-substrate/substrate`, `b34fbee742906494b5eb4f1f36987176bf8770a4` |
-| Sandbox guest image | `sandbox-guest:1.0.0-rc3` | `sha256:8521d7e41097fb2964570ce1e65115056098d1c0c17c5dab1c2a4f30a7e06939` |
+| Sandbox guest image | `sandbox-guest:1.0.0` | `sha256:354825706868fc4d39300fe7795f4fa04d1eb53c3c93fb5b65b5da76f8222db7` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
-| Development Kubernetes | `kindest/node:v1.35.0` | kagent rc3's development configuration |
-| TriageLab Go toolchain | `go1.27.3` | Development VM installation verified against the official release SHA-256 |
+| Development Kubernetes | `kindest/node:v1.35.0` | kagent 1.0.0's development configuration |
+| TriageLab Go toolchain | `go1.27.4` | latest security release; `net/http` GO-2026-6859 fixed. Re-verify the release SHA-256 on the next VM install |
 | OpenTelemetry Go SDK | `v1.47.0` line | `otel`/`sdk`/`sdk/metric` `v1.47.0`, `sdk/log` `v1.47.0`, OTLP/HTTP exporters `v1.47.0`/`v0.23.0`, `contrib/bridges/otelslog` `v0.21.0`, vendored in `vendor/` |
+| OAuth client-credentials library | `zitadel/oidc v3.52.0` | `go-jose` v4.1.9 line, vendored in `vendor/`; only `pkg/op`'s token and revocation endpoints |
 
 The two Substrate repositories are intentionally distinguished. kagent's
-[go.mod](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/go.mod)
+[go.mod](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/go.mod)
 requires `go.ate.dev/substrate v1.0.0` and replaces it with
 `github.com/kagent-dev/substrate v1.0.0`. Its installer consumes that project's
 Helm charts and worker images. The
@@ -29,6 +37,36 @@ Helm charts and worker images. The
 describe synchronization with Agent Substrate. Installing the core project's
 source installer alongside kagent's Helm installer would duplicate infrastructure;
 TriageLab uses only the supported kagent installation path.
+
+The controller fork adds the opt-in `retain_while_suspended` field and durable
+active TTL bookkeeping. It reuses the released Sandbox lifecycle and Substrate
+snapshot operations. The CLI, charts, investigator runtime, sandbox guest, and
+Substrate remain at their release pins. `scripts/install-fork-controller.sh`
+builds the exact fork commit on the Linux development host, layers its executable
+onto the pinned 1.0.0 controller image, loads it into Kind, and waits for the
+controller rollout. There is no published fork image dependency. Reports identify
+the expected integration as `v1.0.0+bondrenai.048e1016`; that pin is not an
+independent attestation of the running controller.
+
+The fork commit is rebased onto each pinned release. v1.0.0 added migration
+`000003_session_revert_operation`, so the retention schema is migration `000004`.
+A database migrated by the earlier rc3-based build (`9bf1a20d`, kept as the tag
+`triagelab/v1.0.0-rc3`) recorded retention as version 3 and must be recreated;
+there is no in-place upgrade between fork builds.
+
+Reviewed delta rc3 → v1.0.0: session crash recovery (`RevertSession`, migration
+`000003`), deferred MCP tool discovery in the Go ADK runtime, a ModelConfig
+condition-transition fix, dead-code removal, and test infrastructure. The CRD
+schemas, chart templates and values, sandbox service, and controller MCP tool
+input/output schemas are byte-identical to rc3.
+
+The fork's `TestSandboxRetentionWhileSuspended` passed against real gVisor and
+Substrate on a fresh v1.0.0 deployment: an ordinary suspended Sandbox
+expired, a retained one survived its original TTL, restored the same workspace
+and file contents, received a fresh active TTL, and kept that deadline after a
+duplicate resume. TriageLab's separate real-model pause/resume test also passed,
+including conversation runtime restoration and process restart; see
+[verification.md](verification.md). Neither check claims weeks of elapsed uptime.
 
 ## Interfaces used
 
@@ -47,6 +85,11 @@ TriageLab uses only the supported kagent installation path.
    through that binding. Built-in runtime bash and file search are disabled.
    Upstream still exposes basic read/write/edit tools for the investigator's own
    separate runtime filesystem; this release has no switch to remove them.
+   Continuing a Session uses `invoke_agent` with its existing `session_id`.
+   TriageLab advertises the MCP tasks extension, so that tool returns a task
+   receipt rather than `structuredContent`. The adapter validates its encoded
+   Session/task reference and exposes those identifiers without retrying the
+   invocation. Session runtime suspension and restoration remain automatic.
 4. The investigator returns kagent structured output (`outputSchema`) backed by
    its Go ADK harness. kagent validates the terminal JSON; TriageLab additionally
    reconciles process references with observed upstream execution records.
@@ -57,10 +100,12 @@ TriageLab uses only the supported kagent installation path.
 
 Authoritative references:
 
-- [Standalone sandbox contract and MCP tools](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/sandboxes.md)
-- [Exact MCP sandbox implementations](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/mcp/sandboxes.go)
-- [kagent structured output](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/structured-output.md)
-- [kagent installation and version constraints](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/helm/README.md)
+- [Standalone sandbox contract and MCP tools](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/sandboxes.md)
+- [Exact MCP sandbox implementations](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/core/internal/mcp/sandboxes.go)
+- [Fork retention semantics and lifecycle](https://github.com/bondrenai/kagent/blob/048e1016d50b209dba01065d0d10dfd80b78fb41/docs/architecture/sandboxes.md)
+- [MCP asynchronous invocation receipts](https://github.com/bondrenai/kagent/blob/048e1016d50b209dba01065d0d10dfd80b78fb41/go/core/internal/mcp/tasks.go)
+- [kagent structured output](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/structured-output.md)
+- [kagent installation and version constraints](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/helm/README.md)
 - [Substrate runtime classes](https://github.com/agent-substrate/substrate/blob/b34fbee742906494b5eb4f1f36987176bf8770a4/docs/reference/sandbox-classes.md)
 - [Substrate security scope](https://github.com/agent-substrate/substrate/blob/b34fbee742906494b5eb4f1f36987176bf8770a4/docs/security/security.md)
 - [Substrate egress behavior](https://github.com/agent-substrate/substrate/blob/b34fbee742906494b5eb4f1f36987176bf8770a4/docs/guides/egress-traffic.md)
@@ -71,11 +116,22 @@ Authoritative references:
   digests were resolved from their registries, not invented from examples.
   Runtime resource limits are operator configuration, not agent-selectable
   template fields.
-- Sandbox lifetime is fixed at creation; activity does not renew it. kagent's
-  expiration workers delete expired sandboxes. Ordinary pending lifecycle
+- Ordinary Sandbox lifetime is fixed at creation; activity does not renew it.
+  The fork exempts an opted-in Sandbox only while it is `SUSPENDED/NONE` and
+  omits `expires_at` in that state. Its first resume admission starts one new
+  interval of the original bounded TTL. Retries do not renew it. Pending create,
+  suspend, or resume work still expires, and explicit deletion always applies.
+  TriageLab requires the returned retention flag before treating work as
+  resumable. Ordinary pending lifecycle
   operations need retries; reads alone do not advance them. Creation has a
   stable request ID, but process start has **no idempotency receipt**. Never
   blindly replay a process start after an uncertain response.
+- The dedicated deployment sets `config.sessions.idleTtl: 0s` so a waiting
+  investigator Session is not deleted after days or weeks. Automatic runtime
+  quiescence remains enabled. The Session stays logically `READY`; there are no
+  public Session suspend/resume controls. Finished or explicitly closed work
+  must delete its Session. PostgreSQL records and snapshot storage remain needed
+  for as long as work is paused.
 - Process state and handles are guest-local. Suspension ends processes and
   restoring a volume snapshot does not preserve their handles. Collect evidence
   before deleting or suspending. MCP output pages and writes are capped at 1 MiB;
@@ -92,7 +148,7 @@ Authoritative references:
   these are not permissions granted to the untrusted fixture.
 - Substrate injects provider credentials outside the guest. Global runtime token
   propagation forwards the caller credential and identity to every MCP server
-  in Go ADK rc3. Keep it disabled. The trusted sandbox server uses its own
+  in Go ADK 1.0.0. Keep it disabled. The trusted sandbox server uses its own
   `tokenPassthrough: true` binding and kagent re-verifies the Kubernetes
   service-account token to recover the caller identity.
 - The installed `triagelab-model` uses OpenAI's `gpt-6.1-sol` with
@@ -108,14 +164,14 @@ Authoritative references:
   asks clients to pass back; four live runs completed that way and one failed
   for an unrecorded reason.
 - The `triagelab-tools` ClusterIP Service is an alias for the controller with a
-  distinct HTTP origin. rc3's [actor egress policy](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/core/internal/substrate/policy.go#L47)
+  distinct HTTP origin. 1.0.0's [actor egress policy](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/core/internal/substrate/policy.go#L47)
   always replaces `Authorization` at the control-plane origin with an actor JWT.
   Actor credentials cannot access owner-scoped sandboxes. The separate tools
   origin and `tokenPassthrough: true` preserve the verified invocation
   service-account credential. No authorizer or ownership
   checks are weakened. This alias is not an externally exposed service.
 - kagent's shipped authorizer is not a production tenant policy. See its
-  [authentication documentation](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/oidc-proxy-authentication.md).
+  [authentication documentation](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/oidc-proxy-authentication.md).
   TriageLab's private development setup does not claim a multi-tenant perimeter.
   Prompt-injection instructions reduce risk but are not a security boundary.
 
@@ -162,7 +218,7 @@ TriageLab renders native `Agent.spec.template.inline` and
 `Agent.spec.harnessRef`. Declarative agents reuse the installed Go ADK Harness.
 Custom images use `Harness.spec.byo` with a SHA-256-pinned image and explicit
 command. The BYO compiler passes the prompt, optional model, and MCP settings
-as ADK-shaped configuration. rc3 rejects native `outputSchema` on BYO Harnesses,
+as ADK-shaped configuration. 1.0.0 rejects native `outputSchema` on BYO Harnesses,
 so the image must implement the report contract itself.
 
 `ModelConfig` sets the invocation provider, model ID, optional endpoint, and
@@ -178,17 +234,27 @@ The optional workspace status reader uses namespace-scoped Kubernetes list
 permissions. It projects current-generation conditions and the controller's
 `RemoteMCPServer.status.discoveredTools` for the editor.
 
-- [Agent and Harness configuration](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/configuration-and-compilation.md)
-- [ModelConfig provider schema](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/v1alpha3/modelconfig_types.go)
-- [MCP binding schema](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/v1alpha3/agenttemplate_types.go)
-- [Credential injection and caller-token propagation](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/credential-injection.md)
+- [Agent and Harness configuration](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/configuration-and-compilation.md)
+- [ModelConfig provider schema](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/api/v1alpha3/modelconfig_types.go)
+- [MCP binding schema](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/go/api/v1alpha3/agenttemplate_types.go)
+- [Credential injection and caller-token propagation](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/credential-injection.md)
 
 ## Upgrade procedure
 
 Review the upstream CRD schemas, protobuf configuration, MCP input/output
 schemas, guest dependency, lifecycle retry rules, and credential propagation
-before changing pins. Update CLI, chart, controller, guest and runtime images
-together. Resolve and record new image digests. Render and validate manifests,
+before changing pins. For an upstream release upgrade, update CLI, chart,
+controller, guest and runtime images together. The kagent CLI version and
+checksum appear in [development.md](development.md), the README, the
+quickstart, and `.github/workflows/live.yml`; change them in the same commit.
+The current controller-only fork
+is based on the exact v1.0.0 source and leaves the other components pinned; build
+its reviewed commit with `scripts/install-fork-controller.sh` after installing
+the released chart. To move the fork, rebase its commit onto the new release
+tag, renumber its migration after the release's newest one, and tag the pinned
+commit `triagelab/<release>` in `bondrenai/kagent` so it stays fetchable by
+revision. Recreate the development cluster and database rather than upgrading
+them in place. Resolve and record new image digests. Render and validate manifests,
 run unit/error-path tests, then run the real demo on a fresh disposable cluster.
 Inspect failure and corrective outputs, network denial, timeouts and deletion;
 record precisely which versions and checks ran. Preserve reports before deleting
@@ -226,19 +292,68 @@ Constraints that affect TriageLab:
   identifiers (run IDs). Case descriptions, attachments, model prompts, tool
   outputs, credentials, and account names are never instrumented; phase log
   messages pass through the report redactor first.
-- The pinned line requires Go >= 1.26.0; the toolchain pin is `go1.27.3`.
+- The pinned line requires Go >= 1.26.0; the toolchain pin is `go1.27.4`.
   The logs SDK stable (`sdk/log v1.47.0`) line exists only from v1.47 onward.
 - Verified by unit tests against an in-process OTLP/HTTP collector decoding
   the exported protobuf for all three signals (see
   `internal/telemetry/telemetry_test.go`). Live export to a real collector is
   exercised only to the extent recorded in `docs/verification.md`.
 
+## OAuth client-credentials integration
+
+Added 2026-11-10. TriageLab's token endpoint (`/oauth/token`) and revocation
+endpoint (`/oauth/revoke`) use [zitadel/oidc](https://github.com/zitadel/oidc)
+`v3.52.0` — OpenID Foundation certified, Apache-2.0, actively released
+(`go-jose` v4.1.9 line). It replaces what would otherwise be hand-written
+OAuth 2.0 protocol handling. `ory/fosite` was evaluated and rejected: its
+standalone module has been frozen since v0.49.0 (December 2024) and pins a
+dated, heavier dependency graph.
+
+Interfaces used:
+
+- `pkg/op`'s experimental `Server` interface via `op.RegisterServer`, with
+  exactly two endpoints registered: token and revocation. `UnimplementedServer`
+  covers every other method, so there is no authorization endpoint, refresh
+  token, introspection, or OpenID Connect surface to refuse.
+- The library owns form decoding, how client credentials may be presented
+  (Basic or body, never both), grant dispatch, and RFC-shaped error
+  responses. TriageLab owns storage and credentials.
+
+Deliberately **not** used from the library:
+
+- Its opaque-token cryptography and storage interfaces. The library's
+  pre-v3.47 tokens were an unauthenticated encryption of `tokenID:subject`
+  that a holder could alter to impersonate another subject
+  ([GHSA-j8gq-92xf-382c](https://github.com/zitadel/oidc/security/advisories/GHSA-j8gq-92xf-382c));
+  v3.47 added signing. TriageLab's tokens are 256-bit random values with
+  only a SHA-256 retained, looked up like browser sessions, carrying no
+  data to forge. Client secrets are likewise server-generated 256-bit
+  values stored as SHA-256, so no slow KDF work is spent on unauthenticated
+  token requests.
+- Its default CORS policy, which answers every origin with credentials
+  allowed. `op.WithServerCORSOptions(nil)` disables it; TriageLab keeps its
+  same-origin, loopback-only posture on the OAuth endpoints too.
+
+Constraints that affect TriageLab:
+
+- The library logs through the process-wide `slog` default: route
+  registration at startup and rejected token requests at WARN (error type
+  and description only; no credentials).
+- `op.Server` is marked "EXPERIMENTAL: may change until v4"; pinned by
+  version and covered by tests that pin observable behavior (401
+  `invalid_client`, `invalid_scope`, `unsupported_grant_type`, URL-parameter
+  refusal, and interop with `golang.org/x/oauth2/clientcredentials` in all
+  three auth styles). Review the upstream changelog before bumping the pin.
+- v3.52.0 was released the day of this review; the relevant request paths
+  (`RegisterServer`, `tokensHandler`, `withClient`) were source-reviewed at
+  that tag. The release's only new feature (a metadata server) is unused.
+
 ## GitHub issue integration
 
 Reviewed 2026-11-09 against GitHub's REST API version **2026-03-10**, sent in
 `X-GitHub-Api-Version`. The connector reads one issue and at most 100 comments
 from a configured GitHub.com repository, rejects pull requests, and rechecks
-issue and comment contents before admitting an approved run. Public issue text
+source freshness before admitting a run. Public issue text
 is available anonymously; private issue text needs **Issues: read** for the
 selected repository. Reviewed clarifications, authorized follow-ups, and
 reviewed investigation summaries use `POST /repos/{owner}/{repo}/issues/{issue_number}/comments`
@@ -273,3 +388,22 @@ or path fails closed and requires review. Private attachment downloads,
 Enterprise hosts, and repository cloning are unsupported. HTTP fixtures and
 the transport check do not prove a live GitHub-to-kagent run. No live GitHub
 clarification or investigation-summary sends were performed during implementation.
+
+## CEL policy evaluation
+
+Ticket automatic-launch conditions use `cel.dev/cel-go` v0.33.2. The CEL
+environment exposes a local map of normalized ticket attributes. Compilation
+requires a boolean result, and evaluation uses a context and a 10,000-unit
+cost limit. There are no custom host or network functions. The source
+freshness check and durable launch reservation still govern dispatch.
+[CEL Go API](https://pkg.go.dev/cel.dev/cel-go@v0.33.2/cel).
+
+## CEL editor source reuse
+
+The UI adapts Agentgateway **v1.7.0**
+[`celMonaco.ts`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/ui/src/celMonaco.ts)
+and [`MiniMonacoEditor.tsx`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/ui/src/components/MiniMonacoEditor.tsx)
+under Apache-2.0. The adapted files identify modifications and the built UI ships
+license texts. TriageLab replaces the gateway schema and extension functions with
+normalized ticket attributes and standard CEL suggestions. Validation uses the
+existing TriageLab server compiler. See [editor details](ui.md#cel-policy-editor).

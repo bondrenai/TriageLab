@@ -24,9 +24,11 @@ stores one private record per enrolled Zendesk ticket under the report
 directory, with a process lock and atomic updates. It selects cases using
 configured ticket properties and extracts readiness facts from public
 requester comments. A durable clarification reservation precedes a policy
-authorized Zendesk write. Waiting cases consume no sandbox. An operator
-approves the plan's evidence and limits before the same workspace run slot
-dispatches the existing investigation workflow. See [ticket setup](tickets.md).
+authorized Zendesk write. Waiting cases consume no sandbox. The ticket queue
+binds manual approval and automatic launch to the plan's evidence and limits
+before dispatching it through the workspace run slot. External workflows can
+also start investigations through the CLI or HTTP MCP.
+[Ticket setup](tickets.md).
 
 kagent owns its native Agent/AgentTemplate/Harness, SandboxTemplate, runtime
 Session/Sandbox API, Go ADK tool loop, authorization integration, model gateway,
@@ -41,7 +43,25 @@ project uses `cmd/` + `internal/`, explicit startup configuration, context
 cancellation and Make-based checks. TriageLab uses `net/http` and
 `encoding/json` directly for the small pinned MCP surface; this avoids importing
 the entire upstream control plane or an SDK version with a different MCP wire
-contract. Future SDK adoption should preserve the tested upstream contract.
+contract. The separate inbound HTTP MCP endpoint uses the official Go MCP SDK
+v1.8.0; it does not change the pinned kagent client contract.
+
+Results discussion lives in `internal/resultchat`. It sends one bounded,
+tool-free completion request to an explicitly configured OpenAI-compatible
+endpoint, optionally provided by agentgateway. The pinned kagent runtime always
+includes file builtins, so it is unsuitable for a promise of tool-free report
+discussion. The webserver owns role checks, a durable private chat journal,
+single-answer admission, cancellation, and recovery. Report excerpts and saved
+discussion are untrusted data. Validated round/process citations establish
+attribution, not truth, and no chat output becomes canonical execution evidence.
+
+Inbound MCP tools reuse the HTTP workflow handlers with an authenticated machine
+identity. Bearer principals have viewer/user roles, never administrative powers;
+browser cookies and forwarded identity claims cannot authorize them. The
+stateless transport is bounded and authenticated per request. Remote OAuth is
+delegated to an optional agentgateway edge with a distinct backend credential.
+There is no second investigation engine, public workspace listener, or change
+to the dedicated-workspace Helm access model.
 
 ## Evidence and lifecycle
 
@@ -58,6 +78,16 @@ contract. Future SDK adoption should preserve the tested upstream contract.
    infrastructure call is inconclusive. Missing/truncated evidence cannot support
    a reproduced claim. The relationship between an experiment and the reported
    symptom remains model-assessed and visible for human review.
+   Updated agents also report cited contradicting processes, an observation that
+   could distinguish each hypothesis, and per-process experiment assessments
+   (question, expected observation, interpretation). These remain model analysis;
+   they never populate execution evidence. Incomplete or unavailable current-round
+   references remove assessments or downgrade hypotheses with warnings. Prior-round
+   evidence remains available in its saved report and is not revalidated as a new
+   process result. The emitted schema requires these fields for kagent's strict
+   structured output. Locally, absent explanatory fields from an older retained
+   session's answer normalize to empty arrays or text before strict validation;
+   supplied malformed values are still rejected.
 8. Cancel active or parked tasks, delete Session and Sandbox, retry pending
    lifecycle deletion, and verify deleted state. Write final reports even on errors.
 

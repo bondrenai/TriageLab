@@ -16,10 +16,10 @@ import (
 
 	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/auth"
-	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
+	"github.com/bondrenai/TriageLab/internal/resultchat"
 	"github.com/bondrenai/TriageLab/internal/telemetry"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 	"github.com/bondrenai/TriageLab/internal/webserver"
@@ -57,6 +57,9 @@ type runOptions struct {
 	statusContext       string
 	authConfigPath      string
 	usersPath           string
+	chatConfigPath      string
+	mcpConfigPath       string
+	clientsPath         string
 	allowResourceWrites bool
 	manualAgent         string
 	files               stringsFlag
@@ -83,14 +86,24 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
 		flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
 		flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
-		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, or Linear case configuration")
+		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only)")
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
 		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
 		flags.StringVar(&opts.authConfigPath, "auth", "", "optional sign-in configuration JSON with an oidc section")
 		flags.StringVar(&opts.usersPath, "users", "", "account file for web sign-in (default <output>/.auth/users.json)")
-	case "cleanup":
-		flags.StringVar(&opts.reportPath, "report", "", "saved report.json for cleanup")
+		flags.StringVar(&opts.chatConfigPath, "chat", "", "optional results chat model configuration JSON")
+		flags.StringVar(&opts.mcpConfigPath, "mcp", "", "optional HTTP MCP credentials and origins configuration JSON")
+		flags.StringVar(&opts.clientsPath, "clients", "", "API client file for OAuth access (default <output>/.auth/clients.json)")
+	case "pause", "close", "cleanup":
+		flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
+	case "resume":
+		flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
+		flags.StringVar(&opts.description, "description", "", "local issue description")
+		flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
+		flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
+		flags.Var(&opts.files, "file", "attachment (repeatable)")
+		flags.Var(&opts.logs, "log", "log file (repeatable)")
 	}
 	return opts
 }
@@ -145,7 +158,7 @@ func main() {
 
 func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode int) {
 	if len(args) == 0 {
-		fmt.Fprintln(errout, "Usage: triagelab <investigate|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
+		fmt.Fprintln(errout, "Usage: triagelab <investigate|pause|resume|close|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
 		return 2
 	}
 	command, args := args[0], args[1:]
@@ -204,7 +217,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		return runUserCommand(args, out, errout, os.Stdin)
 	case "docs":
 		return runDocsCommand(args, out, errout)
-	case "investigate", "serve", "doctor", "cleanup":
+	case "investigate", "pause", "resume", "close", "serve", "doctor", "cleanup":
 	default:
 		fmt.Fprintln(errout, "Unknown command:", command)
 		return 2
@@ -262,6 +275,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		commandSpan.End()
 	}()
 	switch command {
+	case "pause", "resume", "close":
+		return runSavedInvestigation(ctx, command, opts, &runner, out, errout)
 	case "serve":
 		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, token)
 		if err != nil {
@@ -269,6 +284,39 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 2
 		}
 		if err := enableSignIn(ctx, workspace, opts.authConfigPath, resolveUsersPath(opts.output, opts.usersPath), opts.listen); err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if opts.chatConfigPath != "" {
+			chatConfig, err := resultchat.Load(opts.chatConfigPath)
+			if err == nil {
+				err = workspace.EnableChat(chatConfig)
+			}
+			if err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
+		}
+		if opts.mcpConfigPath != "" {
+			mcpConfig, err := webserver.LoadMCPConfig(opts.mcpConfigPath)
+			if err == nil {
+				err = workspace.EnableMCP(mcpConfig)
+			}
+			if err != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, err)
+				return 2
+			}
+		}
+		clients, err := auth.OpenClientStore(resolveClientsPath(opts.output, opts.clientsPath))
+		if err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if err := workspace.EnableAPIClients(clients); err != nil {
 			_ = workspace.Close(ctx)
 			fmt.Fprintln(errout, err)
 			return 2
@@ -287,16 +335,24 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 				return 2
 			}
 		}
+		var bootstraps []ticketflow.Config
 		if opts.tickets != "" {
-			ticketConfig, err := ticketflow.LoadConfig(opts.tickets)
-			if err == nil {
-				err = workspace.EnableTickets(ticketConfig)
-			}
+			bootstraps, err = ticketflow.LoadConfigs(opts.tickets)
 			if err != nil {
 				_ = workspace.Close(ctx)
 				fmt.Fprintln(errout, err)
 				return 2
 			}
+		}
+		opened, seeded, err := workspace.EnableTicketConnections(bootstraps)
+		if err != nil {
+			_ = workspace.Close(ctx)
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if opts.tickets != "" && opened > 0 && !seeded {
+			fmt.Fprintln(out, "Using the ticket connections saved in this workspace; manage them in the UI or remove "+
+				filepath.Join(opts.output, ".tickets", "registry.json")+" to bootstrap from --tickets again.")
 		}
 		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))
@@ -319,25 +375,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
-		if opts.description != "" && opts.descriptionFile != "" {
-			fmt.Fprintln(errout, "Use either --description or --description-file")
-			return 2
-		}
-		if opts.descriptionFile != "" {
-			f, err := os.Open(opts.descriptionFile)
-			if err != nil {
-				fmt.Fprintln(errout, err)
-				return 2
-			}
-			data, err := io.ReadAll(io.LimitReader(f, casefile.MaxDescriptionBytes+1))
-			f.Close()
-			if err != nil || len(data) > casefile.MaxDescriptionBytes {
-				fmt.Fprintf(errout, "Cannot read description, or it exceeds %d KiB\n", casefile.MaxDescriptionBytes>>10)
-				return 2
-			}
-			opts.description = string(data)
-		}
-		c, err := casefile.Ingest(opts.description, opts.repo, opts.files, opts.logs)
+		c, err := ingestRunOptions(opts)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
@@ -348,45 +386,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 2
 		}
 		result, runErr := runner.Run(ctx, c, dir)
-		if _, err := os.Stat(filepath.Join(dir, "report.md")); err == nil {
-			fmt.Fprintf(out, "Report: %s\n", filepath.Join(dir, "report.md"))
-		} else {
-			fmt.Fprintln(errout, "Report could not be saved to", dir)
-		}
-		if runErr != nil {
-			fmt.Fprintln(errout, report.Redact(runErr.Error(), token))
-		}
-		if result == nil {
-			return 4
-		}
-		fmt.Fprintf(out, "Outcome: %v (%v)\n", result.Outcome, result.Status)
-		if result.Cleanup != nil && len(result.Cleanup.Errors) > 0 {
-			fmt.Fprintln(errout, "Cleanup incomplete; see report and use triagelab cleanup.")
-			return 5
-		}
-		switch result.Status {
-		case investigation.StatusInterrupted:
-			return 130
-		case investigation.StatusTimedOut:
-			return 124
-		case investigation.StatusError:
-			return 4
-		}
-		if runErr != nil {
-			return 4
-		}
-		switch result.Outcome {
-		case investigation.OutcomeReproduced:
-			return 0
-		case investigation.OutcomeNotReproduced:
-			return 1
-		default:
-			return 3
-		}
-	default: // cleanup
+		return printInvestigationResult(result, runErr, dir, out, errout, token)
+	case "cleanup":
 		if opts.reportPath == "" {
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
 			return 2
+		}
+		if _, stateErr := os.Lstat(filepath.Join(filepath.Dir(opts.reportPath), "lifecycle.json")); stateErr == nil {
+			return runSavedInvestigation(ctx, "close", opts, &runner, out, errout)
+		} else if !os.IsNotExist(stateErr) {
+			fmt.Fprintln(errout, "Cannot read the investigation lifecycle record")
+			return 4
 		}
 		f, err := os.Open(opts.reportPath)
 		if err != nil {
@@ -435,6 +445,9 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		}
 		fmt.Fprintln(out, "Recorded runtime cleanup completed.")
 		return 0
+	default:
+		fmt.Fprintln(errout, "Unknown command:", command)
+		return 2
 	}
 }
 
@@ -456,6 +469,15 @@ func resolveUsersPath(output, explicit string) string {
 		return explicit
 	}
 	return filepath.Join(output, ".auth", "users.json")
+}
+
+// resolveClientsPath keeps OAuth API clients beside the account file so both
+// credentials persist on the same volume in clustered deployments.
+func resolveClientsPath(output, explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return filepath.Join(output, ".auth", "clients.json")
 }
 
 // enableSignIn wires local accounts and the optional identity provider. It

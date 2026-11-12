@@ -87,7 +87,7 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 	if err := f.save(c); err != nil {
 		return NotePreview{}, err
 	}
-	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github")
+	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github" || f.provider == "linear")
 	switch {
 	case errors.Is(err, ErrChanged), errors.Is(err, ErrOAuthRequired):
 		// These responses confirm the connector did not apply the write.
@@ -106,13 +106,22 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 }
 
 func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
-	enabled := f.provider == "zendesk" && f.settings.InternalNotes ||
+	enabled := (f.provider == "zendesk" || f.provider == "bondren" || f.provider == "jira") && f.settings.InternalNotes ||
 		(f.provider == "github" || f.provider == "linear") && f.settings.InvestigationComments
 	if !enabled || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
 		return Case{}, false
 	}
 	finished, _ := saved["finished_at"].(string)
 	if _, err := time.Parse(time.RFC3339Nano, finished); err != nil {
+		return Case{}, false
+	}
+	return f.approvedCase(runID, saved)
+}
+
+// approvedCase binds local work to the original durable ticket approval. It
+// does not fetch new ticket material or grant permission to send a message.
+func (f *Flow) approvedCase(runID string, saved map[string]any) (Case, bool) {
+	if runID == "" || saved["run_id"] != runID {
 		return Case{}, false
 	}
 	input, _ := saved["case"].(map[string]any)
@@ -132,8 +141,23 @@ func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
 		source["linear_identifier"] != strings.TrimPrefix(f.ticketURL(id), f.Account()+"/issue/")) {
 		return Case{}, false
 	}
+	if f.provider == "bondren" && (c.Source != "bondren" || source["bondren_origin"] != f.Account() ||
+		source["url"] != c.URL || source["bondren_issue"] != bondrenIssueUUID(c.URL, f.Account())) {
+		return Case{}, false
+	}
+	if f.provider == "jira" && (c.Source != "jira" || source["jira_site"] != f.Account() ||
+		source["url"] != c.URL || source["jira_issue"] != strconv.FormatInt(c.TicketID, 10) ||
+		jiraIssueKeyFromURL(c.URL, f.Account()) == "") {
+		return Case{}, false
+	}
+	// Bondren issue URLs carry the issue UUID rather than the number, so the
+	// stored case URL is the durable locator to bind against.
+	boundURL := f.ticketURL(id)
+	if f.provider == "bondren" || f.provider == "jira" {
+		boundURL = c.URL
+	}
 	return c, found && c.RunID == runID && c.State == "launched" && c.Plan != "" &&
-		c.Account == f.Account() && source["approval_plan"] == c.Plan && source["url"] == f.ticketURL(id)
+		c.Account == f.Account() && source["approval_plan"] == c.Plan && source["url"] == boundURL
 }
 
 func (f *Flow) ticketURL(id int64) string {
@@ -153,7 +177,13 @@ func (f *Flow) ticketURL(id int64) string {
 }
 
 func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
-	preview := NotePreview{Source: f.provider, Visibility: "internal", TicketID: c.TicketID, TicketURL: f.ticketURL(c.TicketID)}
+	// Bondren issue URLs carry the issue UUID, not the number, so the stored
+	// case URL is the ticket's durable locator.
+	url := f.ticketURL(c.TicketID)
+	if f.provider == "bondren" || f.provider == "jira" {
+		url = c.URL
+	}
+	preview := NotePreview{Source: f.provider, Visibility: "internal", TicketID: c.TicketID, TicketURL: url}
 	if f.provider == "github" {
 		preview.Visibility = "repository"
 	}
@@ -166,10 +196,10 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	}
 	preview.Status = "ready"
 	preview.Body = investigationNote(c.RunID, saved, f.currentSecrets())
-	if f.provider == "github" || f.provider == "linear" {
-		// Render imported summaries and commands literally. In GitHub or Linear
-		// Markdown, prose could otherwise create mentions, links or embedded
-		// images.
+	if f.provider == "github" || f.provider == "linear" || f.provider == "bondren" {
+		// Render imported summaries and commands literally. In GitHub, Linear,
+		// or Bondren Markdown, prose could otherwise create mentions, links or
+		// embedded images.
 		width, run := 3, 0
 		for _, char := range preview.Body {
 			if char == '`' {
@@ -196,6 +226,8 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
 	if f.provider == "github" || f.provider == "linear" {
 		preview.CanPost = f.settings.InvestigationComments
+	} else if f.provider == "bondren" || f.provider == "jira" {
+		preview.CanPost = f.settings.InternalNotes
 	} else {
 		preview.CanPost = f.oauth != nil && f.oauth.status().Connected
 	}

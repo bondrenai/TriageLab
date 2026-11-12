@@ -1,6 +1,6 @@
 # Working on TriageLab
 
-TriageLab is a Go 1.27.3 CLI and a React UI for evidence-driven investigations.
+TriageLab is a Go 1.27.4 CLI and a React UI for evidence-driven investigations.
 Keep it small: one investigator, one standalone sandbox per run, local
 JSON/Markdown reports. There is no database, operator, custom sandbox runtime,
 or agent framework. The UI is a private, authenticated client (local accounts
@@ -18,15 +18,23 @@ or one OIDC provider) of the same workflow, reached over loopback.
 - `internal/report` serializes independently collected process evidence separately from
   model hypotheses. Keep the JSON report canonical and Markdown readable.
 - `internal/ticketflow` prepares helpdesk cases. Keep policy checks and durable
-  clarification reservations outside the investigator. Bind human approval to
-  the exact evidence and run settings before admitting a ticket run.
+  clarification reservations outside the investigator. Bind ticket launches
+  to the exact evidence and run settings. Connections persist in the private
+  registry and per-connection state directories under `.tickets`; stored
+  credentials never leave the server. Default to approval and let
+  explicitly enabled procedures start automatically once evidence is ready.
 - `internal/webserver` serves the UI and a bounded, loopback-only HTTP API.
   Keep credentials server-side and route new runs through the existing investigator.
 - `internal/auth` owns workspace sign-in: local accounts with PBKDF2 hashes in
   one JSON file, in-memory sessions, and one optional OIDC provider. Roles are
   viewer (read), user (run and steer investigations), admin (define agents,
   procedures, and accounts). Keep enforcement server-side in the webserver and
-  fail closed without a configured login method.
+  fail closed without a configured login method. The same package owns OAuth
+  API clients: admin-managed clients with scopes (not roles), SHA-256-hashed
+  generated secrets in one JSON file, and memory-only access tokens. OAuth
+  protocol handling comes from the pinned zitadel/oidc adapter in
+  `internal/auth/oauth.go`; never hand-roll grant parsing or client
+  authentication.
 - `web/` uses React 19, TypeScript, Vite, and the Bondren design language.
   Read `web/AGENTS.md` before changing the frontend.
 - `docs-site/` builds the public documentation site (Astro/Starlight; see

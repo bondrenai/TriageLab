@@ -18,11 +18,14 @@ const (
 // SessionCookie is the browser cookie name for workspace sessions.
 const SessionCookie = "triagelab_session"
 
-// Identity is the authenticated actor attached to a session.
+// Identity is the authenticated actor attached to a session or, for an API
+// client, to one request. A client's Username is its ClientActor name and its
+// Role is empty, so it passes no role check.
 type Identity struct {
 	Username string
 	Role     Role
-	// Via records the login method: "password" or "oidc".
+	// Via records how the actor authenticated: "password", "oidc", or
+	// "oauth" for an API client.
 	Via string
 }
 

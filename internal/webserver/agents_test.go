@@ -161,9 +161,9 @@ func TestManualRunUsesOnlyAnAllowedAgent(t *testing.T) {
 	s := newTestServer(t, testBackend{call: func(_ context.Context, name string, args map[string]any) (map[string]any, error) {
 		switch name {
 		case "create_sandbox":
-			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE"}, nil
+			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE", "retain_while_suspended": true}, nil
 		case "get_sandbox":
-			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE"}, nil
+			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE", "retain_while_suspended": true}, nil
 		case "create_session":
 			called <- args["agent"].(map[string]any)["name"].(string)
 			return nil, fmt.Errorf("stop after observing session target")
@@ -203,7 +203,7 @@ func TestManualRunUsesOnlyReadySavedAgents(t *testing.T) {
 	s := newTestServer(t, testBackend{call: func(_ context.Context, tool string, args map[string]any) (map[string]any, error) {
 		switch tool {
 		case "create_sandbox", "get_sandbox":
-			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE"}, nil
+			return map[string]any{"id": "sandbox", "state": "RUNTIME_STATE_READY", "operation": "RUNTIME_OPERATION_NONE", "retain_while_suspended": true}, nil
 		case "create_session":
 			called <- args["agent"].(map[string]any)["name"].(string)
 			return nil, fmt.Errorf("stop after observing session target")
@@ -287,7 +287,10 @@ esac
 func TestTicketWorkspaceRejectsAManualAgentAsItsDefault(t *testing.T) {
 	s := newTestServer(t, nil)
 	s.config.ManualAgents = map[string][]string{s.config.Agent: {"search_docs"}}
-	err := s.EnableTickets(ticketflow.Config{Source: "github", Repository: "example/reproduction", Policy: ticketflow.Policy{Tag: "reproduce"}})
+	err := func() error {
+		_, _, err := s.EnableTicketConnections([]ticketflow.Config{{Source: "github", Repository: "example/reproduction", Policy: ticketflow.Policy{Tag: "reproduce"}}})
+		return err
+	}()
 	if err == nil || !strings.Contains(err.Error(), "default agent") {
 		t.Fatalf("ticket workspace accepted a manual default: %v", err)
 	}

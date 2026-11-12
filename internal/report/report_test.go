@@ -107,6 +107,79 @@ func TestPreservesFailureVerificationAndCleanup(t *testing.T) {
 	}
 }
 
+func TestRoundHistoryKeepsEvidenceSeparateAndRedactedInBothFormats(t *testing.T) {
+	directory := t.TempDir()
+	prior := sample()
+	prior["round"] = 1
+	prior["experiments"].([]any)[0].(map[string]any)["stdout"] = "earlier observation historical-credential"
+	latest := sample()
+	latest["round"] = 2
+	latest["rounds"] = []any{prior}
+	latest["continuation"] = map[string]any{"description": "Additional customer information"}
+	if err := Write(directory, latest, "historical-credential"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"report.json", "report.md"} {
+		content := read(t, filepath.Join(directory, name))
+		if !strings.Contains(content, "earlier observation") || !strings.Contains(content, "Additional customer information") || strings.Contains(content, "historical-credential") {
+			t.Fatalf("%s lost round evidence or exposed a historical credential", name)
+		}
+	}
+	var saved map[string]any
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(directory, "report.json"))), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(saved["experiments"].([]any)[0].(map[string]any)["stdout"].(string), "earlier observation") {
+		t.Fatal("historical evidence leaked into the current round")
+	}
+}
+
+func TestModelExperimentReasoningRemainsSeparateFromProcessEvidence(t *testing.T) {
+	directory := t.TempDir()
+	data := sample()
+	analysis := data["analysis"].(map[string]any)
+	analysis["hypotheses"] = []any{map[string]any{
+		"statement": "The endpoint is unavailable", "status": "rejected",
+		"evidence_process_ids": []string{"process-2"}, "contradicting_process_ids": []string{"process-2"},
+		"distinguishing_observation": "A healthy response under an explicit timeout would challenge endpoint failure.",
+	}}
+	analysis["experiment_assessments"] = []any{map[string]any{
+		"process_id": "process-2", "question": "Does the explicit timeout change the result?",
+		"expected_observation": "A healthy response", "interpretation": "The correction supports a units mismatch; sensitive-account-name",
+	}}
+	if err := Write(directory, data, "sensitive-account-name"); err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(directory, "report.json"))), &saved); err != nil {
+		t.Fatal(err)
+	}
+	assessments := saved["analysis"].(map[string]any)["experiment_assessments"].([]any)
+	if assessments[0].(map[string]any)["process_id"] != "process-2" {
+		t.Fatal("assessment lost its process reference")
+	}
+	for _, process := range saved["experiments"].([]any) {
+		if process.(map[string]any)["interpretation"] != nil || process.(map[string]any)["expected_observation"] != nil {
+			t.Fatal("model reasoning became execution evidence")
+		}
+	}
+	markdown := read(t, filepath.Join(directory, "report.md"))
+	for _, expected := range []string{"Experiment assessments (model interpretation)", "contradicting_process_ids", "distinguishing_observation", "Does the explicit timeout change the result?", "do not certify causal reasoning"} {
+		if !strings.Contains(markdown, expected) {
+			t.Errorf("Markdown missing %q", expected)
+		}
+	}
+	analysisStart := strings.Index(markdown, "## Investigator analysis")
+	if analysisStart < 0 || strings.Contains(markdown[:analysisStart], "The correction supports a units mismatch") {
+		t.Fatal("model reasoning appeared among independent process records")
+	}
+	for _, name := range []string{"report.json", "report.md"} {
+		if strings.Contains(read(t, filepath.Join(directory, name)), "sensitive-account-name") {
+			t.Fatalf("%s exposed a secret from model assessment text", name)
+		}
+	}
+}
+
 func TestExistingReportsAreReplacedPrivately(t *testing.T) {
 	directory := t.TempDir()
 	name := filepath.Join(directory, "report.json")

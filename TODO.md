@@ -1,10 +1,46 @@
 # Roadmap
 
-- [ ] Run the evaluation corpus in `examples/` live and calibrate
+- [x] Verify CEL automatic launch against live Jira and kagent on the build VM.
+      The same synthetic issue exercised a blocking and an allowing rule.
+- [ ] Pilot CEL procedure routing and conditional evidence with more ticket types.
+      Evaluate CEL for clarification eligibility under the existing send controls.
+
+- [x] Add saved, evidence-linked results chat and an authenticated HTTP MCP
+      surface for reading, starting, and steering investigations. Agentgateway
+      provides the optional remote OAuth edge; the workspace remains loopback.
+      See [chat and MCP guide](docs-site/src/content/docs/guides/chat-mcp.md).
+- [x] Verify results chat with the existing `gpt-4.1` credential and private
+      HTTP MCP through agentgateway on the build VM. Real browser chat and all
+      ten MCP tools passed, including start, pause, resume, close, saved evidence,
+      and complete cleanup. See [build VM access](docs/build-vm-chat-mcp.md).
+- [ ] Before publishing MCP, configure and verify the deployment's real HTTPS
+      domain and OAuth provider. The private deployment uses API keys over SSH;
+      its shared backend key does not establish per-user attribution.
+
+- [x] Make investigation review and continuation easier: a compact brief,
+      contextual evidence review, explicit execution/outcome/resource states,
+      round history, and a queue showing the next useful action. New experiment
+      assessments remain model analysis; older reports and retained sessions
+      remain readable. See [workspace guide](docs/ui.md).
+- [x] Add OAuth API clients: admins register clients with
+      `investigations:run`/`investigations:read` scopes; applications use the
+      RFC 6749 client credentials grant at `/oauth/token` and Bearer tokens on
+      the run API, steering only the runs they started. Landed 2026-11-10 with
+      the pinned zitadel/oidc v3.52.0 owning protocol handling (see
+      [upstream record](docs/upstream.md) and the
+      [API clients guide](https://bondrenai.github.io/TriageLab/guides/api-clients/)).
+      Open: pilot one real integration end to end, and add RFC 8414 metadata
+      or token introspection only when an integrator needs them.
+- [x] Pause and resume investigations using the same sandbox and conversation.
+      Verified 2026-11-10 with a real model: two rounds across process restart,
+      sandbox and conversation restoration, preserved files and evidence, fresh
+      caller credentials, and complete cleanup. The fork's separate retention
+      test passed beyond the original expiry. Both passed again on kagent 1.0.0
+      with the rebased fork. See [verification](docs/verification.md) and
+      [lifecycle design](docs/durable-investigations.md).- [ ] Run the evaluation corpus in `examples/` live and calibrate
       `examples/corpus.json`. Five of its six cases, including the
       prompt-injection bait, have never met a model; their expectations are
-      design intent until a scorecard exists.
-- [ ] Review held drafts and blocked notes from the first pilots and tune the
+      design intent until a scorecard exists.- [ ] Review held drafts and blocked notes from the first pilots and tune the
       input and output sanitizers: deny-list matching thresholds, per-source
       internal terms, and provenance of applied redactions, before widening
       automated replies.
@@ -23,8 +59,17 @@
       clarification follow-ups, investigation comments, and uncertain delivery.
       Add a Linear pilot for one workspace and team covering the same sends
       (the connector is fixture-verified only). Then add Bondren with shared
-      ticket identity and one owner for automated replies. Use pilot evidence
-      to guide procedure authoring and CEL.
+      ticket identity and one owner for automated replies. Add a Jira pilot
+      for one Cloud site covering the same sends (the connector is
+      fixture-verified only, including the observed signed-attachment
+      redirect shape). Use pilot evidence
+      to guide procedure authoring and CEL. (The Jira pilot ran 2026-11-11
+      against a real Cloud site: lookups, live signed attachment download,
+      clarification with bounded follow-up, a model-backed two-round run
+      approved from a Jira case, and internal-note delivery all passed; it
+      found and fixed the issue-id/comment-id numeric collision, and a Jira
+      Service Management project remains to be exercised for internal-note
+      visibility.)
 - [x] Exercise the new sign-in surface against real identity providers
       (done 2026-11-09 on the build VM: Keycloak 26 confidential client and
       Zitadel v4.20 public PKCE client, full authorization-code flows with
@@ -43,18 +88,26 @@
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
-- [ ] Extend the opt-in live integration workflow with repeatable, cost-bounded
-      disposable infrastructure across kagent upgrades and
-      failure scenarios (connection loss, model errors, TTL expiry, cancellation).
-      Exercise a declarative custom investigator and a BYO runtime with a
-      reviewed external MCP tool on the pinned release.
+- [ ] Run the scheduled `Live verification` workflow and record its first
+      results in docs/verification.md. It builds the disposable gVisor
+      deployment on a GitHub runner and runs the sandbox boundary check
+      (nested upload, DNS/HTTP egress denial, termination, deletion; no model),
+      the live investigation, and pause/resume. Drafted 2026-11-12 and not yet
+      executed: the 1.0.0 upgrade re-ran the demonstration, retention, and
+      pause/resume checks by hand, and DNS/HTTP egress denial and process
+      termination were last exercised on rc3.
+      Then extend it to failure scenarios (connection loss, model errors, TTL
+      expiry, cancellation), and exercise a declarative custom investigator
+      and a BYO runtime with a reviewed external MCP tool on the pinned release.
 - [ ] Add exact binary artifact export through upstream gRPC file transfer, with
       size limits, checksums, and interruption recovery. MCP read-file content and
       command outputs are currently captured in the report.
-- [ ] Repeat the opt-in `microvm` CI job enough times to measure reliability:
-      one of the first five runs failed with an unrecorded cause, before reports
-      kept `task_failure`. Repeat the sandbox lifecycle and egress-denial
-      checks on that backend.
+- [ ] Repeat the `microvm` class of the `Live verification` workflow enough
+      times to measure reliability: one of the first five runs of the earlier
+      `microvm` CI job (on rc3) failed with an unrecorded cause, before reports
+      kept `task_failure`. The workflow now also runs the sandbox lifecycle and
+      egress-denial checks and pause/resume on that backend; none of it has run
+      there on the 1.0.0 pins.
 - [ ] Validate additional templates for networking/Kubernetes reproductions.
       Cover templates authored through the Sandboxes and Egress editors,
       including one egress-granted reproduction against a disposable deployment.

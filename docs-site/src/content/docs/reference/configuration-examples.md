@@ -51,6 +51,37 @@ Copy an example to a private file, fill in your values, and pass it to the match
 }
 ```
 
+## Results chat
+
+`triagelab.chat.example.json` — Optional file passed to `serve --chat` selecting a tool-free completion endpoint; see [results chat and MCP](/TriageLab/guides/chat-mcp/).
+
+```json
+{
+  "endpoint": "http://127.0.0.1:3000/v1/chat/completions",
+  "model": "results-chat",
+  "api_key_env": "TRIAGELAB_CHAT_API_KEY",
+  "timeout_seconds": 60,
+  "max_tokens": 2048
+}
+```
+
+## HTTP MCP access
+
+`triagelab.mcp.example.json` — Optional file passed to `serve --mcp` defining scoped machine credentials; see [results chat and MCP](/TriageLab/guides/chat-mcp/).
+
+```json
+{
+  "principals": [
+    {
+      "name": "gateway",
+      "role": "user",
+      "token_env": "TRIAGELAB_MCP_TOKEN"
+    }
+  ],
+  "allowed_origins": []
+}
+```
+
 ## Zendesk ticket source
 
 `tickets.example.json` — Passed to `serve --tickets` for the Zendesk case source; see [Zendesk tickets](/TriageLab/guides/tickets-zendesk/).
@@ -102,6 +133,45 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "token_env": "TRIAGELAB_LINEAR_TOKEN",
   "poll_seconds": 60,
   "investigation_comments": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}
+```
+
+## Bondren issue source
+
+`bondren.example.json` — Passed to `serve --tickets` for one Bondren workspace origin; see [Bondren issues](/TriageLab/guides/tickets-bondren/).
+
+```json
+{
+  "source": "bondren",
+  "origin": "https://app.bondren.example",
+  "token_env": "TRIAGELAB_BONDREN_TOKEN",
+  "poll_seconds": 60,
+  "internal_notes": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}
+```
+
+## Jira issue source
+
+`jira.example.json` — Passed to `serve --tickets` for one Jira Cloud site; see [Jira issues](/TriageLab/guides/tickets-jira/).
+
+```json
+{
+  "source": "jira",
+  "origin": "https://your-site.atlassian.net",
+  "email": "triagelab@your-company.example",
+  "token_env": "TRIAGELAB_JIRA_TOKEN",
+  "poll_seconds": 60,
+  "internal_notes": true,
   "policy": {
     "tag": "triagelab_python_timeout",
     "auto_questions": true,

@@ -41,6 +41,9 @@ func cliCommandDocs() []commandDoc {
 	}
 	return []commandDoc{
 		{name: "investigate", usage: "triagelab investigate [options]", purpose: "Run one investigation: collect the bounded case, create a standalone sandbox, run the kagent investigator, and write JSON and Markdown reports.", flags: runCommand("investigate")},
+		{name: "pause", usage: "triagelab pause --report <report.json> [options]", purpose: "Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.", flags: runCommand("pause")},
+		{name: "resume", usage: "triagelab resume --report <report.json> --description <new-information> [options]", purpose: "Continue a paused manual investigation in its saved sandbox and session with a fresh bounded turn. Saved settings and tools are reused; ticket continuations require review in the signed-in workspace.", flags: runCommand("resume")},
+		{name: "close", usage: "triagelab close --report <report.json> [options]", purpose: "Release an investigation's retained session and sandbox using its private lifecycle record. Keep the reports and previous rounds.", flags: runCommand("close")},
 		{name: "serve", usage: "triagelab serve [options]", purpose: "Serve the authenticated browser workspace on loopback, sharing the CLI's investigation workflow and report directory.", flags: runCommand("serve")},
 		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
 		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.", flags: runCommand("cleanup")},
@@ -61,7 +64,7 @@ var exitCodeDocs = []struct {
 	code    int
 	meaning string
 }{
-	{0, "Command succeeded; an investigation reproduced the reported symptom"},
+	{0, "Command succeeded; an investigation reproduced the reported symptom, paused, or closed"},
 	{1, "Investigation completed; the symptom was not reproduced"},
 	{2, "Invalid input, configuration, or usage"},
 	{3, "Investigation finished inconclusive"},
@@ -81,9 +84,9 @@ var configFieldDocs = map[string]string{
 	"template":              "Standalone sandbox template used for the run's sandbox.",
 	"user_id":               "kagent user identity that owns sessions and sandboxes.",
 	"token_env":             "Environment variable holding the kagent invocation token; the token itself never goes in the file.",
-	"investigation_timeout": "Overall investigation budget in seconds (at most 3000).",
+	"investigation_timeout": "Budget per active investigation round in seconds (at most 3000). Resume starts a fresh round with the saved limit.",
 	"process_timeout":       "Per-process watchdog in seconds; cannot exceed investigation_timeout.",
-	"sandbox_ttl":           "Sandbox TTL in seconds, fixed at creation; must cover the investigation plus request and cleanup budgets (at most 3600).",
+	"sandbox_ttl":           "Active sandbox TTL in seconds; must cover the investigation plus request and cleanup budgets (at most 3600). The pinned fork retains a fully suspended sandbox and refreshes this bounded TTL once on resume.",
 	"max_experiments":       "Client-side cap on recorded experiments (at most 32). A watchdog observed between polls, not admission control.",
 	"poll_interval":         "Seconds between task-history polls (at most 10).",
 	"request_timeout":       "Per HTTP request timeout in seconds (at most 60).",
@@ -101,9 +104,13 @@ var exampleFileDocs = []struct {
 }{
 	{file: "triagelab.example.json", title: "Investigation configuration", description: "The core configuration passed to `--config`; defaults shown in the [configuration](/TriageLab/reference/configuration/) table."},
 	{file: "auth.example.json", title: "Sign-in configuration", description: "Optional file passed to `serve --auth` configuring one OpenID Connect provider; see [sign-in and roles](/TriageLab/guides/sign-in/)."},
+	{file: "triagelab.chat.example.json", title: "Results chat", description: "Optional file passed to `serve --chat` selecting a tool-free completion endpoint; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
+	{file: "triagelab.mcp.example.json", title: "HTTP MCP access", description: "Optional file passed to `serve --mcp` defining scoped machine credentials; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
 	{file: "tickets.example.json", title: "Zendesk ticket source", description: "Passed to `serve --tickets` for the Zendesk case source; see [Zendesk tickets](/TriageLab/guides/tickets-zendesk/)."},
 	{file: "github.example.json", title: "GitHub issue source", description: "Passed to `serve --tickets` for one GitHub.com repository; see [GitHub issues](/TriageLab/guides/tickets-github/)."},
 	{file: "linear.example.json", title: "Linear issue source", description: "Passed to `serve --tickets` for one Linear team; see [Linear issues](/TriageLab/guides/tickets-linear/)."},
+	{file: "bondren.example.json", title: "Bondren issue source", description: "Passed to `serve --tickets` for one Bondren workspace origin; see [Bondren issues](/TriageLab/guides/tickets-bondren/)."},
+	{file: "jira.example.json", title: "Jira issue source", description: "Passed to `serve --tickets` for one Jira Cloud site; see [Jira issues](/TriageLab/guides/tickets-jira/)."},
 	{file: "triagelab.telemetry.example.json", title: "Telemetry configuration", description: "Optional file passed to `--telemetry` for OTLP/HTTP export; see [telemetry](/TriageLab/guides/telemetry/)."},
 }
 

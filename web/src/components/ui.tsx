@@ -28,6 +28,9 @@ export function Stamp({ children, hue = "gray" }: { children: ReactNode; hue?: S
 }
 
 export function StatusStamp({ status, outcome, active }: { status: string; outcome?: string; active?: boolean }) {
+  if (status === "paused") return <Stamp hue="amber">Paused</Stamp>;
+  if (status === "pausing" || status === "resuming" || status === "closing") return <Stamp hue="blue">{status === "pausing" ? "Pausing" : status === "resuming" ? "Resuming" : "Closing"}</Stamp>;
+  if (status === "closed") return <Stamp>Closed</Stamp>;
   if (active) return <Stamp hue="blue">Investigating</Stamp>;
   if (status === "completed") return <Stamp hue={outcome === "reproduced" ? "green" : "amber"}>{outcome === "reproduced" ? "Reproduced" : outcome === "not_reproduced" ? "Not reproduced" : "Inconclusive"}</Stamp>;
   if (status === "running" || status === "queued") return <Stamp hue="amber">Interrupted</Stamp>;

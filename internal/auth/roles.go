@@ -4,6 +4,10 @@
 // Roles are ordered: viewer < user < admin. Viewers read workspace state,
 // users may start and steer investigations, and admins additionally define
 // agents, procedures, and other accounts.
+//
+// It also provides OAuth access for external applications. Admins create API
+// clients with scopes instead of roles; a client exchanges its secret for a
+// short-lived access token and can only launch and read investigations.
 package auth
 
 import "fmt"

@@ -15,9 +15,9 @@ One JSON object, decoded with unknown fields rejected. Omitted fields take the d
 | `template` | string | triagelab-python | Standalone sandbox template used for the run's sandbox. |
 | `user_id` | string | triagelab@localhost | kagent user identity that owns sessions and sandboxes. |
 | `token_env` | string | TRIAGELAB_TOKEN | Environment variable holding the kagent invocation token; the token itself never goes in the file. |
-| `investigation_timeout` | integer | 600 | Overall investigation budget in seconds (at most 3000). |
+| `investigation_timeout` | integer | 600 | Budget per active investigation round in seconds (at most 3000). Resume starts a fresh round with the saved limit. |
 | `process_timeout` | integer | 60 | Per-process watchdog in seconds; cannot exceed investigation_timeout. |
-| `sandbox_ttl` | integer | 900 | Sandbox TTL in seconds, fixed at creation; must cover the investigation plus request and cleanup budgets (at most 3600). |
+| `sandbox_ttl` | integer | 900 | Active sandbox TTL in seconds; must cover the investigation plus request and cleanup budgets (at most 3600). The pinned fork retains a fully suspended sandbox and refreshes this bounded TTL once on resume. |
 | `max_experiments` | integer | 8 | Client-side cap on recorded experiments (at most 32). A watchdog observed between polls, not admission control. |
 | `poll_interval` | integer | 2 | Seconds between task-history polls (at most 10). |
 | `request_timeout` | integer | 20 | Per HTTP request timeout in seconds (at most 60). |

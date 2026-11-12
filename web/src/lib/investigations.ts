@@ -9,6 +9,29 @@ export const getRun = (id: string) => request<InvestigationReport>(`/api/runs/${
 export const cancelRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
 export const cleanupRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cleanup`, { method: "POST" });
 
+export const pauseRun = (id: string) => request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/pause`, { method: "POST" });
+
+export interface ResumeInput {
+  description: string;
+  files: File[];
+  round: number;
+  settings: string;
+}
+
+function lifecycleHeaders(round: number, settings: string) {
+  return { "X-TriageLab-Resume-Round": String(round), "X-TriageLab-Resume-Settings": settings };
+}
+
+export function resumeRun(id: string, input: ResumeInput) {
+  const body = new FormData();
+  body.append("description", input.description);
+  for (const file of input.files) body.append("files", file, file.webkitRelativePath || file.name);
+  return request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/resume`, { method: "POST", body, headers: lifecycleHeaders(input.round, input.settings) });
+}
+
+export const closeRun = (id: string, input: { round: number; settings: string }) =>
+  request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/close`, { method: "POST", headers: lifecycleHeaders(input.round, input.settings) });
+
 export const postTicketNote = (id: string, plan: string) =>
   request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });
 

@@ -17,7 +17,7 @@ GOVULNCHECK ?= golang.org/x/vuln/cmd/govulncheck@v1.9.0
 DIST ?= dist
 DIST_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: build fmt check test race lint vulncheck dist test-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
+.PHONY: build fmt check test race lint vulncheck dist test-integration test-pause-integration test-sandbox-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o bin/triagelab ./cmd/triagelab
 dist:
@@ -66,6 +66,10 @@ vulncheck:
 	$(GO) run $(GOVULNCHECK) ./...
 test-integration:
 	TRIAGELAB_INTEGRATION=1 $(GO) test -count=1 -timeout 75m -v ./internal/investigation -run TestLiveInvestigation
+test-pause-integration:
+	TRIAGELAB_PAUSE_INTEGRATION=1 $(GO) test -count=1 -timeout 20m -v ./internal/investigation -run '^TestLiveInvestigationPauseResume$$'
+test-sandbox-integration:
+	TRIAGELAB_SANDBOX_INTEGRATION=1 $(GO) test -count=1 -timeout 20m -v ./internal/investigation -run '^TestLiveSandboxBoundary$$'
 manifest:
 	$(GO) run ./cmd/triagelab manifest
 demo:

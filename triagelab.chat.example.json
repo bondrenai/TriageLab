@@ -1,0 +1,7 @@
+{
+  "endpoint": "http://127.0.0.1:3000/v1/chat/completions",
+  "model": "results-chat",
+  "api_key_env": "TRIAGELAB_CHAT_API_KEY",
+  "timeout_seconds": 60,
+  "max_tokens": 2048
+}

@@ -111,7 +111,10 @@ var flagName = regexp.MustCompile(`(?m)^  -(\S+)`)
 func TestSubcommandsDefineOnlyTheirOwnFlags(t *testing.T) {
 	for command, want := range map[string][]string{
 		"investigate":    {"agent", "config", "description", "description-file", "file", "log", "output", "repo", "telemetry"},
-		"serve":          {"allow-resource-writes", "assets", "auth", "config", "listen", "output", "status-context", "status-kubeconfig", "telemetry", "tickets", "users"},
+		"serve":          {"allow-resource-writes", "assets", "auth", "chat", "clients", "config", "listen", "mcp", "output", "status-context", "status-kubeconfig", "telemetry", "tickets", "users"},
+		"pause":          {"config", "report", "telemetry"},
+		"resume":         {"config", "description", "description-file", "file", "log", "repo", "report", "telemetry"},
+		"close":          {"config", "report", "telemetry"},
 		"doctor":         {"config", "telemetry"},
 		"cleanup":        {"config", "report", "telemetry"},
 		"manifest":       {"workload-image"},

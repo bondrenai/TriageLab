@@ -138,7 +138,7 @@ the command must identify its executable. This creates a kagent BYO Harness
 using the development install's `kagent-default` WorkerPool and snapshot policy.
 A model configuration is optional when the image handles model setup.
 
-The image must implement kagent rc3's private A2A gRPC, readiness, and durable
+The image must implement kagent 1.0.0's private A2A gRPC, readiness, and durable
 TaskStore contract. It must consume the supplied configuration for MCP bindings,
 preserve caller authentication for the sandbox tool server, and record tool
 activity in the canonical transcript. Return the investigation JSON described
@@ -149,8 +149,8 @@ the runtime's transcript. An ordinary reproduction image belongs in the
 standalone SandboxTemplate, which can be set with
 `triagelab manifest --workload-image`.
 
-- [Pinned kagent BYO runtime contract](https://github.com/kagent-dev/kagent/blob/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/docs/architecture/configuration-and-compilation.md#runtime-configuration)
-- [Canonical tool activity and structured output parts](https://github.com/kagent-dev/kagent/tree/3548b7aaf4d91ec86b0565df2bd8a9950e9a276d/go/api/a2a)
+- [Pinned kagent BYO runtime contract](https://github.com/kagent-dev/kagent/blob/a08cde76ad6482dd758a4220b14213d79185ac30/docs/architecture/configuration-and-compilation.md#runtime-configuration)
+- [Canonical tool activity and structured output parts](https://github.com/kagent-dev/kagent/tree/a08cde76ad6482dd758a4220b14213d79185ac30/go/api/a2a)
 
 ## Deploy and use
 

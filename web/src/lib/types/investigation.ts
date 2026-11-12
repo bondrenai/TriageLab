@@ -21,6 +21,9 @@ export interface RunSummary {
   finished_at?: string;
   experiment_count: number;
   active: boolean;
+  round: number;
+  resource_state: "active" | "retained" | "deleted" | "unconfirmed";
+  attention?: { reason: string; action: string };
 }
 
 export interface Experiment {
@@ -40,10 +43,19 @@ export interface Hypothesis {
   statement: string;
   status: string;
   evidence_process_ids: string[];
+  contradicting_process_ids?: string[];
+  distinguishing_observation?: string;
+}
+
+export interface ExperimentAssessment {
+  process_id: string;
+  question: string;
+  expected_observation: string;
+  interpretation: string;
 }
 
 export interface TicketNote {
-  source: "zendesk" | "github" | "linear";
+  source: "zendesk" | "github" | "linear" | "bondren";
   visibility: "internal" | "repository" | "workspace";
   ticket_id: string;
   ticket_url: string;
@@ -67,17 +79,34 @@ export interface InvestigationReport {
   cleanup_running?: boolean;
   cleanup_error?: string;
   progress?: string[];
+  action_error?: string;
   ticket_note?: TicketNote;
+  round?: number;
+  round_started_at?: string;
+  rounds?: InvestigationReport[];
+  lifecycle?: {
+    phase: string;
+    round: number;
+    can_pause: boolean;
+    can_resume: boolean;
+    can_close: boolean;
+    resume_settings: string;
+    timeout_seconds: number;
+    max_experiments: number;
+    message?: string;
+  };
   case: {
     description: string;
     attachments?: { path: string; size_bytes: number; sha256: string }[];
     environment?: { repository_name?: string };
   };
+  continuation?: InvestigationReport["case"];
   experiments?: Experiment[];
   analysis?: {
     summary?: string;
     observations?: string[];
     hypotheses?: Hypothesis[];
+    experiment_assessments?: ExperimentAssessment[];
     reproduced_process_ids?: string[];
     root_cause?: { statement: string; evidence_process_ids: string[] };
     reproduction_steps?: string[];

@@ -18,13 +18,32 @@ func ValidateAnalysis(text string, experiments []Experiment) (map[string]any, []
 	if err := json.Unmarshal([]byte(text), &value); err != nil {
 		return nil, nil, fmt.Errorf("agent did not return valid JSON")
 	}
+	// Retained sessions keep the earlier investigator prompt and output schema.
+	// Normalize only absent explanatory fields; malformed supplied values still
+	// fail the same strict contract as answers from an updated investigator.
+	if value != nil {
+		if _, present := value["experiment_assessments"]; !present {
+			value["experiment_assessments"] = []any{}
+		}
+		hypotheses, _ := value["hypotheses"].([]any)
+		for _, raw := range hypotheses {
+			if hypothesis, ok := raw.(map[string]any); ok {
+				if _, present := hypothesis["contradicting_process_ids"]; !present {
+					hypothesis["contradicting_process_ids"] = []any{}
+				}
+				if _, present := hypothesis["distinguishing_observation"]; !present {
+					hypothesis["distinguishing_observation"] = ""
+				}
+			}
+		}
+	}
 	if err := validateValue(value, agent.Schema()); err != nil {
 		return nil, nil, err
 	}
 	verified := map[string]bool{}
 	for _, e := range experiments {
 		truncated := e.Output != nil && e.Output.Truncated
-		if e.exited() && !truncated && !e.TimedOut && e.ExitCode != nil {
+		if e.ProcessID != "" && e.exited() && e.OutputsComplete && !truncated && !e.TimedOut && e.ExitCode != nil {
 			verified[e.ProcessID] = true
 		}
 	}
@@ -47,6 +66,37 @@ func ValidateAnalysis(text string, experiments []Experiment) (map[string]any, []
 			h["status"] = "untested"
 			warnings = append(warnings, "Hypothesis lacked complete evidence; marked untested")
 		}
+		references, _ := h["contradicting_process_ids"].([]any)
+		contradictions := []any{}
+		for _, reference := range references {
+			if verified[str(reference)] {
+				contradictions = append(contradictions, reference)
+			}
+		}
+		if len(contradictions) != len(references) {
+			h["status"] = "untested"
+			h["contradicting_process_ids"] = contradictions
+			warnings = append(warnings, "Hypothesis cited incomplete or unavailable contradicting evidence; references removed and marked untested")
+		}
+	}
+	if provided, ok := value["experiment_assessments"].([]any); ok {
+		assessments := []any{}
+		assessed := map[string]bool{}
+		for _, raw := range provided {
+			assessment := raw.(map[string]any)
+			id := str(assessment["process_id"])
+			if !verified[id] {
+				warnings = append(warnings, "Experiment assessment lacked complete current-round evidence; omitted")
+				continue
+			}
+			if assessed[id] {
+				warnings = append(warnings, "Duplicate experiment assessment omitted")
+				continue
+			}
+			assessed[id] = true
+			assessments = append(assessments, assessment)
+		}
+		value["experiment_assessments"] = assessments
 	}
 	root := value["root_cause"].(map[string]any)
 	if root["statement"] != "" && !supported(root["evidence_process_ids"]) {
@@ -72,17 +122,19 @@ func validateValue(value any, schema map[string]any) error {
 			return invalid()
 		}
 		required := schema["required"].([]any)
-		if len(object) != len(required) {
-			return invalid()
-		}
 		properties := schema["properties"].(map[string]any)
 		for _, raw := range required {
 			key := raw.(string)
-			child, ok := object[key]
+			if _, ok := object[key]; !ok {
+				return invalid()
+			}
+		}
+		for key, child := range object {
+			property, ok := properties[key]
 			if !ok {
 				return invalid()
 			}
-			if err := validateValue(child, properties[key].(map[string]any)); err != nil {
+			if err := validateValue(child, property.(map[string]any)); err != nil {
 				return err
 			}
 		}
