@@ -58,3 +58,20 @@ func TestConfigFieldDocsRejectUnknownEntries(t *testing.T) {
 		t.Fatal("renderConfigurationPage accepted a stale documentation entry")
 	}
 }
+
+// TestMarkdownCellKeepsFlagsLiteral pins the rendering that keeps flags
+// copyable: a bare --flag becomes a code span, an existing code span is left
+// alone, and a hyphen pair inside a word is not a flag.
+func TestMarkdownCellKeepsFlagsLiteral(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"initial password (prefer --password-stdin)", "initial password (prefer `--password-stdin`)"},
+		{"--agent runs", "`--agent` runs"},
+		{"pass `--config file.json` or --config", "pass `--config file.json` or `--config`"},
+		{"a|b", "a\\|b"},
+		{"well--known and plain text", "well--known and plain text"},
+	} {
+		if got := markdownCell(tc.in); got != tc.want {
+			t.Errorf("markdownCell(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
