@@ -365,10 +365,14 @@ make build
 make check-ui                 # TypeScript check (after make install-ui)
 make build-ui                 # production browser assets
 TRIAGELAB_CONFIG=triagelab.example.json make test-integration
+make test-sandbox-integration # sandbox upload, egress denial, kill, delete; no model
 ```
 
 The integration test is opt-in and needs the real deployment and a model
-credential; it never falls back to a mock. Unit tests use test HTTP servers
+credential; it never falls back to a mock. The sandbox test is also opt-in and
+needs the deployment but no model. A scheduled
+[live verification workflow](docs/development.md#scheduled-live-verification)
+runs both on a disposable cluster. Unit tests use test HTTP servers
 and fixture backends to cover failure paths, but they don't demonstrate the
 full system. [Verification](docs/verification.md) records what has actually
 been run against the real stack.

@@ -244,7 +244,10 @@ permissions. It projects current-generation conditions and the controller's
 Review the upstream CRD schemas, protobuf configuration, MCP input/output
 schemas, guest dependency, lifecycle retry rules, and credential propagation
 before changing pins. For an upstream release upgrade, update CLI, chart,
-controller, guest and runtime images together. The current controller-only fork
+controller, guest and runtime images together. The kagent CLI version and
+checksum appear in [development.md](development.md), the README, the
+quickstart, and `.github/workflows/live.yml`; change them in the same commit.
+The current controller-only fork
 is based on the exact v1.0.0 source and leaves the other components pinned; build
 its reviewed commit with `scripts/install-fork-controller.sh` after installing
 the released chart. To move the fork, rebase its commit onto the new release
