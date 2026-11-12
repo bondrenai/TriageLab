@@ -2,6 +2,7 @@ export interface Settings {
   agent: string;
   sandbox_template?: string;
   namespace: string;
+  run_namespaces?: string[];
   manual_agents: string[];
   resource_writes?: boolean;
   max_description_bytes: number;

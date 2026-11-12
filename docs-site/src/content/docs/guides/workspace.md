@@ -99,10 +99,10 @@ CEL receives a `ticket` map with these properties from the current source read.
 
 | Property | Value |
 | --- | --- |
-| `source` | `zendesk`, `github`, `linear`, `bondren`, or `jira` |
+| `source` | `zendesk`, `github`, `gitlab`, `linear`, `bondren`, or `jira` |
 | `id`, `requester_id` | Integer identifiers used by the connector |
 | `subject` | Ticket title |
-| `status` | Connector status, including Linear state type and Jira status-category key |
+| `status` | Connector status, including Linear state type, GitLab issue state, and Jira status-category key |
 | `priority` | Zendesk priority, or an empty string for connectors that do not collect it |
 | `tags` | List of tags or labels, empty when none are present |
 | `custom_fields` | Map of Zendesk custom-field IDs as string keys to their JSON values, empty for other connectors |

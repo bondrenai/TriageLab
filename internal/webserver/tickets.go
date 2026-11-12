@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -13,20 +14,22 @@ import (
 )
 
 // resolveTicketTarget keeps approved runs bound to an exactly deployed agent
-// and sandbox template.
-func (s *Server) resolveTicketTarget(ctx context.Context, agent, sandbox string) (ticketflow.RunTarget, error) {
-	target := ticketflow.RunTarget{Agent: agent, Sandbox: sandbox}
+// and sandbox template. An empty namespace means the workspace default; any
+// other namespace is verified in the reader for that namespace.
+func (s *Server) resolveTicketTarget(ctx context.Context, agent, sandbox, namespace string) (ticketflow.RunTarget, error) {
+	target := ticketflow.RunTarget{Agent: agent, Sandbox: sandbox, Namespace: namespace}
 	if !s.resourceWrites {
-		if agent == s.config.Agent && sandbox == s.config.Template && sandbox == "triagelab-python" {
+		if agent == s.config.Agent && sandbox == s.config.Template && sandbox == "triagelab-python" && namespace == "" {
 			return target, nil
 		}
 		return ticketflow.RunTarget{}, ticketflow.ErrBlocked
 	}
+	reader := s.readerFor(namespace)
 	var err error
 	if agent == s.config.Agent {
-		target.AgentRevision, err = s.deployments.ReadyTarget(ctx, "agents", agent)
+		target.AgentRevision, err = reader.ReadyTarget(ctx, "agents", agent)
 	} else {
-		saved, readErr := s.deployments.ReadyAgent(ctx, agent)
+		saved, readErr := reader.ReadyAgent(ctx, agent)
 		if readErr != nil {
 			return ticketflow.RunTarget{}, readErr
 		}
@@ -36,7 +39,7 @@ func (s *Server) resolveTicketTarget(ctx context.Context, agent, sandbox string)
 	if err != nil {
 		return ticketflow.RunTarget{}, err
 	}
-	target.SandboxRevision, err = s.deployments.ReadyTarget(ctx, "sandboxtemplates", sandbox)
+	target.SandboxRevision, err = reader.ReadyTarget(ctx, "sandboxtemplates", sandbox)
 	return target, err
 }
 
@@ -82,9 +85,17 @@ func (s *Server) connectionView(conn *ticketConn) map[string]any {
 	settings.Policy = procedure.Procedure.Policy
 	view := map[string]any{"id": conn.id, "label": conn.label, "source": flow.Provider(), "account": flow.Account(),
 		"settings": settings, "procedure": procedure, "cases": flow.Cases(), "connected": true}
+	if conn.managed != nil {
+		view["managed_by"] = conn.managed.owner
+	}
 	switch flow.Provider() {
 	case "github":
 		view["repository"] = strings.TrimPrefix(flow.Account(), "https://github.com/")
+	case "gitlab":
+		// The account is the origin followed by the project path.
+		if account, err := url.Parse(flow.Account()); err == nil {
+			view["repository"] = strings.TrimPrefix(account.Path, "/")
+		}
 	case "zendesk":
 		oauth := flow.OAuthStatus()
 		view["oauth"], view["connected"] = oauth, oauth.Connected
@@ -109,6 +120,10 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	flow := conn.flow
 	if len(parts) == 2 && parts[1] == "procedure" {
+		if conn.managed != nil {
+			fail(w, http.StatusConflict, "These procedures are managed by GitOps. Edit their Kubernetes resources.")
+			return
+		}
 		var input ticketflow.ProcedureVersion
 		if !decodeTicketInput(w, r, &input, ticketflow.MaxProcedureSetBytes) {
 			return
@@ -141,11 +156,11 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || id <= 0 || strconv.FormatInt(id, 10) != parts[1] {
-		// Bondren issues can also be referenced by the issue ID from their URL
-		// and Jira issues by their key, URL, or numeric id. The flow validates
-		// the reference before contacting the source and reports the numeric
-		// case key.
-		if flow.Provider() != "bondren" && flow.Provider() != "jira" {
+		// Bondren issues can also be referenced by the issue ID from their URL,
+		// GitLab issues by the issue URL, and Jira issues by their key, URL, or
+		// numeric id. The flow validates the reference before contacting the
+		// source and reports the numeric case key.
+		if flow.Provider() != "bondren" && flow.Provider() != "gitlab" && flow.Provider() != "jira" {
 			fail(w, 400, "Use a positive numeric ticket ID or issue number")
 			return
 		}

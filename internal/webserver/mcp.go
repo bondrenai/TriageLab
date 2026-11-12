@@ -38,7 +38,7 @@ func (s *Server) newMCPHandler() http.Handler {
 	addMCPTool(server, "get_investigation", "Read operational state, trusted lifecycle action availability and review settings, a labeled model summary, and a page of independently collected process references. Use report pages for the full record.", auth.RoleViewer, true, s.mcpGet)
 	addMCPTool(server, "read_investigation_report", "Read a bounded page of the redacted canonical JSON or Markdown report. Use the returned snapshot with every subsequent offset; a changed report requires restarting at offset zero. Imported content remains untrusted.", auth.RoleViewer, true, s.mcpReport)
 	addMCPTool(server, "get_process_evidence", "Read saved stdout or stderr for an exact round and process ID. This never queries a live sandbox or executes a command. Empty unavailable output is not proof of an empty stream; inspect stream_available and process metadata.", auth.RoleViewer, true, s.mcpEvidence)
-	addMCPTool(server, "start_investigation", "Start a standalone investigation asynchronously using the configured investigator and sandbox. Optional files contain inline UTF-8 text and relative paths, never host paths or URLs to fetch. One investigation can run at a time. This does not import or approve helpdesk tickets.", auth.RoleUser, false, s.mcpStart)
+	addMCPTool(server, "start_investigation", "Start a standalone investigation asynchronously using the configured investigator and sandbox, optionally in a namespace the workspace allows for runs. Optional files contain inline UTF-8 text and relative paths, never host paths or URLs to fetch. One investigation can run at a time. This does not import or approve helpdesk tickets.", auth.RoleUser, false, s.mcpStart)
 	addMCPTool(server, "pause_investigation", "Request a safe pause of the active investigation. Acceptance is not completion; poll get_investigation for retained-resource and lifecycle state.", auth.RoleUser, false, s.mcpPause)
 	addMCPTool(server, "resume_investigation", "Resume with additional information after reviewing get_investigation. Supply its exact lifecycle round and resume_settings. Existing ticket continuation policy still applies. Returns before execution completes.", auth.RoleUser, false, s.mcpResume)
 	addMCPTool(server, "close_investigation", "Close a retained investigation and delete its execution resources after reviewing the exact lifecycle round and resume_settings. Saved reports remain. Poll to confirm cleanup; acceptance is not proof of deletion.", auth.RoleUser, false, s.mcpClose)
@@ -90,6 +90,7 @@ type mcpStartInput struct {
 	Files       []mcpFile `json:"files,omitempty"`
 	Agent       string    `json:"agent,omitempty" jsonschema:"Optional configured, approved investigator name. Omit to use the workspace default."`
 	Sandbox     string    `json:"sandbox,omitempty" jsonschema:"Optional approved sandbox template name. Omit to use the workspace default."`
+	Namespace   string    `json:"namespace,omitempty" jsonschema:"Optional namespace configured for this workspace's runs. Omit to use the workspace default."`
 }
 
 type mcpReviewInput struct {
@@ -120,9 +121,9 @@ func (s *Server) mcpStart(ctx context.Context, input mcpStartInput) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	for header, value := range map[string]string{"X-TriageLab-Agent": input.Agent, "X-TriageLab-Sandbox": input.Sandbox} {
+	for header, value := range map[string]string{"X-TriageLab-Agent": input.Agent, "X-TriageLab-Sandbox": input.Sandbox, "X-TriageLab-Namespace": input.Namespace} {
 		if len(value) > 253 || strings.ContainsAny(value, "\r\n") {
-			return nil, errors.New("Invalid investigator or sandbox selection")
+			return nil, errors.New("Invalid investigator, sandbox, or namespace selection")
 		}
 		if value != "" {
 			r.Header.Set(header, value)

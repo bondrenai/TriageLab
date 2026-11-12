@@ -1,0 +1,154 @@
+# Maintained structural schema; runtime ticket validation also applies.
+apiVersion: "apiextensions.k8s.io/v1"
+kind: "CustomResourceDefinition"
+metadata:
+  name: "ticketprocedures.triagelab.bondren.ai"
+spec:
+  group: "triagelab.bondren.ai"
+  scope: "Namespaced"
+  names:
+    kind: "TicketProcedure"
+    plural: "ticketprocedures"
+    singular: "ticketprocedure"
+  versions:
+    -
+      name: "v1alpha1"
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: "object"
+          properties:
+            apiVersion:
+              type: "string"
+            kind:
+              type: "string"
+            metadata:
+              type: "object"
+            spec:
+              type: "object"
+              properties:
+                workspace:
+                  type: "string"
+                  maxLength: 63
+                  pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                procedure:
+                  type: "object"
+                  properties:
+                    policy:
+                      type: "object"
+                      properties:
+                        tag:
+                          type: "string"
+                          maxLength: 100
+                          minLength: 1
+                        priorities:
+                          type: "array"
+                          items:
+                            type: "string"
+                            maxLength: 10
+                            enum:
+                              - "low"
+                              - "normal"
+                              - "high"
+                              - "urgent"
+                          maxItems: 4
+                          minItems: 0
+                        field_id:
+                          type: "integer"
+                          minimum: 0
+                          maximum: 9007199254740991
+                        field_value:
+                          type: "string"
+                          maxLength: 200
+                        auto_questions:
+                          type: "boolean"
+                        max_questions:
+                          type: "integer"
+                          minimum: 0
+                          maximum: 3
+                        match_condition:
+                          type: "string"
+                          maxLength: 4096
+                        auto_run_condition:
+                          type: "string"
+                          maxLength: 4096
+                        auto_runs:
+                          type: "boolean"
+                      required:
+                        - "tag"
+                    evidence:
+                      type: "array"
+                      items:
+                        type: "object"
+                        properties:
+                          kind:
+                            type: "string"
+                            maxLength: 10
+                            enum:
+                              - "field"
+                              - "attachment"
+                          match:
+                            type: "string"
+                            maxLength: 100
+                            minLength: 1
+                          required_when:
+                            type: "string"
+                            maxLength: 4096
+                          required:
+                            type: "boolean"
+                          pattern:
+                            type: "string"
+                            maxLength: 120
+                          question:
+                            type: "string"
+                            maxLength: 500
+                        required:
+                          - "kind"
+                          - "match"
+                          - "required"
+                      maxItems: 12
+                      minItems: 0
+                    clarification:
+                      type: "string"
+                      maxLength: 500
+                    default_agent:
+                      type: "string"
+                      maxLength: 63
+                      pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                    sandbox:
+                      type: "string"
+                      maxLength: 63
+                      pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                    routes:
+                      type: "array"
+                      items:
+                        type: "object"
+                        properties:
+                          tag:
+                            type: "string"
+                            maxLength: 100
+                            minLength: 1
+                          agent:
+                            type: "string"
+                            maxLength: 63
+                            pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                        required:
+                          - "tag"
+                          - "agent"
+                      maxItems: 20
+                      minItems: 0
+                  required:
+                    - "policy"
+                    - "evidence"
+                    - "default_agent"
+                    - "sandbox"
+              required:
+                - "workspace"
+                - "procedure"
+              x-kubernetes-validations:
+                -
+                  rule: "self.workspace == oldSelf.workspace"
+                  message: "workspace is immutable"
+          required:
+            - "spec"

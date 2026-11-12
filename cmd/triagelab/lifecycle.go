@@ -48,8 +48,8 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 		return 2
 	}
 	current := runner.Config
-	if state.Config.Endpoint != current.Endpoint || state.Config.Namespace != current.Namespace || state.Config.UserID != current.UserID || state.Config.AllowClusterHTTP != current.AllowClusterHTTP {
-		fmt.Fprintln(errout, "Configuration must match the saved endpoint, user, namespace, and transport policy")
+	if state.Config.Endpoint != current.Endpoint || !current.AllowsNamespace(state.Config.Namespace) || state.Config.UserID != current.UserID || state.Config.AllowClusterHTTP != current.AllowClusterHTTP {
+		fmt.Fprintln(errout, "Configuration must match the saved endpoint, user, an allowed namespace, and transport policy")
 		return 2
 	}
 	// A refreshed credential comes from the current client. Execution settings

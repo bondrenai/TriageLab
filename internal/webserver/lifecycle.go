@@ -54,7 +54,7 @@ func resumeSettings(state investigation.State) string {
 }
 
 func (s *Server) connectionMatches(config investigation.Config) bool {
-	return config.Endpoint == s.config.Endpoint && config.Namespace == s.config.Namespace &&
+	return config.Endpoint == s.config.Endpoint && s.config.AllowsNamespace(config.Namespace) &&
 		config.UserID == s.config.UserID && config.AllowClusterHTTP == s.config.AllowClusterHTTP
 }
 

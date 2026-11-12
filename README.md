@@ -17,7 +17,7 @@ investigator ran, with its exit status and output, and saves that evidence in
 a JSON and Markdown report, kept apart from the model's conclusions.
 
 Cases can come from the command line, a browser workspace, or a ticket in
-Zendesk, GitHub, Linear, Bondren, or Jira. For a ticket, TriageLab matches it to a
+Zendesk, GitHub, GitLab, Linear, Bondren, or Jira. For a ticket, TriageLab matches it to a
 procedure, drafts a request for any missing evidence, and waits for your
 approval before starting. You can let a procedure start on its own once its
 evidence is ready. When the investigation ends, you can send a reviewed
@@ -328,6 +328,9 @@ guide:
   investigation summaries are private notes.
 - [GitHub issues](docs/github-issues.md), for one repository: comments are
   visible to anyone with repository access, and public in a public repository.
+- [GitLab](docs/gitlab-issues.md), for one project on GitLab.com or a
+  self-managed instance: clarifications and summaries are notes visible to
+  everyone with access to the issue and its project.
 - [Linear](docs/linear-issues.md), for one team: comments are visible to
   everyone in the Linear workspace.
 - [Bondren](docs/bondren-issues.md), for one workspace: clarifications are
@@ -353,6 +356,12 @@ Substrate installation, from the public chart
 UI listens on loopback inside the pod, and you reach it with
 `kubectl port-forward`. The chart deliberately creates no Service or Ingress.
 See [Helm deployment](docs/helm.md).
+
+For GitOps, enable the chart's `gitops` settings and manage ticket connections
+and ordered procedures through `TicketConnection` and `TicketProcedure` CRDs.
+Credentials use same-namespace Secret references; the workspace reconciles
+changes and protects Git-managed definitions from UI edits. See the
+[GitOps guide](https://bondrenai.github.io/TriageLab/guides/gitops/).
 
 ## Development
 

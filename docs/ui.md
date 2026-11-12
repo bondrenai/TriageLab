@@ -71,6 +71,14 @@ Cancel to stop it. Server shutdown also cancels active work and allows bounded
 cleanup. After an abrupt crash, inspect the report and use the CLI cleanup
 command if resources remain. A recorded outcome does not override cleanup errors.
 
+Launches choose from operator-configured options: the manual agents (and saved
+agents, when the workspace allows resource writes), sandbox templates, and,
+when `run_namespaces` is configured, the namespace the run executes in. The
+server refuses namespaces outside that list. A chosen namespace must already
+hold the selected agent and sandbox template; the workspace never creates them.
+Ticket procedures can pin a namespace per procedure, and it is bound into the
+approval plan like the agent and template.
+
 ## Reading and continuing an investigation
 
 The investigation brief brings together the current agent analysis, reported
@@ -175,7 +183,7 @@ The public guide is [API clients (OAuth)](https://bondrenai.github.io/TriageLab/
 
 Admins connect helpdesk and issue sources on the **Connections** page. A
 workspace keeps up to eight connections active at once — any mix of Zendesk,
-GitHub, Linear, Bondren, and Jira — and each keeps its own tracked cases,
+GitHub, GitLab, Linear, Bondren, and Jira — and each keeps its own tracked cases,
 procedures, and polling interval. **Ticket cases** shows one connection at a
 time with a picker across them. Zendesk still authorizes through its browser
 OAuth flow (**Connect** on the row or the Zendesk panel); the other sources

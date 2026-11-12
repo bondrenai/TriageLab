@@ -23,6 +23,7 @@ One JSON object, decoded with unknown fields rejected. Omitted fields take the d
 | `request_timeout` | integer | 20 | Per HTTP request timeout in seconds (at most 60). |
 | `max_output_bytes` | integer | 1048576 | Cap on captured process output per read (at most 4 MiB). |
 | `manual_agents` | object | (none) | Optional map of agent name to extra MCP tool names for --agent runs; an empty tool list means the six investigation tools only. |
+| `run_namespaces` | array | [] | Optional allowlist of up to eight additional Kubernetes namespaces where investigations may run. Entries must be unique valid namespace names and must not repeat namespace. Runs outside the default namespace and this list are refused; this setting does not create namespaces or grant access. |
 | `allow_cluster_http` | boolean | false | Permit plain-HTTP endpoints on *.svc or *.svc.cluster.local service names, for a dedicated in-cluster deployment whose pod network is the trust boundary. |
 
 Save it as `triagelab.json` and pass `--config triagelab.json`; the CLI and the workspace accept the same file. The committed [configuration examples](/TriageLab/reference/configuration-examples/) include this file plus the optional sign-in, ticket source, and telemetry configurations.

@@ -70,6 +70,20 @@ including conversation runtime restoration and process restart; see
 
 ## Interfaces used
 
+TriageLab's optional ticket GitOps API is separate from the pinned kagent APIs:
+`triagelab.bondren.ai/v1alpha1` defines namespaced `TicketConnection` and
+`TicketProcedure` resources. Its small standard-library REST client uses
+Kubernetes `apiextensions.k8s.io/v1` structural schemas, CEL transition rules
+for immutable source identity, bounded namespace lists, exact-name Secret
+reads, and merge patches of the connection status subresource with UID and
+resource-version preconditions. The chart projects a rotating service-account
+token and CA; it adds no cluster-wide runtime permissions or kagent lifecycle
+operations. The definitions were checked against the development Kubernetes
+1.35.0 API. Contracts: [CRD schemas and status](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/),
+[projected service-account tokens](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/),
+and [Helm CRD lifecycle](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/).
+See [GitOps operations](../docs-site/src/content/docs/guides/gitops.md).
+
 1. Kubernetes configuration uses **`api.kagent.dev/v1alpha3`**: `Harness`,
    `AgentTemplate`, `Agent`, `RemoteMCPServer`, `SandboxTemplate`, and the
    TriageLab's `ModelConfig`. `Agent.spec.template` selects behavior and

@@ -26,6 +26,10 @@ type Config struct {
 	RequestTimeout       int                 `json:"request_timeout"`
 	MaxOutputBytes       int                 `json:"max_output_bytes"`
 	ManualAgents         map[string][]string `json:"manual_agents,omitempty"`
+	// RunNamespaces lists additional namespaces investigations may run in,
+	// beyond the default Namespace. It is the operator's boundary for run
+	// placement; launches outside it are refused.
+	RunNamespaces []string `json:"run_namespaces,omitempty"`
 	// AllowClusterHTTP permits plain-HTTP endpoints on cluster-internal
 	// service names only. It exists for a dedicated in-cluster deployment
 	// whose pod network is the trust boundary; everything else stays
@@ -80,6 +84,22 @@ func (c Config) Validate() error {
 			return fmt.Errorf("manual agent tool selection: %w", err)
 		}
 	}
+	if len(c.RunNamespaces) > 8 {
+		return fmt.Errorf("configure at most 8 run namespaces")
+	}
+	seen := make(map[string]bool, len(c.RunNamespaces))
+	for _, ns := range c.RunNamespaces {
+		if ns == c.Namespace {
+			return fmt.Errorf("run_namespaces must not repeat the default namespace")
+		}
+		if seen[ns] {
+			return fmt.Errorf("run_namespaces must not repeat %q", ns)
+		}
+		if err := agent.ValidNamespace(ns); err != nil {
+			return fmt.Errorf("run namespace: %w", err)
+		}
+		seen[ns] = true
+	}
 	u, err := url.Parse(c.Endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("endpoint must be HTTP(S) without credentials, query or fragment")
@@ -122,4 +142,18 @@ func (c Config) SelectManualAgent(name string) (Config, []string, error) {
 		c.Agent = name
 	}
 	return c, c.ManualAgents[c.Agent], nil
+}
+
+// AllowsNamespace reports whether investigations may run in ns: the workspace
+// default or an operator-configured run namespace.
+func (c Config) AllowsNamespace(ns string) bool {
+	if ns == c.Namespace {
+		return true
+	}
+	for _, allowed := range c.RunNamespaces {
+		if ns == allowed {
+			return true
+		}
+	}
+	return false
 }

@@ -92,6 +92,7 @@ var configFieldDocs = map[string]string{
 	"request_timeout":       "Per HTTP request timeout in seconds (at most 60).",
 	"max_output_bytes":      "Cap on captured process output per read (at most 4 MiB).",
 	"manual_agents":         "Optional map of agent name to extra MCP tool names for --agent runs; an empty tool list means the six investigation tools only.",
+	"run_namespaces":        "Optional allowlist of up to eight additional Kubernetes namespaces where investigations may run. Entries must be unique valid namespace names and must not repeat namespace. Runs outside the default namespace and this list are refused; this setting does not create namespaces or grant access.",
 	"allow_cluster_http":    "Permit plain-HTTP endpoints on *.svc or *.svc.cluster.local service names, for a dedicated in-cluster deployment whose pod network is the trust boundary.",
 }
 
@@ -108,6 +109,7 @@ var exampleFileDocs = []struct {
 	{file: "triagelab.mcp.example.json", title: "HTTP MCP access", description: "Optional file passed to `serve --mcp` defining scoped machine credentials; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
 	{file: "tickets.example.json", title: "Zendesk ticket source", description: "Passed to `serve --tickets` for the Zendesk case source; see [Zendesk tickets](/TriageLab/guides/tickets-zendesk/)."},
 	{file: "github.example.json", title: "GitHub issue source", description: "Passed to `serve --tickets` for one GitHub.com repository; see [GitHub issues](/TriageLab/guides/tickets-github/)."},
+	{file: "gitlab.example.json", title: "GitLab issue source", description: "Passed to `serve --tickets` for one GitLab.com or self-managed project; see [GitLab issues](/TriageLab/guides/tickets-gitlab/)."},
 	{file: "linear.example.json", title: "Linear issue source", description: "Passed to `serve --tickets` for one Linear team; see [Linear issues](/TriageLab/guides/tickets-linear/)."},
 	{file: "bondren.example.json", title: "Bondren issue source", description: "Passed to `serve --tickets` for one Bondren workspace origin; see [Bondren issues](/TriageLab/guides/tickets-bondren/)."},
 	{file: "jira.example.json", title: "Jira issue source", description: "Passed to `serve --tickets` for one Jira Cloud site; see [Jira issues](/TriageLab/guides/tickets-jira/)."},
@@ -196,6 +198,8 @@ func jsonTypeName(t reflect.Type) string {
 		return "boolean"
 	case reflect.Map:
 		return "object"
+	case reflect.Slice:
+		return "array"
 	default:
 		return t.Kind().String()
 	}

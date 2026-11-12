@@ -26,6 +26,8 @@ func VerifySource(ctx context.Context, config Config) error {
 	switch config.provider() {
 	case "github":
 		return verifyGitHub(ctx, newGitHub(config.Repository, token))
+	case "gitlab":
+		return verifyGitLab(ctx, newGitLab(gitLabOrigin(config), config.Repository, token))
 	case "linear":
 		return verifyLinear(ctx, newLinear(config.Workspace, config.Team, token))
 	case "bondren":
@@ -43,6 +45,18 @@ func VerifySource(ctx context.Context, config Config) error {
 func verifyGitHub(ctx context.Context, g *githubSource) error {
 	defer g.client.CloseIdleConnections()
 	if _, _, err := g.api(ctx, ""); err != nil {
+		return err
+	}
+	return nil
+}
+
+// verifyGitLab reads the project endpoint, which distinguishes a rejected
+// token (401) from a missing or inaccessible project (404) before any case
+// is tracked. Project payloads are large; the standard provider bound
+// applies.
+func verifyGitLab(ctx context.Context, g *gitlabSource) error {
+	defer g.client.CloseIdleConnections()
+	if _, _, err := g.request(ctx, http.MethodGet, "/projects/"+gitlabProjectPath(g.project), nil, maxProviderBytes); err != nil {
 		return err
 	}
 	return nil

@@ -1,5 +1,128 @@
 # Executed verification
 
+## Model-backed GitOps investigation — November 12, 2026
+
+Run `341019f5-3ace-498d-80a4-e022a71d9662` completed with outcome
+`reproduced` on `bondren-build`, using `gpt-6.1-sol`, the pinned kagent
+1.0.0 controller fork, and a real Substrate gVisor sandbox. All installation,
+builds, checks, GitLab hosting, and investigation execution ran on the VM in
+the isolated `/work/triagelab-gitops-model-20261112` snapshot.
+
+A disposable self-managed GitLab CE 19.5.5 instance held a private synthetic
+issue with three required facts and real `app.py` and `config.json` uploads.
+The real workspace reconciled `TicketConnection` and `TicketProcedure` CRs
+over the Kubernetes HTTPS API using the chart's namespace Role and an
+allowlisted Secret. Agents and sandbox templates remained kagent resources.
+
+- Generation 1 required approval and launched nothing. Updating both CRs to
+  permit automatic runs reconciled generation 2 and changed the preview.
+  Tracking the ready case launched exactly one investigation through the
+  existing ticket policy path. The report records `started_by: ticket policy`
+  and `unattended: true`.
+- Attachment SHA-256 values matched the fixture bytes uploaded to GitLab.
+  Independently collected sandbox evidence records the unchanged fixture
+  exiting 1 with `TimeoutError: deadline 5ms elapsed before response at 120ms`,
+  then `python3 app.py --timeout-ms 5000` exiting 0 with `HTTP 200: healthy`.
+  The model cites both process IDs. This reproduces the deterministic
+  simulator's diagnostic; it does not measure real network timeout behavior.
+- The report contains no errors or warnings and records Sandbox and Session
+  deletion. Separate authenticated controller reads confirmed the exact
+  Sandbox in `RUNTIME_STATE_DELETED` and the exact Session absent.
+- A full workspace process restart reconciled the same connection and
+  retained the case's original run ID. Refresh created no duplicate run.
+  Investigation comments were disabled; the issue retained only the test's
+  initial evidence-upload note.
+
+Saved evidence: [canonical report](verification/gitops-model-20261112/report.json),
+[readable report](verification/gitops-model-20261112/report.md),
+[verification metadata and hashes](verification/gitops-model-20261112/verification.json),
+and [independent cleanup responses](verification/gitops-model-20261112/upstream-cleanup.json).
+The same directory retains before/after CRs and case state. Temporary harness
+assertions were corrected for the API's `approval` state and the pinned MCP
+metadata/response-size requirements; the single completed model run was reused
+for the independent checks. No product change was required by this live run.
+
+`make build` passed. A follow-up in
+`/work/triagelab-run-namespaces-docs-20261112` documented `run_namespaces`
+and regenerated the reference pages, resolving the two generated-reference
+test failures from the live-test snapshot. `make check` then passed in full
+on the build VM with Go 1.27.3: formatting, vet, and all Go tests.
+Argo CD/Flux synchronization and pod-projected API-token rotation were not
+exercised: manifests were applied with kubectl and the workspace ran as a
+loopback process on the VM. The disposable cluster and GitLab container were
+removed after verification, including temporary credential copies; see the
+[environment cleanup record](verification/gitops-model-20261112/environment-cleanup.json).
+
+## Ticket GitOps CRDs — November 12, 2026
+
+Implemented and checked in the isolated `/work/triagelab-gitops-20261112`
+checkout on `bondren-build`, with Go 1.27.3 and Node 24.18.1. All builds and
+tests ran remotely. `make check` passed (formatting, vet, and all Go tests),
+as did generated-reference validation, targeted race tests for the GitOps
+client/reconciler, `make chart-lint` with Helm 3.18.0, `make check-ui`,
+`make build-ui`, and `make build-docs` including internal link validation.
+
+A temporary kind 0.33.0 cluster using `kindest/node:v1.35.0` accepted both
+structural CRDs through server-side apply. A separate loopback workspace
+process used the chart's namespace Role and service account to reconcile
+synthetic `TicketConnection`, `TicketProcedure`, and Secret resources over
+the real, CA-verified Kubernetes HTTPS API. The smoke check verified:
+
+- The Role allowed resource lists and an explicitly named Secret read, while
+  denying Secret enumeration, other Secret reads, and connection-spec writes.
+- Kubernetes rejected a change to the connection's immutable repository.
+- The workspace applied the resources, wrote generation-aware status, exposed
+  the GitOps ownership marker, and rejected authenticated UI configuration edits.
+- A referenced procedure edit took effect; an invalid rotated Secret stopped
+  the flow and replacing it recovered the connection. Deleting and restoring a
+  referenced procedure also stopped and recovered it.
+- Deleting the connection removed its live entry without deleting private
+  state. Recreation and a full workspace process restart restored the same
+  connection ID and preserved the state marker. Source credentials were absent
+  from persisted workspace files and connection API responses.
+
+These checks exercised real Kubernetes and the real workspace configuration
+path. They did not contact a ticket provider, send a message, launch a sandbox,
+or invoke a model. The cluster was dedicated to this check and removed afterward.
+No existing workspace deployment was upgraded. The real-source/model follow-up
+is recorded above; Argo CD/Flux rollout behavior and pod-projected token rotation
+remain unverified. Unit tests cover API-token file rotation, failed or partial lists,
+Secret allowlisting, reference ordering/scope, source identity conflicts,
+retained state, and error recovery.
+
+## Self-managed GitLab connector end to end — November 12, 2026
+
+Ran the GitLab connector against a disposable self-hosted GitLab Community
+Edition 19.5.5 container (Docker, loopback HTTP origin, root PAT with `api`
+scope, scratch group deleted afterwards) using the opt-in live checks in
+`internal/ticketflow/gitlab_live_test.go`
+(`TRIAGELAB_GITLAB_LIVE_ORIGIN`, `_TOKEN`, `_GROUP`). No sandbox was
+launched and no model was called.
+
+`TestLiveGitLabConnectorAndFlow` passed: connection verification, issue-URL
+reference resolution, a ready issue reaching approval with three facts and
+the `app.py` Markdown upload (created through the live project uploads API)
+downloaded and hashed through real evidence preparation, attachment
+provenance in the approved input, the label-change system note excluded
+from conversation, and a fenced investigation comment posted to the issue
+with its receipt re-verified against a fresh read. The run found and fixed
+a real defect: the connection probe bounded the project response at 4 KiB,
+which a live project payload exceeds, so `VerifySource` failed against any
+real instance (fixture responses are small and hid it); it now uses the
+standard provider bound.
+
+`TestLiveGitLabClarificationFollowup` passed: an evidence-less issue
+drafted a clarification, **Approve and send clarification** delivered the
+note, refresh waited, a reply posted directly in GitLab by the same
+account (exercising the note-anchor rule that keeps our own receipts from
+counting as requester evidence) permitted exactly one bounded follow-up.
+
+Not exercised in these connector checks: GitLab.com (only the loopback
+self-managed origin), model-backed investigation (subsequently verified through
+GitOps above), internal notes (Premium; the connector never sends them),
+confidential-issue requester visibility, and the workspace UI connection
+flow for GitLab.
+
 ## UI-authored automatic Jira policy — November 11, 2026
 
 Using the signed-in running workspace UI, configured the existing

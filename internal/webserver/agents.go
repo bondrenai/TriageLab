@@ -15,13 +15,33 @@ import (
 )
 
 // EnableDeploymentStatus configures the optional reader before the server starts.
+// One reader per configured run namespace joins it so launches targeting those
+// namespaces verify agents and templates there.
 func (s *Server) EnableDeploymentStatus(kubeconfig, kubeContext string) error {
 	reader, err := kagent.NewDeploymentReader(kubeconfig, kubeContext, s.config.Namespace)
 	if err != nil {
 		return err
 	}
+	run := make(map[string]*kagent.DeploymentReader, len(s.config.RunNamespaces))
+	for _, ns := range s.config.RunNamespaces {
+		r, err := kagent.NewDeploymentReader(kubeconfig, kubeContext, ns)
+		if err != nil {
+			return err
+		}
+		run[ns] = r
+	}
 	s.deployments = reader
+	s.runDeployments = run
 	return nil
+}
+
+// readerFor returns the deployment reader for ns, or nil when status reading
+// is disabled. The default namespace always maps to the primary reader.
+func (s *Server) readerFor(ns string) *kagent.DeploymentReader {
+	if ns == "" || ns == s.config.Namespace {
+		return s.deployments
+	}
+	return s.runDeployments[ns]
 }
 
 func (s *Server) EnableResourceWrites() error {
@@ -153,12 +173,18 @@ func (s *Server) manualAgentNames() []string {
 	return names
 }
 
-func (s *Server) selectInvestigator(ctx context.Context, name string) (investigation.Config, []string, error) {
+func (s *Server) runNamespaceNames() []string {
+	names := append([]string{}, s.config.RunNamespaces...)
+	sort.Strings(names)
+	return names
+}
+
+func (s *Server) selectInvestigator(ctx context.Context, name, namespace string) (investigation.Config, []string, error) {
 	config, tools, err := s.config.SelectManualAgent(name)
 	if err == nil || !s.resourceWrites || !agent.ValidResourceName(name) {
 		return config, tools, err
 	}
-	saved, err := s.deployments.ReadyAgent(ctx, name)
+	saved, err := s.readerFor(namespace).ReadyAgent(ctx, name)
 	if err != nil {
 		return config, nil, err
 	}
@@ -175,14 +201,14 @@ var errSandboxForbidden = errors.New("choosing a different sandbox template requ
 // selectSandbox resolves a run's sandbox template. The configured default is
 // always allowed; any other template needs resource writes and a ready,
 // revision-pinned target, matching ticket procedure routing.
-func (s *Server) selectSandbox(ctx context.Context, name string) (string, error) {
+func (s *Server) selectSandbox(ctx context.Context, name, namespace string) (string, error) {
 	if name == "" || name == s.config.Template {
 		return s.config.Template, nil
 	}
 	if !s.resourceWrites || !agent.ValidResourceName(name) {
 		return "", errSandboxForbidden
 	}
-	if _, err := s.deployments.ReadyTarget(ctx, "sandboxtemplates", name); err != nil {
+	if _, err := s.readerFor(namespace).ReadyTarget(ctx, "sandboxtemplates", name); err != nil {
 		return "", err
 	}
 	return name, nil

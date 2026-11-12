@@ -1,5 +1,15 @@
 # Roadmap
 
+- [x] Add opt-in GitOps reconciliation for namespaced ticket connections and
+      procedures, with Secret references, UI ownership protection, and retained
+      case state on deletion. See the [GitOps guide](docs-site/src/content/docs/guides/gitops.md).
+- [x] Verify a model-backed investigation from GitOps-managed connections and
+      procedures against a real self-managed GitLab instance. Approval gating,
+      CR updates, input hashes, failed/corrected sandbox processes, restart
+      persistence, and independent cleanup passed on the build VM.
+- [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
+      pod-projected API-token rotation. See [verification](docs/verification.md).
+
 - [x] Verify CEL automatic launch against live Jira and kagent on the build VM.
       The same synthetic issue exercised a blocking and an allowing rule.
 - [ ] Pilot CEL procedure routing and conditional evidence with more ticket types.
@@ -57,14 +67,24 @@
       ticket identity and one owner for automated replies. Add a Jira pilot
       for one Cloud site covering the same sends (the connector is
       fixture-verified only, including the observed signed-attachment
-      redirect shape). Use pilot evidence
+      redirect shape). Add a GitLab pilot for one project on GitLab.com or a
+      self-managed instance covering the same sends (the connector is
+      fixture-verified only, including note-body normalization and the
+      project uploads download). Use pilot evidence
       to guide procedure authoring and CEL. (The Jira pilot ran 2026-11-11
       against a real Cloud site: lookups, live signed attachment download,
       clarification with bounded follow-up, a model-backed two-round run
       approved from a Jira case, and internal-note delivery all passed; it
       found and fixed the issue-id/comment-id numeric collision, and a Jira
       Service Management project remains to be exercised for internal-note
-      visibility.)
+      visibility. The GitLab connector passed live checks against a
+      disposable self-managed CE 19.5.5 instance on 2026-11-12 — connection
+      verification, upload download through real evidence preparation,
+      clarification with a bounded follow-up, and investigation-comment
+      delivery — which also found and fixed an undersized response bound in
+      the connection probe. A GitOps-managed model-backed run from a GitLab
+      case also passed; GitLab.com remains to be exercised. See
+      [verification](verification.md).)
 - [x] Exercise the new sign-in surface against real identity providers
       (done 2026-11-09 on the build VM: Keycloak 26 confidential client and
       Zitadel v4.20 public PKCE client, full authorization-code flows with

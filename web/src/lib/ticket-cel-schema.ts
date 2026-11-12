@@ -9,7 +9,7 @@ export function ticketCelSchema(source: TicketSource) {
         type: "object",
         description: "Normalized attributes of the ticket being evaluated.",
         properties: {
-          source: { type: "string", description: "Connector: zendesk, github, linear, bondren, or jira." },
+          source: { type: "string", description: "Connector: zendesk, github, gitlab, linear, bondren, or jira." },
           id: { type: "integer", description: "Numeric ticket ID used by the connector." },
           requester_id: { type: "integer", description: "Numeric requester ID, or 0 when unavailable." },
           subject: { type: "string", description: "Ticket subject or issue title." },

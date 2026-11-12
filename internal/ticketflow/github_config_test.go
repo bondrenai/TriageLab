@@ -16,7 +16,7 @@ func TestGitHubConfigRequiresRepositoryScopeAndExplicitWriteCredentials(t *testi
 		t.Fatal(err)
 	}
 	for name, change := range map[string]func(*Config){
-		"unknown source":                    func(c *Config) { c.Source = "gitlab" },
+		"unknown source":                    func(c *Config) { c.Source = "sourcehut" },
 		"URL instead of repository":         func(c *Config) { c.Repository = "https://github.com/owner/repo" },
 		"traversal":                         func(c *Config) { c.Repository = "owner/.." },
 		"query":                             func(c *Config) { c.Repository = "owner/repo?access_token=secret" },

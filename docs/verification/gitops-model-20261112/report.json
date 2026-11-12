@@ -1,0 +1,338 @@
+{
+  "agent": {
+    "name": "triagelab-investigator",
+    "namespace": "kagent"
+  },
+  "analysis": {
+    "experiment_assessments": [
+      {
+        "expected_observation": "",
+        "interpretation": "Python 3.12.16 ran the unchanged fixture. It printed timeout_ms=5 and downstream_response_ms=120, emitted 'TimeoutError: deadline 5ms elapsed before response at 120ms', and exited 1. This reproduces the reported diagnostic in the simulator, not a measured five-millisecond network timeout.",
+        "process_id": "proc-b29ffe81488b100ccd6e872e",
+        "question": "Does the supplied configuration reproduce the reported timeout?"
+      },
+      {
+        "expected_observation": "",
+        "interpretation": "Overriding only the timeout to 5000 milliseconds preserved the 120-millisecond simulated response and produced 'HTTP 200: healthy', exit 0, and empty stderr. The safe correction worked without modifying either supplied file.",
+        "process_id": "proc-7ad23ca76d77c8fb80bf1c2a",
+        "question": "Does configuring five seconds in milliseconds resolve the simulated failure?"
+      }
+    ],
+    "hypotheses": [
+      {
+        "contradicting_process_ids": [],
+        "distinguishing_observation": "Changing only the timeout from 5 to 5000 milliseconds should allow the unchanged 120-millisecond response to succeed; a failure unrelated to the deadline would persist.",
+        "evidence_process_ids": [
+          "proc-b29ffe81488b100ccd6e872e",
+          "proc-7ad23ca76d77c8fb80bf1c2a"
+        ],
+        "statement": "The fixture's timeout failure is explained by a units mismatch: request_timeout_ms is configured as 5 rather than the 5000 required for five seconds.",
+        "status": "supported"
+      }
+    ],
+    "missing_information": [],
+    "next_actions": [
+      "Change request_timeout_ms to 5000 in the maintained configuration; the equivalent --timeout-ms 5000 override was verified.",
+      "Add regression coverage for millisecond timeout configuration and document that five seconds must be expressed as 5000.",
+      "If real-service timing guarantees need validation, separately test the actual HTTP client and downstream; this fixture performs no network requests or waiting."
+    ],
+    "observations": [
+      "config.json specifies endpoint /health, request_timeout_ms=5, and simulated_response_ms=120.",
+      "app.py reads the timeout as milliseconds without a seconds conversion. It emits a TimeoutError diagnostic and returns 1 when timeout_ms \u003c simulated_response_ms.",
+      "The sandbox interpreter is Python 3.12.16, matching the reported Python 3.12 minor version.",
+      "The supplied program is a deterministic simulator: it prints a TimeoutError message rather than raising an exception or measuring elapsed time.",
+      "Both experiments completed, and the original input files were preserved."
+    ],
+    "outcome": "reproduced",
+    "reproduced_process_ids": [
+      "proc-b29ffe81488b100ccd6e872e"
+    ],
+    "reproduction_steps": [
+      "Use the supplied app.py and unchanged config.json in /data/workspace.",
+      "Run from /data/workspace: sh -c 'python3 --version; exec python3 app.py'. Observe Python 3.12.16, timeout_ms=5, downstream_response_ms=120, the five-millisecond TimeoutError diagnostic, and exit code 1.",
+      "Verify the correction independently from /data/workspace: python3 app.py --timeout-ms 5000. Observe timeout_ms=5000, downstream_response_ms=120, HTTP 200: healthy, and exit code 0. No file edits are required."
+    ],
+    "root_cause": {
+      "evidence_process_ids": [
+        "proc-b29ffe81488b100ccd6e872e",
+        "proc-7ad23ca76d77c8fb80bf1c2a"
+      ],
+      "statement": "The evidence-supported explanation for this fixture is that a value intended as five seconds was supplied to a millisecond field as 5. The simulator therefore compares a 5ms deadline against a 120ms response and reports failure. A 5000ms override resolves it. This does not establish the cause or actual elapsed timing in the customer's deployed environment."
+    },
+    "summary": "Reproduced the reported timeout diagnostic with the original fixture and verified a safe correction: --timeout-ms 5000 succeeds with the same simulated 120ms response. The evidence supports a seconds-versus-milliseconds configuration mismatch, with validation limited to the supplied deterministic simulator."
+  },
+  "case": {
+    "attachments": [
+      {
+        "path": "app.py",
+        "sha256": "434fa9870e0cf5686bec6159fd8fa36fa197e0927a01587836aed8c47ef98c76",
+        "size_bytes": 1080,
+        "source_url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/c2cb1ce7df67e27285828556f694bb2a/app.py"
+      },
+      {
+        "path": "config.json",
+        "sha256": "0eaa29f86548b4bcf25b0919d46d2f311ef0b578a3ae871f27248041e3599204",
+        "size_bytes": 87,
+        "source_url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/7fddf7095af5a19a35d3cc17cbe7a40e/config.json"
+      }
+    ],
+    "description": "Investigate this case reported in GitLab.\nIssue: Deterministic timeout: configured five milliseconds instead of five seconds\nPython version: 3.12 (requester comment 656444614818268699)\nExpected: Allow five seconds for a response; downstream responds in 120 milliseconds. (requester comment 656444614818268699)\nActual: Every health request fails with TimeoutError after five milliseconds. (requester comment 656444614818268699)",
+    "environment": {
+      "python_version": "3.12"
+    },
+    "evidence": [
+      "Python version from GitLab issue author at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1",
+      "Expected from GitLab issue author at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1",
+      "Actual from GitLab issue author at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1",
+      "app.py from GitLab issue author at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1#note_2",
+      "app.py attached at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/c2cb1ce7df67e27285828556f694bb2a/app.py",
+      "config.json from GitLab issue author at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1#note_2",
+      "config.json attached at http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/7fddf7095af5a19a35d3cc17cbe7a40e/config.json"
+    ],
+    "id": "341019f5-3ace-498d-80a4-e022a71d9662",
+    "source": {
+      "approval_plan": "97688cd0876391b9f46a8312561c283976bdc366e0bd6937167787a653bf5897",
+      "approved_at": "2026-11-12T19:19:40.001947329Z",
+      "auto_run_condition": "ticket.source == \"gitlab\" \u0026\u0026 \"gitops-e2e\" in ticket.tags",
+      "gitlab_project": "gitops-model-verification-2/timeout-reproduction",
+      "issue_iid": "1",
+      "kind": "gitlab",
+      "procedure": "ticket-evidence-v1",
+      "ticket_agent": "triagelab-investigator",
+      "ticket_id": "1",
+      "ticket_procedure_tag": "gitops-e2e",
+      "unattended": true,
+      "url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1"
+    }
+  },
+  "cleanup": {
+    "errors": [],
+    "sandbox_deleted": true,
+    "session_deleted": true
+  },
+  "connection": {
+    "endpoint": "http://127.0.0.1:44655/mcp",
+    "namespace": "kagent",
+    "user_id": "triagelab@localhost"
+  },
+  "creation_uncertain": false,
+  "errors": [],
+  "experiments": [
+    {
+      "call_id": "call_yLgEr6BENuqM9NUnp2Po5M8Z",
+      "command": [
+        "sh",
+        "-c",
+        "python3 --version; exec python3 app.py"
+      ],
+      "cwd": "/data/workspace",
+      "env": {},
+      "exit_code": 1,
+      "outputs_complete": true,
+      "process_id": "proc-b29ffe81488b100ccd6e872e",
+      "state": "PROCESS_STATE_EXITED",
+      "stderr": "TimeoutError: deadline 5ms elapsed before response at 120ms\n",
+      "stdout": "Python 3.12.16\nrequest: endpoint=/health timeout_ms=5\nsimulation: downstream_response_ms=120\n",
+      "truncated": false
+    },
+    {
+      "call_id": "call_Dr0fEWIVrVQKjscnm1wqelJp",
+      "command": [
+        "python3",
+        "app.py",
+        "--timeout-ms",
+        "5000"
+      ],
+      "cwd": "/data/workspace",
+      "env": {},
+      "exit_code": 0,
+      "outputs_complete": true,
+      "process_id": "proc-7ad23ca76d77c8fb80bf1c2a",
+      "state": "PROCESS_STATE_EXITED",
+      "stderr": "",
+      "stdout": "request: endpoint=/health timeout_ms=5000\nsimulation: downstream_response_ms=120\nHTTP 200: healthy\n",
+      "truncated": false
+    }
+  ],
+  "finished_at": "2026-11-12T19:20:25.673679199Z",
+  "outcome": "reproduced",
+  "round": 1,
+  "run_id": "341019f5-3ace-498d-80a4-e022a71d9662",
+  "sandbox": {
+    "expires_at": "2026-11-12T19:34:40.13725Z",
+    "id": "01a1d133-9166-7c29-9b58-2bd5eeed7586",
+    "name": "triagelab-341019f5-3ace-498d-80a4-e022a71d9662",
+    "operation": "RUNTIME_OPERATION_NONE",
+    "retain_while_suspended": true,
+    "sandbox_template": {
+      "name": "triagelab-python",
+      "namespace": "kagent"
+    },
+    "state": "RUNTIME_STATE_READY"
+  },
+  "sandbox_request": {
+    "name": "triagelab-341019f5-3ace-498d-80a4-e022a71d9662",
+    "namespace": "kagent",
+    "request_id": "341019f5-3ace-498d-80a4-e022a71d9662",
+    "retain_while_suspended": true,
+    "template": "triagelab-python",
+    "ttl_seconds": 900
+  },
+  "sandbox_template": "triagelab-python",
+  "schema_version": 1,
+  "session": {
+    "id": "01a1d133-928d-7de5-adbf-6b7b9ed52387",
+    "task_id": "01a1d133-93aa-7704-b72c-641b74bc8029"
+  },
+  "session_creation_uncertain": false,
+  "session_request": {
+    "agent": {
+      "name": "triagelab-investigator",
+      "namespace": "kagent"
+    },
+    "name": "triagelab-341019f5-3ace-498d-80a4-e022a71d9662",
+    "request_id": "341019f5-3ace-498d-80a4-e022a71d9662"
+  },
+  "started_at": "2026-11-12T19:19:40.017483787Z",
+  "started_by": "ticket policy",
+  "status": "completed",
+  "task_state": "TASK_STATE_COMPLETED",
+  "tool_calls": [
+    {
+      "args": {
+        "path": "/data/workspace/app.py",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_iTrfYfUBoUxCDOIcShnykiHF",
+      "name": "read_sandbox_file",
+      "pending": false,
+      "response": {
+        "output": "1\t\"\"\"Small deterministic downstream-client simulator. No network or waiting needed.\"\"\"\n2\t\n3\timport argparse\n4\timport json\n5\timport sys\n6\tfrom pathlib import Path\n7\t\n8\t\n9\tdef main() -\u003e int:\n10\t    parser = argparse.ArgumentParser(description=__doc__)\n11\t    parser.add_argument(\"--config\", type=Path, default=Path(\"config.json\"))\n12\t    parser.add_argument(\"--timeout-ms\", type=int, help=\"Override request_timeout_ms\")\n13\t    args = parser.parse_args()\n14\t    config = json.loads(args.config.read_text())\n15\t    timeout_ms = args.timeout_ms\n16\t    if timeout_ms is None:\n17\t        timeout_ms = int(config[\"request_timeout_ms\"])\n18\t    latency_ms = int(config[\"simulated_response_ms\"])\n19\t    print(f\"request: endpoint={config['endpoint']} timeout_ms={timeout_ms}\")\n20\t    print(f\"simulation: downstream_response_ms={latency_ms}\")\n21\t    if timeout_ms \u003c latency_ms:\n22\t        print(\n23\t            f\"TimeoutError: deadline {timeout_ms}ms elapsed before response at {latency_ms}ms\",\n24\t            file=sys.stderr,\n25\t        )\n26\t        return 1\n27\t    print(\"HTTP 200: healthy\")\n28\t    return 0\n29\t\n30\t\n31\tif __name__ == \"__main__\":\n32\t    raise SystemExit(main())\n"
+      }
+    },
+    {
+      "args": {
+        "path": "/data/workspace/config.json",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_W7kqqe71UsZeA49eRSvWbnuJ",
+      "name": "read_sandbox_file",
+      "pending": false,
+      "response": {
+        "output": "1\t{\n2\t  \"endpoint\": \"/health\",\n3\t  \"request_timeout_ms\": 5,\n4\t  \"simulated_response_ms\": 120\n5\t}\n"
+      }
+    },
+    {
+      "args": {
+        "command": [
+          "sh",
+          "-c",
+          "python3 --version; exec python3 app.py"
+        ],
+        "cwd": "/data/workspace",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_yLgEr6BENuqM9NUnp2Po5M8Z",
+      "name": "start_sandbox_process",
+      "pending": false,
+      "response": {
+        "output": {
+          "process_id": "proc-b29ffe81488b100ccd6e872e"
+        }
+      }
+    },
+    {
+      "args": {
+        "process_id": "proc-b29ffe81488b100ccd6e872e",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_GnlQsRcZQp1c9VtxEjTbnD18",
+      "name": "get_sandbox_process",
+      "pending": false,
+      "response": {
+        "output": {
+          "exit_code": 1,
+          "process_id": "proc-b29ffe81488b100ccd6e872e",
+          "state": "PROCESS_STATE_EXITED"
+        }
+      }
+    },
+    {
+      "args": {
+        "process_id": "proc-b29ffe81488b100ccd6e872e",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_Vgsecct8Ym7GqXeMJrXog56E",
+      "name": "read_sandbox_outputs",
+      "pending": false,
+      "response": {
+        "output": {
+          "stderr_base64": "VGltZW91dEVycm9yOiBkZWFkbGluZSA1bXMgZWxhcHNlZCBiZWZvcmUgcmVzcG9uc2UgYXQgMTIwbXMK",
+          "stderr_offset": 60,
+          "stdout_base64": "UHl0aG9uIDMuMTIuMTYKcmVxdWVzdDogZW5kcG9pbnQ9L2hlYWx0aCB0aW1lb3V0X21zPTUKc2ltdWxhdGlvbjogZG93bnN0cmVhbV9yZXNwb25zZV9tcz0xMjAK",
+          "stdout_offset": 93,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "args": {
+        "command": [
+          "python3",
+          "app.py",
+          "--timeout-ms",
+          "5000"
+        ],
+        "cwd": "/data/workspace",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_Dr0fEWIVrVQKjscnm1wqelJp",
+      "name": "start_sandbox_process",
+      "pending": false,
+      "response": {
+        "output": {
+          "process_id": "proc-7ad23ca76d77c8fb80bf1c2a"
+        }
+      }
+    },
+    {
+      "args": {
+        "process_id": "proc-7ad23ca76d77c8fb80bf1c2a",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_4nch7tITFiRG6I3IhTLUalJN",
+      "name": "get_sandbox_process",
+      "pending": false,
+      "response": {
+        "output": {
+          "exit_code": 0,
+          "process_id": "proc-7ad23ca76d77c8fb80bf1c2a",
+          "state": "PROCESS_STATE_EXITED"
+        }
+      }
+    },
+    {
+      "args": {
+        "process_id": "proc-7ad23ca76d77c8fb80bf1c2a",
+        "sandbox_id": "01a1d133-9166-7c29-9b58-2bd5eeed7586"
+      },
+      "id": "call_gS08nEkSwchFdrf1rzciqDg0",
+      "name": "read_sandbox_outputs",
+      "pending": false,
+      "response": {
+        "output": {
+          "stderr_base64": "",
+          "stderr_offset": 0,
+          "stdout_base64": "cmVxdWVzdDogZW5kcG9pbnQ9L2hlYWx0aCB0aW1lb3V0X21zPTUwMDAKc2ltdWxhdGlvbjogZG93bnN0cmVhbV9yZXNwb25zZV9tcz0xMjAKSFRUUCAyMDA6IGhlYWx0aHkK",
+          "stdout_offset": 99,
+          "truncated": false
+        }
+      }
+    }
+  ],
+  "upstream": {
+    "kagent": "v1.0.0+bondrenai.048e1016",
+    "substrate": "v1.0.0"
+  },
+  "warnings": []
+}

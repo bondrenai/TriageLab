@@ -23,11 +23,12 @@ triagelab investigate [options]
 | --file | (repeatable) | attachment (repeatable) |
 | --listen | 127.0.0.1:8080 | loopback address for the private web UI |
 | --log | (repeatable) | log file (repeatable) |
+| --namespace | (none) | namespace configured under run_namespaces (default: the configured namespace) |
 | --output | reports | parent directory for private reports |
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## pause
 
@@ -50,7 +51,7 @@ triagelab pause --report <report.json> [options]
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## resume
 
@@ -73,7 +74,7 @@ triagelab resume --report <report.json> --description <new-information> [options
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## close
 
@@ -96,7 +97,7 @@ triagelab close --report <report.json> [options]
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## serve
 
@@ -117,6 +118,7 @@ triagelab serve [options]
 | --description | (none) | local issue description |
 | --description-file | (none) | UTF-8 issue description file |
 | --file | (repeatable) | attachment (repeatable) |
+| --gitops | (none) | optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation |
 | --listen | 127.0.0.1:8080 | loopback address for the private web UI |
 | --log | (repeatable) | log file (repeatable) |
 | --mcp | (none) | optional HTTP MCP credentials and origins configuration JSON |
@@ -126,7 +128,7 @@ triagelab serve [options]
 | --status-context | (none) | Kubernetes context for live deployment status |
 | --status-kubeconfig | (none) | explicit Kubernetes config for live deployment status and optional saves |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 | --users | (none) | account file for web sign-in (default <output>/.auth/users.json) |
 
 ## doctor
@@ -150,7 +152,7 @@ triagelab doctor [options]
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## cleanup
 
@@ -173,7 +175,7 @@ triagelab cleanup [options]
 | --repo | (none) | small local repository or fixture directory |
 | --report | (none) | saved report.json for pause, resume, close, or cleanup |
 | --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
+| --tickets | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## manifest
 

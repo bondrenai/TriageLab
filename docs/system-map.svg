@@ -3,7 +3,7 @@
        Keep in sync with docs-site/src/components/diagrams/SystemMap.astro,
        which renders the same drawing from CSS tokens on the docs site. -->
   <title id="sm-t">TriageLab system map</title>
-  <desc id="sm-d">Ticket sources (Zendesk, GitHub, Linear, Bondren, or a local case) feed TriageLab, which routes, classifies, clarifies, and prepares the case for review or an automatic policy. A run reaches kagent, which runs the investigator session against a standalone sandbox provided by Agent Substrate with egress denied by default. Tool events and process results flow back into reports that keep evidence and hypothesis separate; a reviewed summary returns to the ticket.</desc>
+  <desc id="sm-d">Ticket sources (Zendesk, GitHub, GitLab, Linear, Bondren, or a local case) feed TriageLab, which routes, classifies, clarifies, and prepares the case for review or an automatic policy. A run reaches kagent, which runs the investigator session against a standalone sandbox provided by Agent Substrate with egress denied by default. Tool events and process results flow back into reports that keep evidence and hypothesis separate; a reviewed summary returns to the ticket.</desc>
 
   <style>
     text {

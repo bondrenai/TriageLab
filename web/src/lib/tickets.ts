@@ -6,13 +6,17 @@ export function orderedProcedures(version: ProcedureVersion): TicketProcedure[] 
 }
 
 // A Bondren issue can be referenced by its ID, its issue URL, or its number;
-// a pasted URL reduces to the issue ID segment. A Jira issue can be
-// referenced by its key, its URL, or its numeric id; a pasted URL reduces to
-// the key segment. Other sources use numbers.
+// a pasted URL reduces to the issue ID segment. A GitLab issue can be
+// referenced by its URL or number; a pasted URL reduces to the issue number.
+// A Jira issue can be referenced by its key, its URL, or its numeric id; a
+// pasted URL reduces to the key segment. Other sources use numbers.
 export function ticketReference(source: TicketSource | undefined, value: string): string {
   const trimmed = value.trim();
   if (source === "bondren" && trimmed.includes("/work/support/")) {
     return (trimmed.split("/work/support/")[1] ?? "").slice(0, 36);
+  }
+  if (source === "gitlab" && trimmed.includes("/-/issues/")) {
+    return (trimmed.split("/-/issues/")[1] ?? "").split(/[/?#]/)[0].slice(0, 19);
   }
   if (source === "jira" && trimmed.includes("/browse/")) {
     return (trimmed.split("/browse/")[1] ?? "").split(/[?#]/)[0].slice(0, 32);

@@ -52,7 +52,7 @@ func (f *Flow) ApproveContinuation(a ContinuationApproval, launch func(reserve f
 	if err := a.Config.Validate(); err != nil {
 		return ErrBlocked
 	}
-	if a.Config.Endpoint != f.runtime.Endpoint || a.Config.Namespace != f.runtime.Namespace ||
+	if a.Config.Endpoint != f.runtime.Endpoint || !f.runtime.AllowsNamespace(a.Config.Namespace) ||
 		a.Config.UserID != f.runtime.UserID || a.Config.Agent != c.Agent || a.Config.Template != c.Sandbox {
 		return ErrChanged
 	}

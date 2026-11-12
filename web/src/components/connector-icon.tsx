@@ -1,4 +1,5 @@
 import githubMark from "../assets/connectors/github.svg?url";
+import gitlabMark from "../assets/connectors/gitlab.svg?url";
 import jiraMark from "../assets/connectors/jira.svg?url";
 import linearMark from "../assets/connectors/linear.svg?url";
 import zendeskMark from "../assets/connectors/zendesk.svg?url";
@@ -11,6 +12,7 @@ import type { TicketSource } from "../lib/types/ticket";
 // inline instead of masked.
 const connectorIcons: Partial<Record<TicketSource, string>> = {
   github: githubMark,
+  gitlab: gitlabMark,
   jira: jiraMark,
   linear: linearMark,
   zendesk: zendeskMark,

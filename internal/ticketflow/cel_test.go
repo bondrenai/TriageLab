@@ -129,7 +129,7 @@ func TestCELRuntimeFailureStillAllowsManualApproval(t *testing.T) {
 func TestCELSelectsRunTargetAndConditionalEvidence(t *testing.T) {
 	source := newGitHubFlowSource()
 	flow := openGitHubFlowFixture(t, source, filepath.Join(t.TempDir(), "cases"))
-	flow.ResolveTarget = func(_ context.Context, agent, sandbox string) (RunTarget, error) {
+	flow.ResolveTarget = func(_ context.Context, agent, sandbox, _ string) (RunTarget, error) {
 		return RunTarget{Agent: agent, Sandbox: sandbox}, nil
 	}
 	version := flow.Procedure()

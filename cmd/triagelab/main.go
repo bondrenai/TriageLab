@@ -15,6 +15,7 @@ import (
 
 	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/auth"
+	"github.com/bondrenai/TriageLab/internal/gitops"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
@@ -46,6 +47,7 @@ type runOptions struct {
 	listen              string
 	assets              string
 	tickets             string
+	gitopsPath          string
 	telemetryPath       string
 	statusKubeconfig    string
 	statusContext       string
@@ -56,6 +58,7 @@ type runOptions struct {
 	clientsPath         string
 	allowResourceWrites bool
 	manualAgent         string
+	runNamespace        string
 	files               stringsFlag
 	logs                stringsFlag
 }
@@ -72,9 +75,10 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
 	flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
 	flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
-	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only)")
+	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only)")
 	flags.StringVar(&opts.telemetryPath, "telemetry", "", "optional OTLP telemetry configuration exporting logs, metrics, and traces")
 	if command == "serve" {
+		flags.StringVar(&opts.gitopsPath, "gitops", "", "optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation")
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
 		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
@@ -86,6 +90,7 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	}
 	if command == "investigate" {
 		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
+		flags.StringVar(&opts.runNamespace, "namespace", "", "namespace configured under run_namespaces (default: the configured namespace)")
 	}
 	flags.Var(&opts.files, "file", "attachment (repeatable)")
 	flags.Var(&opts.logs, "log", "log file (repeatable)")
@@ -335,6 +340,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(out, "Using the ticket connections saved in this workspace; manage them in the UI or remove "+
 				filepath.Join(opts.output, ".tickets", "registry.json")+" to bootstrap from --tickets again.")
 		}
+		if opts.gitopsPath != "" {
+			gitopsConfig, loadErr := gitops.LoadConfig(opts.gitopsPath)
+			if loadErr == nil {
+				loadErr = workspace.EnableGitOps(gitopsConfig)
+			}
+			if loadErr != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, loadErr)
+				return 2
+			}
+		}
 		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))
 			return 4
@@ -356,6 +372,15 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
+		if opts.runNamespace != "" && !config.AllowsNamespace(opts.runNamespace) {
+			fmt.Fprintln(errout, "Choose a namespace configured under run_namespaces or the workspace default")
+			return 2
+		}
+		if opts.runNamespace != "" {
+			runner.Config.Namespace = opts.runNamespace
+		}
+		// The allowlist is workspace launch policy, not a run setting.
+		runner.Config.RunNamespaces = nil
 		c, err := ingestRunOptions(opts)
 		if err != nil {
 			fmt.Fprintln(errout, err)
@@ -391,8 +416,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 2
 		}
 		conn, _ := saved["connection"].(map[string]any)
-		if conn["endpoint"] != config.Endpoint || conn["user_id"] != config.UserID || conn["namespace"] != config.Namespace {
-			fmt.Fprintln(errout, "Configuration must match the report endpoint, user and namespace")
+		if conn["endpoint"] != config.Endpoint || conn["user_id"] != config.UserID || !config.AllowsNamespace(fmt.Sprint(conn["namespace"])) {
+			fmt.Fprintln(errout, "Configuration must match the report endpoint, user and an allowed namespace")
 			return 2
 		}
 		if _, ok := saved["cleanup"].(map[string]any); !ok {

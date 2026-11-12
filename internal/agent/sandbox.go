@@ -60,7 +60,7 @@ type EgressDestination struct {
 // RenderSandboxTemplateDefinition emits a native SandboxTemplate with an
 // immutable digest-pinned workload image. It performs no cluster operations.
 func RenderSandboxTemplateDefinition(namespace string, d SandboxTemplateDefinition) ([]byte, error) {
-	if err := validateNamespace(namespace); err != nil {
+	if err := ValidNamespace(namespace); err != nil {
 		return nil, err
 	}
 	if !ValidResourceName(d.Name) || d.Name == reservedSandboxName {
@@ -76,7 +76,7 @@ func RenderSandboxTemplateDefinition(namespace string, d SandboxTemplateDefiniti
 // RenderEgressPolicyDefinition emits a native EgressPolicy granting additional
 // HTTP(S) origins. Substrate still denies every other destination, including DNS.
 func RenderEgressPolicyDefinition(namespace string, d EgressPolicyDefinition) ([]byte, error) {
-	if err := validateNamespace(namespace); err != nil {
+	if err := ValidNamespace(namespace); err != nil {
 		return nil, err
 	}
 	if !ValidResourceName(d.Name) {

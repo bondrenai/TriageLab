@@ -1,0 +1,254 @@
+# Maintained structural schema; runtime ticket validation also applies.
+apiVersion: "apiextensions.k8s.io/v1"
+kind: "CustomResourceDefinition"
+metadata:
+  name: "ticketconnections.triagelab.bondren.ai"
+spec:
+  group: "triagelab.bondren.ai"
+  scope: "Namespaced"
+  names:
+    kind: "TicketConnection"
+    plural: "ticketconnections"
+    singular: "ticketconnection"
+  versions:
+    -
+      name: "v1alpha1"
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: "object"
+          properties:
+            apiVersion:
+              type: "string"
+            kind:
+              type: "string"
+            metadata:
+              type: "object"
+            spec:
+              type: "object"
+              properties:
+                workspace:
+                  type: "string"
+                  maxLength: 63
+                  pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                label:
+                  type: "string"
+                  maxLength: 60
+                config:
+                  type: "object"
+                  properties:
+                    source:
+                      type: "string"
+                      maxLength: 10
+                      enum:
+                        - "zendesk"
+                        - "github"
+                        - "gitlab"
+                        - "linear"
+                        - "bondren"
+                        - "jira"
+                    repository:
+                      type: "string"
+                      maxLength: 500
+                    workspace:
+                      type: "string"
+                      maxLength: 100
+                    team:
+                      type: "string"
+                      maxLength: 100
+                    origin:
+                      type: "string"
+                      maxLength: 2048
+                    email:
+                      type: "string"
+                      maxLength: 320
+                    subdomain:
+                      type: "string"
+                      maxLength: 100
+                    client_id:
+                      type: "string"
+                      maxLength: 200
+                    redirect_uri:
+                      type: "string"
+                      maxLength: 2048
+                    poll_seconds:
+                      type: "integer"
+                      minimum: 0
+                      maximum: 3600
+                    internal_notes:
+                      type: "boolean"
+                    investigation_comments:
+                      type: "boolean"
+                    max_auto_runs_per_day:
+                      type: "integer"
+                      minimum: 0
+                      maximum: 100
+                    policy:
+                      type: "object"
+                      properties:
+                        tag:
+                          type: "string"
+                          maxLength: 100
+                          minLength: 1
+                        priorities:
+                          type: "array"
+                          items:
+                            type: "string"
+                            maxLength: 10
+                            enum:
+                              - "low"
+                              - "normal"
+                              - "high"
+                              - "urgent"
+                          maxItems: 4
+                          minItems: 0
+                        field_id:
+                          type: "integer"
+                          minimum: 0
+                          maximum: 9007199254740991
+                        field_value:
+                          type: "string"
+                          maxLength: 200
+                        auto_questions:
+                          type: "boolean"
+                        max_questions:
+                          type: "integer"
+                          minimum: 0
+                          maximum: 3
+                        match_condition:
+                          type: "string"
+                          maxLength: 4096
+                        auto_run_condition:
+                          type: "string"
+                          maxLength: 4096
+                        auto_runs:
+                          type: "boolean"
+                      required:
+                        - "tag"
+                  required:
+                    - "source"
+                    - "policy"
+                tokenSecretRef:
+                  type: "object"
+                  properties:
+                    name:
+                      type: "string"
+                      maxLength: 63
+                      pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                    key:
+                      type: "string"
+                      maxLength: 253
+                      pattern: "^[A-Za-z0-9_.-]+$"
+                  required:
+                    - "name"
+                    - "key"
+                procedureRefs:
+                  type: "array"
+                  items:
+                    type: "string"
+                    maxLength: 63
+                    pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                  maxItems: 8
+                  minItems: 1
+                  x-kubernetes-list-type: "atomic"
+              required:
+                - "workspace"
+                - "config"
+                - "procedureRefs"
+              x-kubernetes-validations:
+                -
+                  rule: "self.workspace == oldSelf.workspace"
+                  message: "workspace is immutable; create a new connection instead"
+                -
+                  rule: "self.config.source == oldSelf.config.source"
+                  message: "source is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.repository) == has(oldSelf.config.repository) && (!has(self.config.repository) || self.config.repository == oldSelf.config.repository)"
+                  message: "config.repository is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.workspace) == has(oldSelf.config.workspace) && (!has(self.config.workspace) || self.config.workspace == oldSelf.config.workspace)"
+                  message: "config.workspace is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.team) == has(oldSelf.config.team) && (!has(self.config.team) || self.config.team == oldSelf.config.team)"
+                  message: "config.team is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.origin) == has(oldSelf.config.origin) && (!has(self.config.origin) || self.config.origin == oldSelf.config.origin)"
+                  message: "config.origin is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.subdomain) == has(oldSelf.config.subdomain) && (!has(self.config.subdomain) || self.config.subdomain == oldSelf.config.subdomain)"
+                  message: "config.subdomain is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.email) == has(oldSelf.config.email) && (!has(self.config.email) || self.config.email == oldSelf.config.email)"
+                  message: "config.email is immutable; create a new connection instead"
+                -
+                  rule: "has(self.config.client_id) == has(oldSelf.config.client_id) && (!has(self.config.client_id) || self.config.client_id == oldSelf.config.client_id)"
+                  message: "config.client_id is immutable; create a new connection instead"
+            status:
+              type: "object"
+              properties:
+                observedGeneration:
+                  type: "integer"
+                  minimum: 0
+                  maximum: 9007199254740991
+                connectionID:
+                  type: "string"
+                  maxLength: 8
+                  pattern: "^[0-9a-f]{8}$"
+                conditions:
+                  type: "array"
+                  items:
+                    type: "object"
+                    properties:
+                      type:
+                        type: "string"
+                        maxLength: 30
+                      status:
+                        type: "string"
+                        maxLength: 7
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      reason:
+                        type: "string"
+                        maxLength: 100
+                      message:
+                        type: "string"
+                        maxLength: 500
+                      observedGeneration:
+                        type: "integer"
+                        minimum: 0
+                        maximum: 9007199254740991
+                      lastTransitionTime:
+                        type: "string"
+                        format: "date-time"
+                    required:
+                      - "type"
+                      - "status"
+                      - "reason"
+                      - "message"
+                      - "observedGeneration"
+                      - "lastTransitionTime"
+                  maxItems: 8
+                  minItems: 0
+                  x-kubernetes-list-type: "map"
+                  x-kubernetes-list-map-keys:
+                    - "type"
+          required:
+            - "spec"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        -
+          name: "Workspace"
+          type: "string"
+          jsonPath: ".spec.workspace"
+        -
+          name: "Ready"
+          type: "string"
+          jsonPath: ".status.conditions[?(@.type==\"Ready\")].status"
+        -
+          name: "Reason"
+          type: "string"
+          jsonPath: ".status.conditions[?(@.type==\"Ready\")].reason"

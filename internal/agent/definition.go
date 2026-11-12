@@ -251,7 +251,9 @@ func resource(namespace, kind, name string, spec map[string]any) map[string]any 
 	}
 }
 
-func validateNamespace(namespace string) error {
+// ValidNamespace reports whether namespace is a Kubernetes DNS label, the
+// form every kagent resource namespace must take.
+func ValidNamespace(namespace string) error {
 	if len(namespace) > 63 || !dnsLabel.MatchString(namespace) {
 		return fmt.Errorf("namespace must be a Kubernetes DNS label")
 	}
@@ -259,7 +261,7 @@ func validateNamespace(namespace string) error {
 }
 
 func RenderModelDefinition(namespace string, d ModelDefinition) ([]byte, error) {
-	if err := validateNamespace(namespace); err != nil {
+	if err := ValidNamespace(namespace); err != nil {
 		return nil, err
 	}
 	if !ValidResourceName(d.Name) || d.Name == "triagelab-model" {
@@ -273,7 +275,7 @@ func RenderModelDefinition(namespace string, d ModelDefinition) ([]byte, error) 
 }
 
 func RenderMCPServerDefinition(namespace string, d MCPServer) ([]byte, error) {
-	if err := validateNamespace(namespace); err != nil {
+	if err := ValidNamespace(namespace); err != nil {
 		return nil, err
 	}
 	if !ValidResourceName(d.Name) || d.Name == "triagelab-sandbox-api" {
@@ -308,7 +310,7 @@ func RenderWorkspaceDefinition(namespace string, d Definition) ([]byte, error) {
 }
 
 func renderDefinition(namespace string, d Definition, workspace bool) ([]byte, error) {
-	if err := validateNamespace(namespace); err != nil {
+	if err := ValidNamespace(namespace); err != nil {
 		return nil, err
 	}
 	if len(d.Name) > 48 || !dnsLabel.MatchString(d.Name) || d.Name == "triagelab" || d.Name == "triagelab-investigator" {

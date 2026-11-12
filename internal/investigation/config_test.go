@@ -48,6 +48,34 @@ func TestConfigClusterHTTPOptIn(t *testing.T) {
 	}
 }
 
+func TestConfigRunNamespaces(t *testing.T) {
+	c := DefaultConfig()
+	c.RunNamespaces = []string{"triagelab-runs", "sandbox-pool"}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("valid run namespaces rejected: %v", err)
+	}
+	if !c.AllowsNamespace(c.Namespace) || !c.AllowsNamespace("triagelab-runs") || !c.AllowsNamespace("sandbox-pool") {
+		t.Fatal("configured run namespaces are not allowed")
+	}
+	if c.AllowsNamespace("default") {
+		t.Fatal("unlisted namespace allowed")
+	}
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.RunNamespaces = []string{"kagent"} },
+		func(c *Config) { c.RunNamespaces = []string{"triagelab-runs", "triagelab-runs"} },
+		func(c *Config) { c.RunNamespaces = []string{"triagelab-runs", "Not_A_Label"} },
+		func(c *Config) {
+			c.RunNamespaces = []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+		},
+	} {
+		c := DefaultConfig()
+		mutate(&c)
+		if err := c.Validate(); err == nil {
+			t.Fatalf("invalid run namespaces accepted: %v", c.RunNamespaces)
+		}
+	}
+}
+
 func TestConfigRejectsUnknownFieldsAndTrailingObjects(t *testing.T) {
 	for _, data := range []string{`{"surprise":true}`, `{} {}`, `{"poll_interval":1.5}`, `{"process_timeout":false}`} {
 		path := filepath.Join(t.TempDir(), "config.json")
