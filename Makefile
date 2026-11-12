@@ -3,7 +3,7 @@ NPM ?= npm
 HELM ?= helm
 export GOFLAGS := -trimpath
 
-.PHONY: build fmt check test test-integration test-pause-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
+.PHONY: build fmt check test test-integration test-pause-integration test-sandbox-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
 build:
 	$(GO) build -o bin/triagelab ./cmd/triagelab
 install-ui:
@@ -36,6 +36,8 @@ test-integration:
 	TRIAGELAB_INTEGRATION=1 $(GO) test -count=1 -timeout 15m -v ./internal/investigation -run TestLiveInvestigation
 test-pause-integration:
 	TRIAGELAB_PAUSE_INTEGRATION=1 $(GO) test -count=1 -timeout 20m -v ./internal/investigation -run '^TestLiveInvestigationPauseResume$$'
+test-sandbox-integration:
+	TRIAGELAB_SANDBOX_INTEGRATION=1 $(GO) test -count=1 -timeout 20m -v ./internal/investigation -run '^TestLiveSandboxBoundary$$'
 manifest:
 	$(GO) run ./cmd/triagelab manifest
 demo:
