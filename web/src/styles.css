@@ -186,7 +186,7 @@ main { padding: 36px 42px 48px; width: 100%; max-width: 1460px; margin-inline: a
 .table-caption { display: flex; justify-content: space-between; padding: 19px 22px; align-items: center; }
 .table-caption h2 { font-size: var(--text-body); font-weight: 600; }
 .table-caption > span { color: var(--color-gray-500); }
-.table-scroll { overflow-x: auto; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.table-scroll { position: relative; overflow-x: auto; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th { padding: 10px 20px; background: var(--color-gray-50); border-bottom: 2px solid var(--color-gray-800); font-size: var(--text-annotation); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
 td { padding: 19px 20px; border-bottom: 1px solid var(--color-gray-100); vertical-align: middle; }
@@ -549,7 +549,7 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
 .round-history li > p { margin-top: 10px; }
 .round-history .round-input, .round-history .round-analysis { margin-top: 12px; }
 .round-history h4 { font-size: var(--text-meta); font-weight: 600; margin-bottom: 4px; }
-.round-history .round-input p, .round-history .round-analysis p { color: var(--color-gray-600); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
+.round-history .round-text { color: var(--color-gray-600); overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
 .round-history > .analysis-note { padding: 0 22px 20px; }
 .experiment-assessment { margin-top: 18px; padding: 15px 17px; background: var(--color-zebra); border-radius: var(--radius-sm); }
 .experiment-assessment h4 { font-size: var(--text-control); font-weight: 600; margin-bottom: 12px; }
@@ -571,6 +571,7 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
 .evidence-claim { min-width: 0; position: sticky; top: 18px; align-self: start; max-height: calc(100dvh - 170px); overflow: auto; }
 .evidence-claim h3, .evidence-process-heading h3, .evidence-inspector-process > h3 { font-size: var(--text-body); font-weight: 600; margin-bottom: 10px; }
 .evidence-claim > p { line-height: 1.75; overflow-wrap: anywhere; white-space: pre-wrap; }
+.evidence-claim-statement { line-height: 1.75; overflow-wrap: anywhere; }
 .evidence-inspector-processes { min-width: 0; }
 .evidence-inspector-process + .evidence-inspector-process { padding-top: 22px; margin-top: 22px; border-top: 1px solid var(--color-gray-200); }
 .evidence-process-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; justify-content: space-between; }
@@ -654,3 +655,18 @@ tbody tr:nth-child(even) { background: var(--color-zebra); }
 .cel-literal, .cel-variable { color: var(--color-blue-700); }
 .policy-diagnostics { margin: 0; padding-inline-start: 18px; color: var(--color-red-700); }
 .policy-diagnostics button { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Untrusted text through the safe Markdown subset (components/markdown.tsx): no HTML, images or live links. */
+.markdown { white-space: normal; overflow-wrap: anywhere; }
+.markdown > * { margin: 0; }
+.markdown > * + * { margin-top: 0.75em; }
+.markdown .md-heading { font-weight: 600; color: var(--color-gray-900); }
+.markdown .md-heading-1 { font-size: 1.08em; }
+.markdown .md-list { padding-left: 20px; list-style: disc; }
+.markdown .md-list.numbered { list-style: decimal; padding-left: 24px; }
+.markdown .md-list li + li { margin-top: 4px; }
+.markdown .md-quote { margin: 0; padding-left: 12px; border-left: 3px solid var(--color-gray-200); color: var(--color-gray-600); }
+.markdown .md-rule { border: 0; border-top: 1px solid var(--color-gray-200); }
+.markdown .md-code { margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--color-gray-50); color: var(--color-gray-800); font-family: var(--font-mono); font-size: var(--text-meta); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-inline-code { padding: 1px 4px; border-radius: var(--radius-xs); background: var(--color-gray-50); color: var(--color-gray-800); font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+.md-link-url { color: var(--color-gray-500); font-family: var(--font-mono); font-size: 0.9em; overflow-wrap: anywhere; }

@@ -4,6 +4,7 @@ import { APIError } from "../lib/api-client";
 import { fileSize, formatDate } from "../lib/investigations";
 import type { InvestigationReport } from "../lib/types";
 import type { ResultChat, ResultChatMessage } from "../lib/types/result-chat";
+import { MarkdownBlocks } from "./markdown";
 import { EvidenceReferences, type EvidenceSelection } from "./report-evidence";
 import { Button, ErrorPlate, Loading, Panel, Textarea } from "./ui";
 
@@ -105,7 +106,7 @@ export function InvestigationChat({ report, canAsk, onReviewEvidence, onOpenEvid
         {state && <>
           {state.messages.length > 0 ? <ol ref={transcript} className="result-chat-transcript" tabIndex={0} aria-label="Saved investigation conversation" aria-live="polite" aria-relevant="additions" onScroll={event => { const element = event.currentTarget; followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40; }}>{state.messages.map(message => <li key={message.id} className={`result-chat-message result-chat-${message.role}`}>
             <div className="result-chat-message-heading"><h3>{message.role === "user" ? "Question" : "Agent answer"}</h3><time dateTime={message.created_at}>{formatDate(message.created_at)}</time></div>
-            <p className="result-chat-content">{message.content}</p>
+            {message.role === "assistant" ? <MarkdownBlocks className="result-chat-content" text={message.content} /> : <p className="result-chat-content">{message.content}</p>}
             {message.role === "assistant" && <AnswerSources message={message} report={report} onReview={onReviewEvidence} onOpenEvidence={onOpenEvidence} />}
           </li>)}</ol> : <p className="result-chat-empty">No questions yet. Ask why an experiment matters, compare hypotheses, or explore what remains unproven.</p>}
           {answering && <p className="result-chat-status" role="status">Reviewing the saved investigation. The answer will appear here.</p>}

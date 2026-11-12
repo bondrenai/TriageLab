@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 import type { Experiment, ExperimentAssessment, InvestigationReport } from "../lib/types";
+import { MarkdownBlocks, MarkdownInline } from "./markdown";
 import { Button, Stamp } from "./ui";
 
 export interface EvidenceContext {
@@ -51,9 +52,9 @@ export function Assessment({ assessment }: { assessment: ExperimentAssessment })
   return <div className="experiment-assessment">
     <h4>Agent interpretation</h4>
     <dl>
-      <div><dt>Question tested</dt><dd>{assessment.question}</dd></div>
-      <div><dt>Expected observation</dt><dd>{assessment.expected_observation}</dd></div>
-      <div><dt>Interpretation</dt><dd>{assessment.interpretation}</dd></div>
+      <div><dt>Question tested</dt><dd><MarkdownInline text={assessment.question} /></dd></div>
+      <div><dt>Expected observation</dt><dd><MarkdownInline text={assessment.expected_observation} /></dd></div>
+      <div><dt>Interpretation</dt><dd><MarkdownInline text={assessment.interpretation} /></dd></div>
     </dl>
   </div>;
 }
@@ -93,7 +94,7 @@ export function EvidenceInspector({ selection, onClose, onOpenRegister }: {
   return <dialog ref={dialog} className="evidence-dialog" aria-labelledby={headingId} onCancel={event => { event.preventDefault(); onClose(); }}>
     <header className="evidence-dialog-header rule-cut"><div><p className="annotation">Round {round} · saved process evidence</p><h2 id={headingId}>Review evidence</h2></div><Button variant="ghost" onClick={onClose} aria-label="Close evidence review"><X size={18} aria-hidden="true" /></Button></header>
     <div className="evidence-dialog-layout">
-      <section className="evidence-claim"><h3>{selection.title}</h3><p>{selection.statement}</p><p className="analysis-note">This statement is agent analysis. The recorded process output is collected separately.</p></section>
+      <section className="evidence-claim"><h3>{selection.title}</h3><MarkdownBlocks className="evidence-claim-statement" text={selection.statement} /><p className="analysis-note">This statement is agent analysis. The recorded process output is collected separately.</p></section>
       <div className="evidence-inspector-processes">{selection.ids.map(id => {
         const index = experiments.findIndex(item => item.process_id === id);
         const experiment = experiments[index];

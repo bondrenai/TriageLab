@@ -10,7 +10,7 @@ WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
-COPY docs/verification/agent-demo.json /docs/verification/agent-demo.json
+COPY docs/verification/missing-orders-demo.json /docs/verification/missing-orders-demo.json
 RUN npm run build
 
 # Build the statically linked CLI. The OpenTelemetry SDK is vendored, so the

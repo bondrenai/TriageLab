@@ -167,8 +167,8 @@ In another VM terminal, mint a short-lived invocation credential:
 export TRIAGELAB_TOKEN="$(kubectl --context kind-triagelab -n kagent \
   create token triagelab --audience=kagent-invocation --duration=1h)"
 bin/triagelab investigate \
-  --description-file examples/config-bug/issue.md \
-  --repo examples/config-bug
+  --description-file examples/missing-orders/ticket.md \
+  --repo examples/missing-orders/repro
 unset TRIAGELAB_TOKEN
 ```
 
@@ -177,8 +177,9 @@ connect its loopback endpoint through an SSH local port forward; never bind the
 kagent endpoint to `0.0.0.0`. The CLI sends the selected case and files to kagent,
 so use only material you are authorized to disclose to that model provider.
 
-The investigator should inspect the fixture, run the failing application, and
-perform a verification experiment with corrected configuration. Success requires
+The investigator should inspect the files, replay the customer's export as
+configured, test the customer's lock-retry theory, and verify a corrected
+configuration against the same export. Success requires
 real process records, failure output, and evidence references in the final JSON
 and Markdown. Model output alone is not proof of execution.
 

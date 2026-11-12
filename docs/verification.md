@@ -1,5 +1,290 @@
 # Executed verification
 
+## Walkthrough video on the README and site — November 12, 2026
+
+The two-minute walkthrough of the missing-orders case is public on the
+Bondren YouTube channel (`BXYmfvuqTPg`). The README and the site's homepage
+show a poster frame from it (`docs-site/src/assets/walkthrough-poster.jpg`)
+that links to YouTube. On the homepage, a click replaces the poster with
+YouTube's privacy-enhanced player; without JavaScript it stays a link.
+
+- `make build-docs` passed in Node 24.18.1 with every internal link valid.
+  Astro serves the poster as WebP at 800, 1200 and 1600 pixels.
+- Chromium against the built site, at 1440 and 390 pixels wide: before the
+  click the page made no request outside its own origin; after it, the only
+  outside request was to `www.youtube-nocookie.com` (aborted in the test). The
+  player kept the poster's 16:9 box (1080×608 and 358×201), nothing overflowed,
+  and there were no page errors.
+- The homepage's quickstart box described the timeout example, which the
+  quickstart no longer runs; it now describes the missing-orders case.
+- Not checked: playback itself, and the README as GitHub renders it.
+
+## Safe Markdown rendering in the workspace — November 12, 2026
+
+The workspace showed case descriptions and model output as literal text, so a
+ticket's Markdown appeared raw (`**Requester:**`, `# Title`). These now render
+through a small subset parsed by `web/src/lib/markdown.ts` and built as React
+elements by `web/src/components/markdown.tsx`: headings, emphasis, inline code,
+fenced code, lists, quotes and rules. Raw HTML and image syntax stay literal,
+links show their URL as text and never become anchors, and underscores never
+emphasise, so identifiers such as `__init__.py` read as written. It applies to
+the original issue and round inputs, the agent's summary, leading hypothesis,
+observations, questions, next actions, hypotheses, experiment assessments and
+reproduction steps, the evidence claim, and results-chat answers. Command
+output, the user's own chat questions, and exact-text previews of ticket notes
+and clarifications stay literal.
+
+- `make check-ui` under Node 24.18.1 in a container: `tsc -b` and 12 `node:test`
+  parser tests covering HTML, images, links including `javascript:`, code
+  spans, fences, lists, escapes, underscores, and hostile input that must parse
+  quickly or stay plain. CI now runs `make check-ui`; before this it only built
+  the UI.
+- `make build-ui` passed. `make build-docs` passed with every internal link
+  valid.
+- Chromium against a local workspace serving a scratch copy of run `6ff0556b`.
+  Its summary and one hypothesis carried planted Markdown, an image, a raw
+  `<img onerror>`, an https link and a `javascript:` link. The Markdown rendered
+  (bold, inline code, list items, and the ticket's heading, bold labels, inline
+  code and rule). The rendered regions contained no `img`, `a`, `script`,
+  `iframe`, `object` or `embed` elements. The planted content showed as literal
+  text with the link's URL visible. No request left the workspace origin, there
+  were no page errors or dialogs, and nothing overflowed at 390 px.
+- Not checked: results chat with a configured chat model, the ticket pages, and
+  screen readers. `make check` was not re-run because no Go changed.
+
+## Missing-orders case — November 12, 2026
+
+Added `examples/missing-orders`, a second example case, and investigated it
+three times with a real model and real sandboxes. No agent output or sandbox
+was mocked.
+
+The build VM could not be reached from the authoring session, so at the
+maintainer's direction everything ran on the development Mac. That departs
+from the usual rule of keeping builds and clusters on the VM. It is also the
+first recorded run of this stack on arm64 and on Docker Desktop.
+
+### Environment
+
+- Apple M3 Max, macOS 26.7.3, and Docker Desktop with engine 29.9.3 and kernel
+  7.0.14-linuxkit. The Docker VM had 16 CPUs and 7.7 GiB of memory, shared
+  with unrelated containers.
+- `scripts/install-dev.sh` ran unmodified. It refuses a non-Linux host, so it
+  ran inside a Linux arm64 container built from `golang:1.27.3-bookworm`, with
+  the Docker socket mounted and host networking. The container held kind
+  0.33.0, kubectl 1.35.0, Helm 3.18.0, and the kagent CLI 1.0.0 `linux-arm64`
+  asset, each checked against its published SHA-256. That container image was
+  session tooling and is not in the repository.
+- The kind cluster `triagelab` used `kindest/node:v1.35.0` and
+  `deploy/kind.yaml`. The installer deployed kagent 1.0.0 and Substrate 1.0.0
+  with gVisor, then built controller `048e1016` from the fork for linux/arm64
+  (local image ID
+  `sha256:8c936de5ce26b28c811dfb93ead2f3e7fda4dc98251b5d3a518b6863893b617a`).
+  Every pinned image resolved to its `linux/arm64` variant.
+- The SandboxTemplate, the Agent, and the `kagent-default` gVisor WorkerPool
+  became Ready with 24 pods running. The kind node used about 1.9 GiB of
+  memory. `triagelab doctor` passed.
+- The investigator used OpenAI `gpt-6.1-sol` through the Responses API. The CLI
+  was built from this branch with Go 1.27.3 and ran without `--config`, which
+  uses the same settings as `triagelab.example.json`.
+- The provider key went from a private file to the installer's standard input.
+  It was never printed. A fixed-string search that did not display the value
+  found no copy of it in the installer log, the CLI logs, or the saved reports.
+
+### Live investigation
+
+```sh
+triagelab investigate --description-file examples/missing-orders/ticket.md \
+  --repo examples/missing-orders/repro
+```
+
+The first run, `6ff0556b-eae5-4ce5-afc1-b0eebbc50089`, reported **reproduced**
+and the CLI exited 0. It took 94 seconds, from 16:38:29 to 16:40:03 UTC, with
+17 tool calls and no warnings or errors. The investigator read `README.md`,
+`rowferry.py`, `sync.json`, `schema.sql`, and `sync.log`, then ran four
+processes:
+
+| | Command | Exit | Collected output |
+| --- | --- | --- | --- |
+| 1 | `rowferry.py --replay orders_export.csv --list-missing --set sink=out/baseline.csv` | 1 | 614 of 625 rows, `0 lock retries`, `total_cents off by 2493520`, and the 11 order numbers named in the ticket |
+| 2 | The same with `--set cursor_columns=created_at,id` | 0 | 625 of 625 rows, equal sums, `replay check passed` |
+| 3 | The same with `--set page_size=500` and the original cursor | 1 | 622 of 625 rows, `0 lock retries`, orders 418707 to 418709 missing |
+| 4 | `python3 -c` with a comparison script the investigator wrote | 0 | Pages 1, 4, and 6 end at a timestamp shared by 7, 4, and 4 rows, and the omitted orders are the rest of each group. The corrected sink equals the export as a multiset of full rows. |
+
+The analysis, which the report labels as hypotheses:
+
+- **Supported**, citing processes 1, 2, and 4: a cursor on `created_at` alone
+  skips the remaining rows of a timestamp group when a page ends inside it.
+- **Rejected**, with processes 1 and 3 as contradicting evidence: a lock retry
+  is necessary to produce the reported loss.
+- **Rejected**, with process 3 as contradicting evidence: `page_size` 500
+  eliminates the loss.
+- The root-cause statement limits itself to this replay. It says the result
+  does not establish the same behavior in the customer's database and does not
+  exclude a separate lock problem there. An observation adds that the
+  customer's exit code 0 was not reproduced, because the replay check returns 1.
+- The next actions include a backfill of the affected interval, because
+  resuming from the saved cursor does not recover orders already skipped.
+
+The report records deletion of the sandbox and the session with no cleanup
+errors.
+
+What to hold against it:
+
+- The claim that a retry re-reads the same page comes from the investigator
+  reading `rowferry.py`. No experiment exercised a lock retry, and none can in
+  this replay. The rejection is correctly worded as "not necessary for this
+  loss", not as "lock retries are harmless".
+- The rejected lock-retry hypothesis lists the same two processes as both its
+  cited and its contradicting evidence.
+- Report validation downgraded nothing, so this run does not show how an
+  unsupported claim is handled.
+
+Evidence: [JSON](verification/missing-orders-demo.json) and
+[Markdown](verification/missing-orders-demo.md) reports of the first run. It
+was saved because it was first, not because it was the best of the three.
+
+### Repeat runs
+
+Runs `6875d902-4e2d-4d00-8fa8-8b33df1a4007` (107 seconds) and
+`7cbbd59a-fc35-47bb-907b-ed0e8956b43f` (96 seconds) followed with the same
+command. Both reported reproduced with four experiments that exited 1, 0, 1,
+and 0: the baseline replay, the two-column cursor, `page_size` 500, and a
+comparison script. Both supported the same hypothesis, rejected the lock-retry
+and page-size hypotheses with contradicting processes, and recorded complete
+cleanup with no warnings or errors.
+
+They differed from the first run in two ways. Each wrote a different comparison
+script, and each also read `orders_export.csv` directly, for 18 tool calls
+instead of 17.
+
+Three consistent runs are a small sample, not a reliability measurement. The
+second and third reports stay in the Mac's private `reports/` directory and are
+not in the repository.
+
+### Fixture checks
+
+Before the live runs, the fixture was run directly on the Mac with its system
+Python 3.9.6 and SQLite 3.51.0, from a scratch copy of `repro/`. These runs
+involve no TriageLab, model, or sandbox.
+
+`python3 rowferry.py --replay orders_export.csv` with the listed overrides:
+
+| Override | Exit | Rows in sink | Lock retries | Never arrived |
+| --- | --- | --- | --- | --- |
+| None (the customer's configuration) | 1 | 614 of 625 | 0 | 11 rows, `total_cents` off by 2493520 |
+| `lock_timeout_ms=60000`, `max_retries=20` | 1 | 614 of 625 | 0 | 11 rows |
+| `page_size=50` | 1 | 610 of 625 | 0 | 15 rows |
+| `page_size=200` | 1 | 624 of 625 | 0 | 1 row |
+| `page_size=500` | 1 | 622 of 625 | 0 | 3 rows |
+| `page_size=1000` | 0 | 625 of 625 | 0 | None |
+| `cursor_columns=created_at,id` | 0 | 625 of 625 | 0 | None |
+| `cursor_columns=created_at,id`, `page_size=50` | 0 | 625 of 625 | 0 | None |
+| `cursor_columns=created_at,id`, `page_size=500` | 0 | 625 of 625 | 0 | None |
+| `cursor_columns=nope` | 2 | Not written | 0 | Stops with `no such column` |
+
+- `--list-missing` printed order numbers 418307 to 418312, 418613, 418614, and
+  418815 to 418817. They are the ones named in `ticket.md`, and each shares its
+  `created_at` with the last row of page 1, 4, or 6.
+- `EXPLAIN QUERY PLAN` showed both the one-column and two-column cursor queries
+  searching `orders_created_at_idx`, so rows that share a timestamp are read in
+  primary-key order and the lost rows do not depend on sort stability.
+- `generate.py` ran twice and produced the same SHA-256 for
+  `orders_export.csv` and `sync.log` both times.
+- The six files in `repro/` total 47,991 bytes and the largest is 35,768 bytes,
+  inside the 64-file, 1 MiB, and 4 MiB intake limits. The directory has no
+  symlinks. A `grep -E` with the credential-content expression from
+  `internal/casefile` found no match. This is a reading of the limits, not a
+  run of `casefile.Ingest`.
+
+### Promotion to the main example
+
+The first run's report replaced the timeout run as the browser workspace's
+bundled example and in the container image, and the case replaced the timeout
+fixture in `make demo`, both quickstarts, and the development guide. The
+integration tests still use `examples/config-bug`.
+
+These checks ran on the same Mac in Linux arm64 containers: Go 1.27.3 for Go
+and Node 24.18.1 for the UI and documentation.
+
+- `make check` passed: gofmt, `go vet ./...`, and every Go package's tests.
+  `make docs-check` reported no drift in the generated reference.
+- `make check-ui` and `make build-ui` passed. `make build-docs` passed with
+  every internal link valid.
+- `docker build` of the repository image passed, and its built UI contains the
+  new example.
+- A local workspace ran on loopback from the native macOS build of this
+  branch, with a temporary admin account and copies of the three reports.
+  Chromium showed the example's title, notice, status band, brief, hypotheses
+  with their cited and contradicting experiments, and case files. It also
+  showed the new example card, whose experiment count now comes from the
+  bundled report. There were no console errors.
+- At 390 pixels wide, the investigations list overflowed by 124 pixels when
+  any report existed. A visually hidden label in the runs table escaped the
+  table's scroll container, which was not positioned. This was there before
+  the example changed. `.table-scroll` is now `position: relative`, and both
+  pages measured no horizontal overflow afterward.
+
+### From a GitHub issue to a posted comment
+
+The first live GitHub-to-kagent investigation and the first live GitHub
+write, recorded for the demonstration video.
+
+- The maintainer created the public repository `wkrause13/triagelab-demo`. Its
+  README says the case is fiction. Issue #1 carries the ticket text with the
+  sync log inline, the `triagelab` label, and four attachments:
+  `rowferry.py.txt`, `sync.json`, `schema.sql.txt` and `orders_export.csv.txt`.
+  GitHub accepts only some file types, which is why three of them end in
+  `.txt`.
+- The workspace ran on loopback from the native macOS build of this branch
+  against the same cluster, with one GitHub connection for that repository.
+  Its procedure matches the `triagelab` label, starts runs automatically
+  (`max_auto_runs_per_day` 2), and requires three attachments: a `.py` file,
+  `sync.json`, and `.txt` files.
+- The connection first ran without a token, reading the public issue
+  anonymously. Previewing issue #1 showed EVIDENCE READY with each file's size,
+  SHA-256 and source link, and `rowferry.py.txt` restored as `rowferry.py`.
+  Tracking it started run `eada8e1e` by policy at 19:33:43 UTC. The report
+  records `started_by` "ticket policy", `unattended` true, the issue URL, and
+  an approval plan hash.
+- The run took 1 min 31 s with four experiments. Experiment 1 replayed the
+  customer's configuration and exited 1: 614 of 625 rows, `0 lock retries`,
+  `total_cents off by 2493520`. Experiment 2 added `cursor_columns=created_at,id`
+  and exited 0 with 625 rows. Experiments 3 and 4 were the investigator's own
+  checks: 625 unique IDs, and the 11 missing IDs grouped by the page-end
+  timestamp they share. The tie-skipping hypothesis was supported, and the
+  lock-retry hypothesis was rejected with experiment 1 as contradicting
+  evidence. The sandbox and session were deleted, with no warnings or errors.
+- For comments, the maintainer created a fine-grained token limited to that
+  repository with Issues read and write. It went from a private file into the
+  workspace's environment and was never printed. The connection reads it
+  through `token_env`. The workspace keeps saved connections in
+  `.tickets/registry.json` and ignores `--tickets` once that exists, so
+  `token_env` and `investigation_comments` were added to the saved entry while
+  the server was stopped, keeping its ID. After a restart, Ticket cases showed
+  COMMENTS ENABLED. A search of the server log found no token prefix.
+- The report then offered **Review comment**. The exact text was a fenced
+  `text` block with the run ID, the outcome, the agent summary, the suggested
+  next step, and the four recorded processes with exit statuses and commands.
+  Long commands were cut short with an ellipsis. **Post comment** returned
+  "Delivery confirmed · posted as GitHub comment 6834196347". GitHub's public
+  API, read without credentials, returned exactly one comment on the issue with
+  that ID and that body.
+- On GitHub the comment renders as one code block. Lines are not wrapped, so a
+  reader scrolls sideways to read the summary and the commands.
+
+### Not checked
+
+- The `make demo` target itself. The CLI was invoked directly with the same
+  arguments.
+- Starting this case from the New investigation form, and the microVM backend.
+- An independent controller read of sandbox and session deletion. Cleanup is
+  taken from the reports.
+- The sandbox boundary checks (egress denial, process termination) on this
+  arm64 deployment, and pause and resume there.
+
+The local cluster was still running when this record was written. See the
+[demonstration notes](demo.md).
+
 ## Model-backed GitOps investigation — November 12, 2026
 
 Run `341019f5-3ace-498d-80a4-e022a71d9662` completed with outcome
@@ -750,7 +1035,8 @@ approval. Its temporary server and fixture state were removed.
 No live GitHub write or GitHub-to-kagent investigation was performed. HTTP and
 workflow fixtures demonstrate the tested request and persistence behavior, not
 provider permissions, real notification delivery, or an atomic GitHub
-compare-and-send guarantee.
+compare-and-send guarantee. A live run and comment followed on 12 November 2026;
+see [From a GitHub issue to a posted comment](#from-a-github-issue-to-a-posted-comment).
 
 
 ## Custom agent definitions

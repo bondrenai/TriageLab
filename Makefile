@@ -41,7 +41,7 @@ test-sandbox-integration:
 manifest:
 	$(GO) run ./cmd/triagelab manifest
 demo:
-	$(GO) run ./cmd/triagelab investigate --config triagelab.example.json --description-file examples/config-bug/issue.md --repo examples/config-bug
+	$(GO) run ./cmd/triagelab investigate --config triagelab.example.json --description-file examples/missing-orders/ticket.md --repo examples/missing-orders/repro
 chart-lint:
 	$(HELM) lint chart/triagelab --set token.value=lint-placeholder
 	$(HELM) template chart/triagelab --set token.value=lint-placeholder > /dev/null

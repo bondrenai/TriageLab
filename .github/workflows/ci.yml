@@ -38,6 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: make install-ui
+      - run: make check-ui # TypeScript and the safe Markdown parser tests
       - run: make build-ui
 
   docs:
