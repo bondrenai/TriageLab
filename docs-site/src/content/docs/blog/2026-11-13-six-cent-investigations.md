@@ -7,6 +7,28 @@ tags:
   - benchmarks
   - economics
   - local-models
+# Social card. Source and render command: docs-site/social/.
+head:
+  - tag: meta
+    attrs:
+      property: og:image
+      content: https://bondrenai.github.io/TriageLab/social/six-cent-investigations.png
+  - tag: meta
+    attrs:
+      property: og:image:width
+      content: "2400"
+  - tag: meta
+    attrs:
+      property: og:image:height
+      content: "1260"
+  - tag: meta
+    attrs:
+      property: og:image:alt
+      content: "TriageLab blog: Six-cent triage, local models, and cheap escalations. A recorded run of one sandboxed investigation on a 27B open-weight model costs $0.06 on a hosted API."
+  - tag: meta
+    attrs:
+      name: twitter:image
+      content: https://bondrenai.github.io/TriageLab/social/six-cent-investigations.png
 ---
 
 Automated investigation of support tickets and bug reports is usually sold as a

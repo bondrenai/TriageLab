@@ -1,0 +1,324 @@
+<!doctype html>
+<!--
+  Social card for blog/2026-11-13-six-cent-investigations (1200 x 630).
+  Colors and type come from src/styles/tokens.css; keep them in step.
+
+  Render from docs-site/ after `npm ci` (the fonts load from node_modules):
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless=new --hide-scrollbars --force-device-scale-factor=2 \
+      --window-size=1200,630 \
+      --screenshot=public/social/six-cent-investigations.png \
+      "file://$PWD/social/six-cent-investigations.html"
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Six-cent triage, local models, and cheap escalations</title>
+    <style>
+      @font-face {
+        font-family: "IBM Plex Serif";
+        font-weight: 300;
+        src: url("../node_modules/@fontsource/ibm-plex-serif/files/ibm-plex-serif-latin-300-normal.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Serif";
+        font-weight: 300;
+        font-style: italic;
+        src: url("../node_modules/@fontsource/ibm-plex-serif/files/ibm-plex-serif-latin-300-italic.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Serif";
+        font-weight: 400;
+        src: url("../node_modules/@fontsource/ibm-plex-serif/files/ibm-plex-serif-latin-400-normal.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Sans";
+        font-weight: 400;
+        src: url("../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Sans";
+        font-weight: 600;
+        src: url("../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        font-weight: 400;
+        src: url("../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        font-weight: 500;
+        src: url("../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2");
+      }
+
+      :root {
+        --paper: #edf1f7;
+        --plate: #fafcff;
+        --ink: #0e131a;
+        --ink-1: #1e232a;
+        --ink-muted: #474c56;
+        --hinge: #657082;
+        --line-construction: #e0e6ef;
+        --line-frame: #b4bdcb;
+        --accent: #1f3fd8;
+        --accent-press: #1a34b0;
+        --success: #1a7a50;
+        --success-soft: #ebf5f0;
+        --serif: "IBM Plex Serif", Georgia, serif;
+        --sans: "IBM Plex Sans", system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+
+      /* Bench paper with the site's graph grid: fine lines every 28px and a
+         heavier one every fifth. */
+      body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 404px;
+        column-gap: 60px;
+        padding: 56px 72px 52px 64px;
+        background-color: var(--paper);
+        background-image:
+          repeating-linear-gradient(to right, rgba(31, 63, 216, 0.07) 0 1px, transparent 1px 140px),
+          repeating-linear-gradient(to bottom, rgba(31, 63, 216, 0.07) 0 1px, transparent 1px 140px),
+          repeating-linear-gradient(to right, rgba(31, 63, 216, 0.04) 0 1px, transparent 1px 28px),
+          repeating-linear-gradient(to bottom, rgba(31, 63, 216, 0.04) 0 1px, transparent 1px 28px);
+        color: var(--ink-1);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* --- Left: lockup, title, source ------------------------------- */
+
+      .copy {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .lockup {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 27px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .lockup svg {
+        width: 44px;
+        height: 44px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        font-family: var(--mono);
+        font-size: 16px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+      }
+      .eyebrow::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .headline {
+        margin-top: auto;
+      }
+      h1 {
+        margin-top: 22px;
+        font-family: var(--serif);
+        font-size: 66px;
+        font-weight: 300;
+        line-height: 1.09;
+        letter-spacing: -0.022em;
+        color: var(--ink);
+      }
+      h1 em {
+        font-style: italic;
+      }
+
+      .source {
+        margin-top: auto;
+        font-family: var(--mono);
+        font-size: 17px;
+        color: var(--hinge);
+      }
+
+      /* --- Right: the run's token count, framed by inspection brackets --- */
+
+      .frame {
+        position: relative;
+        align-self: center;
+        padding: 16px;
+      }
+      .frame i {
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        border: 0 solid var(--ink-1);
+      }
+      .frame i:nth-child(1) {
+        top: 0;
+        left: 0;
+        border-width: 2.5px 0 0 2.5px;
+      }
+      .frame i:nth-child(2) {
+        top: 0;
+        right: 0;
+        border-width: 2.5px 2.5px 0 0;
+      }
+      .frame i:nth-child(3) {
+        right: 0;
+        bottom: 0;
+        border-width: 0 2.5px 2.5px 0;
+      }
+      .frame i:nth-child(4) {
+        bottom: 0;
+        left: 0;
+        border-width: 0 0 2.5px 2.5px;
+      }
+
+      .sheet {
+        overflow: hidden;
+        border-radius: 8px;
+        background: var(--plate);
+        box-shadow:
+          0 0 0 1px rgba(14, 19, 26, 0.06),
+          0 2px 6px rgba(30, 35, 42, 0.08),
+          0 18px 44px rgba(30, 35, 42, 0.14);
+      }
+
+      .sheet-head {
+        border-bottom: 2px solid var(--ink-1);
+        padding: 20px 24px 17px;
+      }
+      .sheet-head .eyebrow {
+        font-size: 13.5px;
+      }
+      .sheet-head .eyebrow::before {
+        width: 8px;
+        height: 8px;
+      }
+      .sheet-head p + p {
+        margin-top: 8px;
+        font-size: 16.5px;
+        line-height: 1.4;
+        color: var(--ink-muted);
+      }
+
+      .rows {
+        padding: 6px 24px 4px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-top: 1px solid var(--line-construction);
+        padding-block: 12px;
+        font-size: 18px;
+        color: var(--ink);
+      }
+      .row:first-child {
+        border-top: 0;
+      }
+      .row span:last-child {
+        font-family: var(--mono);
+        font-size: 17.5px;
+        color: var(--ink-1);
+      }
+
+      .total {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        border-top: 1px dashed var(--line-frame);
+        padding: 20px 24px 22px;
+      }
+      .total .label {
+        padding-bottom: 9px;
+        font-family: var(--mono);
+        font-size: 13.5px;
+        line-height: 1.55;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--hinge);
+      }
+      .total .price {
+        font-family: var(--serif);
+        font-size: 78px;
+        font-weight: 300;
+        line-height: 0.86;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+      }
+      .total .price b {
+        font-weight: 300;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="copy">
+      <div class="lockup">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#0e131a">
+          <path d="M4 13V4H13M35 4H44V13M44 35V44H35M13 44H4V35" stroke-width="2.5" stroke-linecap="square" />
+          <path
+            d="M17.5 10.5H30.5M20.5 10.5V19L11.5 37.5H36.5L27.5 19V10.5M15.5 29.5H32.5"
+            stroke-width="2.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <circle cx="24" cy="33.5" r="2.4" fill="#1f3fd8" stroke="none" />
+        </svg>
+        TriageLab
+      </div>
+
+      <div class="headline">
+        <p class="eyebrow">Blog · 13 Nov 2026</p>
+        <h1>Six-cent triage, local models, and <em>cheap escalations</em></h1>
+      </div>
+
+      <p class="source">bondrenai.github.io/TriageLab</p>
+    </div>
+
+    <div class="frame">
+      <i></i><i></i><i></i><i></i>
+      <div class="sheet">
+        <div class="sheet-head">
+          <p class="eyebrow">Recorded run</p>
+          <p>One sandboxed investigation on a 27B open-weight model, 18 turns</p>
+        </div>
+        <div class="rows">
+          <div class="row"><span>Input, cached</span><span>752,512</span></div>
+          <div class="row"><span>Input, fresh</span><span>51,255</span></div>
+          <div class="row"><span>Output and reasoning</span><span>30,539</span></div>
+        </div>
+        <div class="total">
+          <p class="label">Hosted API<br />cost per run</p>
+          <p class="price"><b>$</b>0.06</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
