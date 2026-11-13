@@ -73,8 +73,9 @@ test-sandbox-integration:
 manifest:
 	$(GO) run ./cmd/triagelab manifest
 demo:
-	$(GO) run ./cmd/triagelab investigate --config triagelab.example.json --description-file examples/config-bug/issue.md --repo examples/config-bug
+	$(GO) run ./cmd/triagelab investigate --config triagelab.example.json --description-file examples/missing-orders/ticket.md --repo examples/missing-orders/repro
 chart-lint:
 	$(HELM) lint chart/triagelab --set token.value=lint-placeholder
 	$(HELM) template chart/triagelab --set token.value=lint-placeholder > /dev/null
 	$(HELM) template chart/triagelab --set token.secretName=lint-placeholder > /dev/null
+	$(HELM) template chart/triagelab --include-crds --set token.secretName=lint-placeholder --set gitops.enabled=true --set 'gitops.secretNames[0]=ticket-token' > /dev/null

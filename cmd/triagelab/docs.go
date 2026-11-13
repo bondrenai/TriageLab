@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/bondrenai/TriageLab/internal/investigation"
@@ -41,12 +42,12 @@ func cliCommandDocs() []commandDoc {
 	}
 	return []commandDoc{
 		{name: "investigate", usage: "triagelab investigate [options]", purpose: "Run one investigation: collect the bounded case, create a standalone sandbox, run the kagent investigator, and write JSON and Markdown reports.", flags: runCommand("investigate")},
-		{name: "pause", usage: "triagelab pause --report <report.json> [options]", purpose: "Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.", flags: runCommand("pause")},
+		{name: "pause", usage: "triagelab pause --report <report.json> [options]", purpose: "Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused. Requires the TriageLab kagent controller fork; release controllers keep running without pausing.", flags: runCommand("pause")},
 		{name: "resume", usage: "triagelab resume --report <report.json> --description <new-information> [options]", purpose: "Continue a paused manual investigation in its saved sandbox and session with a fresh bounded turn. Saved settings and tools are reused; ticket continuations require review in the signed-in workspace.", flags: runCommand("resume")},
 		{name: "close", usage: "triagelab close --report <report.json> [options]", purpose: "Release an investigation's retained session and sandbox using its private lifecycle record. Keep the reports and previous rounds.", flags: runCommand("close")},
 		{name: "serve", usage: "triagelab serve [options]", purpose: "Serve the authenticated browser workspace on loopback, sharing the CLI's investigation workflow and report directory.", flags: runCommand("serve")},
-		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
-		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.", flags: runCommand("cleanup")},
+		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the kagent sandbox API is reachable with the configured credentials, and report whether durable pause retention is available or a release controller runs without it. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
+		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup. When a lifecycle journal exists, use its recorded resource identities and close the run. For older runs, use the saved report. The endpoint and user must match the configuration, and the namespace must be allowed.", flags: runCommand("cleanup")},
 		{name: "manifest", usage: "triagelab manifest [options]", purpose: "Render the kagent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.", flags: func() *flag.FlagSet {
 			return newFlagSet("triagelab manifest", registerManifestFlags)
 		}},
@@ -92,6 +93,7 @@ var configFieldDocs = map[string]string{
 	"request_timeout":       "Per HTTP request timeout in seconds (at most 60).",
 	"max_output_bytes":      "Cap on captured process output per read (at most 4 MiB).",
 	"manual_agents":         "Optional map of agent name to extra MCP tool names for --agent runs; an empty tool list means the six investigation tools only.",
+	"run_namespaces":        "Optional allowlist of up to eight additional Kubernetes namespaces where investigations may run. Entries must be unique valid namespace names and must not repeat namespace. Runs outside the default namespace and this list are refused; this setting does not create namespaces or grant access.",
 	"allow_cluster_http":    "Permit plain-HTTP endpoints on *.svc or *.svc.cluster.local service names, for a dedicated in-cluster deployment whose pod network is the trust boundary.",
 }
 
@@ -108,6 +110,7 @@ var exampleFileDocs = []struct {
 	{file: "triagelab.mcp.example.json", title: "HTTP MCP access", description: "Optional file passed to `serve --mcp` defining scoped machine credentials; see [results chat and MCP](/TriageLab/guides/chat-mcp/)."},
 	{file: "tickets.example.json", title: "Zendesk ticket source", description: "Passed to `serve --tickets` for the Zendesk case source; see [Zendesk tickets](/TriageLab/guides/tickets-zendesk/)."},
 	{file: "github.example.json", title: "GitHub issue source", description: "Passed to `serve --tickets` for one GitHub.com repository; see [GitHub issues](/TriageLab/guides/tickets-github/)."},
+	{file: "gitlab.example.json", title: "GitLab issue source", description: "Passed to `serve --tickets` for one GitLab.com or self-managed project; see [GitLab issues](/TriageLab/guides/tickets-gitlab/)."},
 	{file: "linear.example.json", title: "Linear issue source", description: "Passed to `serve --tickets` for one Linear team; see [Linear issues](/TriageLab/guides/tickets-linear/)."},
 	{file: "bondren.example.json", title: "Bondren issue source", description: "Passed to `serve --tickets` for one Bondren workspace origin; see [Bondren issues](/TriageLab/guides/tickets-bondren/)."},
 	{file: "jira.example.json", title: "Jira issue source", description: "Passed to `serve --tickets` for one Jira Cloud site; see [Jira issues](/TriageLab/guides/tickets-jira/)."},
@@ -142,12 +145,25 @@ func flagTable(flags *flag.FlagSet) string {
 		case "[]":
 			def = "(repeatable)"
 		}
-		fmt.Fprintf(&b, "| --%s | %s | %s |\n", f.Name, def, markdownCell(f.Usage))
+		fmt.Fprintf(&b, "| `--%s` | %s | %s |\n", f.Name, def, markdownCell(f.Usage))
 	})
 	return b.String()
 }
 
+// flagReference matches an existing code span or a bare --flag. Markdown
+// renderers with smart punctuation turn a bare double hyphen into a dash, so
+// a flag named in running text must be a code span to stay copyable.
+var flagReference = regexp.MustCompile("`[^`]*`|\\B--[a-z][a-z0-9-]*")
+
+// markdownCell prepares text for a Markdown table cell: bare --flag
+// references become code spans and pipes are escaped.
 func markdownCell(s string) string {
+	s = flagReference.ReplaceAllStringFunc(s, func(match string) string {
+		if strings.HasPrefix(match, "`") {
+			return match
+		}
+		return "`" + match + "`"
+	})
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 
@@ -199,6 +215,8 @@ func jsonTypeName(t reflect.Type) string {
 		return "boolean"
 	case reflect.Map:
 		return "object"
+	case reflect.Slice:
+		return "array"
 	default:
 		return t.Kind().String()
 	}

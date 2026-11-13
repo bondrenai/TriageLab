@@ -50,8 +50,8 @@ type Config struct {
 
 // WithToken returns a copy of the configuration that authorizes with the
 // given stored credential instead of a process environment variable. The
-// credential applies to the GitHub, Linear, Bondren, and Jira sources; Zendesk
-// keeps its browser OAuth flow.
+// credential applies to the GitHub, GitLab, Linear, Bondren, and Jira
+// sources; Zendesk keeps its browser OAuth flow.
 func (config Config) WithToken(token string) Config {
 	config.storedToken = token
 	return config
@@ -149,6 +149,7 @@ func (config Config) provider() string {
 func (config Config) Provider() string { return config.provider() }
 
 var githubRepository = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$`)
+var gitlabProject = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}){1,4}$`)
 var tokenEnvironment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 var linearWorkspace = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,56}[a-z0-9]$`)
 var linearTeamKey = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,9}$`)
@@ -191,6 +192,34 @@ func validJiraOrigin(origin string) bool {
 		return true
 	}
 	return u.Scheme == "http" && slices.Contains([]string{"127.0.0.1", "[::1]", "localhost"}, host)
+}
+
+// validGitLabOrigin accepts a bare HTTPS origin for GitLab.com or a
+// self-managed GitLab instance. Plain HTTP is allowed only on loopback hosts
+// for local development fixtures.
+func validGitLabOrigin(origin string) bool {
+	if len(origin) > 200 {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.User != nil || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery ||
+		u.Fragment != "" || u.RawFragment != "" || (u.Path != "" && u.Path != "/") {
+		return false
+	}
+	host := strings.TrimSuffix(u.Host, ":"+u.Port())
+	if u.Scheme == "https" && host != "" {
+		return true
+	}
+	return u.Scheme == "http" && slices.Contains([]string{"127.0.0.1", "[::1]", "localhost"}, host)
+}
+
+// gitLabOrigin returns the origin a GitLab configuration connects to,
+// defaulting to GitLab.com.
+func gitLabOrigin(config Config) string {
+	if config.Origin == "" {
+		return "https://gitlab.com"
+	}
+	return strings.TrimSuffix(config.Origin, "/")
 }
 
 func (config Config) validate() error {
@@ -238,7 +267,7 @@ func (config Config) validate() error {
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" || config.Email != "" ||
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("Bondren requires an HTTPS origin and a token from token_env or the connection registry with a tag policy; Zendesk, GitHub, Linear, priority, field, and public-comment settings do not apply")
+			return errors.New("Bondren requires an HTTPS origin and a token from token_env or the connection registry with a tag policy; Zendesk, GitHub, GitLab, Linear, priority, field, and public-comment settings do not apply")
 		}
 		return nil
 	}
@@ -249,13 +278,25 @@ func (config Config) validate() error {
 			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" ||
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
-			return errors.New("Jira requires an atlassian.net site origin, the Atlassian account email, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, Linear, and Bondren connection, priority, field, and public-comment settings do not apply")
+			return errors.New("Jira requires an atlassian.net site origin, the Atlassian account email, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, GitLab, Linear, and Bondren connection, priority, field, and public-comment settings do not apply")
+		}
+		return nil
+	}
+	if config.provider() == "gitlab" {
+		if !gitlabProject.MatchString(config.Repository) || len(config.Repository) > 200 ||
+			(config.Origin != "" && !validGitLabOrigin(config.Origin)) ||
+			!config.hasCredential() || !config.tokenEnvName() ||
+			config.Workspace != "" || config.Team != "" ||
+			config.Subdomain != "" || config.ClientID != "" || config.RedirectURI != "" || config.Email != "" ||
+			config.InternalNotes || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
+			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
+			return errors.New("GitLab requires a group/project path, an optional HTTPS origin, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, Linear, Bondren, and Jira connection, priority, field, and internal-note settings do not apply")
 		}
 		return nil
 	}
 	if config.provider() != "zendesk" || config.Repository != "" || config.TokenEnv != "" || config.Origin != "" ||
 		config.Email != "" || config.InvestigationComments {
-		return errors.New("ticket source must be zendesk, github, linear, bondren, or jira with its own connection settings")
+		return errors.New("ticket source must be zendesk, github, gitlab, linear, bondren, or jira with its own connection settings")
 	}
 	if !subdomain.MatchString(config.Subdomain) || !oauthIdentifier.MatchString(config.ClientID) ||
 		p.Tag == "" || len(p.Tag) > 100 ||
@@ -305,10 +346,13 @@ func (p Policy) exclusion(provider string, t ticket) string {
 // are open for work; completed and canceled issues are not. Bondren mailbox
 // states keep an issue workable until it is closed. Jira statuses map through
 // their status category: to-do and in-progress categories are open for work.
+// GitLab issues are workable while their state is opened.
 func openForInvestigation(provider, status string) bool {
 	switch provider {
 	case "github":
 		return status == "open"
+	case "gitlab":
+		return status == "opened"
 	case "linear":
 		return status == "backlog" || status == "unstarted" || status == "started"
 	case "bondren":

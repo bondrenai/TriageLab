@@ -17,12 +17,12 @@ WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
-COPY docs/verification/agent-demo.json /docs/verification/agent-demo.json
+COPY docs/verification/missing-orders-demo.json /docs/verification/missing-orders-demo.json
 RUN npm run build
 
 # Build the statically linked CLI, cross-compiled for the target platform. The
 # OpenTelemetry SDK is vendored, so the image build never reaches the network.
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev

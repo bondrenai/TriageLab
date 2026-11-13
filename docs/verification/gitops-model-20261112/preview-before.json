@@ -1,0 +1,58 @@
+{
+  "ticket_id": "1",
+  "account": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction",
+  "source": "gitlab",
+  "url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1",
+  "title": "Deterministic timeout: configured five milliseconds instead of five seconds",
+  "state": "approval",
+  "reason": "Evidence is ready. Approve the proposed sandbox run.",
+  "facts": [
+    {
+      "label": "Python version",
+      "value": "3.12",
+      "comment_id": "656444614818268699",
+      "url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1"
+    },
+    {
+      "label": "Expected",
+      "value": "Allow five seconds for a response; downstream responds in 120 milliseconds.",
+      "comment_id": "656444614818268699",
+      "url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1"
+    },
+    {
+      "label": "Actual",
+      "value": "Every health request fails with TimeoutError after five milliseconds.",
+      "comment_id": "656444614818268699",
+      "url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1"
+    }
+  ],
+  "files": [
+    {
+      "path": "app.py",
+      "sha256": "434fa9870e0cf5686bec6159fd8fa36fa197e0927a01587836aed8c47ef98c76",
+      "size_bytes": 1080,
+      "source_url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/c2cb1ce7df67e27285828556f694bb2a/app.py"
+    },
+    {
+      "path": "config.json",
+      "sha256": "0eaa29f86548b4bcf25b0919d46d2f311ef0b578a3ae871f27248041e3599204",
+      "size_bytes": 87,
+      "source_url": "http://127.0.0.1:18900/gitops-model-verification-2/timeout-reproduction/-/issues/1/uploads/7fddf7095af5a19a35d3cc17cbe7a40e/config.json"
+    }
+  ],
+  "plan": "859ef325d71544da749fa7bd4cee782b93422fe394a592ca2ea8198026776214",
+  "plan_expires": "2026-11-12T19:34:33.897403663Z",
+  "checked_at": "2026-11-12T19:19:33.897403663Z",
+  "approved_at": "0001-01-01T00:00:00Z",
+  "paused": false,
+  "revision": "6c62ef5f2dcdd7ebccb62eadf5b4d6c372361193c482d2f3052dbf6eea9aaa18",
+  "agent": "triagelab-investigator",
+  "sandbox": "triagelab-python",
+  "matched_tag": "gitops-e2e",
+  "procedure_revision": "e8873ef1f07ff086504e740b3feec60ebf8c8bbf665d56d1c3bed101e1cb6778",
+  "requester": {
+    "id": "1",
+    "name": "Administrator",
+    "url": "http://127.0.0.1:18900/root"
+  }
+}

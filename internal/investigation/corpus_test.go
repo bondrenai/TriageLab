@@ -121,9 +121,14 @@ func TestCorpusSelection(t *testing.T) {
 		}
 		return result
 	}
-	all, err := corpus.selectCases("  ")
+	all, err := corpus.selectCases("all")
 	if err != nil || !slices.Equal(names(all), []string{"alpha", "beta", "gamma"}) {
 		t.Fatalf("empty selection: %v %v", names(all), err)
+	}
+	smoke := corpusManifest{Cases: []corpusCase{{Name: "config-bug"}, {Name: "other-case"}}}
+	selected, err := smoke.selectCases("  ")
+	if err != nil || len(selected) != 1 || selected[0].Name != "config-bug" {
+		t.Fatalf("default selection: %v, %v", selected, err)
 	}
 	some, err := corpus.selectCases(" gamma, alpha,gamma ")
 	if err != nil || !slices.Equal(names(some), []string{"alpha", "gamma"}) {

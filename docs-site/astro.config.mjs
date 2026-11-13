@@ -39,17 +39,19 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Browser workspace", slug: "guides/workspace" },
-			{ label: "Results chat and MCP", slug: "guides/chat-mcp" },
+            { label: "Results chat and MCP", slug: "guides/chat-mcp" },
             { label: "Pause and resume", slug: "guides/pause-resume" },
             { label: "Sign-in and roles", slug: "guides/sign-in" },
             { label: "API clients (OAuth)", slug: "guides/api-clients" },
             { label: "Defining agents", slug: "guides/agents" },
             { label: "Zendesk tickets", slug: "guides/tickets-zendesk" },
             { label: "GitHub issues", slug: "guides/tickets-github" },
+            { label: "GitLab issues", slug: "guides/tickets-gitlab" },
             { label: "Linear issues", slug: "guides/tickets-linear" },
             { label: "Bondren issues", slug: "guides/tickets-bondren" },
             { label: "Jira issues", slug: "guides/tickets-jira" },
             { label: "Helm deployment", slug: "guides/helm" },
+            { label: "GitOps", slug: "guides/gitops" },
             { label: "Telemetry", slug: "guides/telemetry" },
           ],
         },
@@ -73,6 +75,10 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/global.css"],
+      components: {
+        Hero: "./src/components/Hero.astro",
+        PageTitle: "./src/components/PageTitle.astro",
+      },
       plugins: [
         starlightLinksValidator(),
         blog({

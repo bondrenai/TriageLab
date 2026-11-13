@@ -11,5 +11,6 @@
   "max_experiments": 8,
   "poll_interval": 2,
   "request_timeout": 20,
-  "max_output_bytes": 1048576
+  "max_output_bytes": 1048576,
+  "run_namespaces": ["triagelab-runs"]
 }

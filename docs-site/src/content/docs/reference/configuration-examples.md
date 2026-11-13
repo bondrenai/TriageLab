@@ -25,7 +25,8 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "max_experiments": 8,
   "poll_interval": 2,
   "request_timeout": 20,
-  "max_output_bytes": 1048576
+  "max_output_bytes": 1048576,
+  "run_namespaces": ["triagelab-runs"]
 }
 ```
 
@@ -111,6 +112,26 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "source": "github",
   "repository": "your-owner/your-repository",
   "token_env": "TRIAGELAB_GITHUB_TOKEN",
+  "poll_seconds": 60,
+  "investigation_comments": true,
+  "policy": {
+    "tag": "triagelab_python_timeout",
+    "auto_questions": true,
+    "max_questions": 2
+  }
+}
+```
+
+## GitLab issue source
+
+`gitlab.example.json` — Passed to `serve --tickets` for one GitLab.com or self-managed project; see [GitLab issues](/TriageLab/guides/tickets-gitlab/).
+
+```json
+{
+  "source": "gitlab",
+  "repository": "your-group/your-project",
+  "origin": "https://gitlab.example.com",
+  "token_env": "TRIAGELAB_GITLAB_TOKEN",
   "poll_seconds": 60,
   "investigation_comments": true,
   "policy": {

@@ -54,7 +54,7 @@ func resumeSettings(state investigation.State) string {
 }
 
 func (s *Server) connectionMatches(config investigation.Config) bool {
-	return config.Endpoint == s.config.Endpoint && config.Namespace == s.config.Namespace &&
+	return config.Endpoint == s.config.Endpoint && s.config.AllowsNamespace(config.Namespace) &&
 		config.UserID == s.config.UserID && config.AllowClusterHTTP == s.config.AllowClusterHTTP
 }
 
@@ -65,7 +65,7 @@ func (s *Server) lifecycle(id string, state investigation.State, active bool) li
 		view.Message = "Restore this investigation's upstream connection and identity before continuing or closing it."
 		return view
 	}
-	view.CanPause = active && state.Phase == "running"
+	view.CanPause = active && state.Phase == "running" && state.Retention
 	view.CanResume = !active && state.SandboxID != "" && state.SessionID != "" &&
 		((state.Round < 32 && (state.Phase == "paused" || state.Phase == "pausing")) || state.Phase == "resuming")
 	view.CanClose = !active && state.Phase != "closed" && (state.SandboxID != "" || state.SessionID != "" || state.SandboxCreationPending || state.SessionCreationPending)
@@ -102,6 +102,10 @@ func (s *Server) pauseRun(w http.ResponseWriter, _ *http.Request, id string) {
 		return
 	}
 	if err := investigation.RequestPause(filepath.Join(s.directory, id)); err != nil {
+		if errors.Is(err, investigation.ErrRetentionUnsupported) {
+			fail(w, http.StatusConflict, "This kagent controller cannot retain a paused workspace. Let the investigation finish or stop it; pausing requires the TriageLab controller fork.")
+			return
+		}
 		fail(w, http.StatusConflict, "The investigation cannot pause at this stage. Refresh its status and try again.")
 		return
 	}

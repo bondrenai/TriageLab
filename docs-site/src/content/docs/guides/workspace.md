@@ -99,10 +99,10 @@ CEL receives a `ticket` map with these properties from the current source read.
 
 | Property | Value |
 | --- | --- |
-| `source` | `zendesk`, `github`, `linear`, `bondren`, or `jira` |
+| `source` | `zendesk`, `github`, `gitlab`, `linear`, `bondren`, or `jira` |
 | `id`, `requester_id` | Integer identifiers used by the connector |
 | `subject` | Ticket title |
-| `status` | Connector status, including Linear state type and Jira status-category key |
+| `status` | Connector status, including Linear state type, GitLab issue state, and Jira status-category key |
 | `priority` | Zendesk priority, or an empty string for connectors that do not collect it |
 | `tags` | List of tags or labels, empty when none are present |
 | `custom_fields` | Map of Zendesk custom-field IDs as string keys to their JSON values, empty for other connectors |
@@ -151,8 +151,9 @@ HTTP MCP. [Start investigations from a policy workflow](/TriageLab/guides/chat-m
 - The server accepts **one investigation at a time**. Closing a tab leaves a
   run going; use **Cancel** to stop it.
 - Server shutdown cancels active work and allows bounded cleanup. After an
-  abrupt crash, inspect the report and use **Retry cleanup** on its page (user
-  role or higher) or `triagelab cleanup` if resources remain.
+  abrupt crash, use **Close investigation** for runs with a lifecycle journal.
+  Older reports offer **Retry cleanup** to users and admins when resources
+  may remain. You can also use `triagelab cleanup --report`.
 - The workspace can also show live kagent deployment status and save kagent
   resources — see [defining agents](/TriageLab/guides/agents/).
 
@@ -163,8 +164,10 @@ loopback port 5173 and proxies `/api` to the Go server; forward that port too
 and open `http://127.0.0.1:5173` for hot reload. Before landing a change, run
 `make check-ui`, `make build-ui`, and `make check` on the VM.
 
-The API is a local interface for a small team, not a hosted service. Report
-text renders as text, never executable HTML; the Go service normalizes uploads
+The API is a local interface for a small team, not a hosted service. Command
+output renders literally. Case descriptions, agent analysis and chat answers
+render a small Markdown subset as page elements: raw HTML and images stay literal
+text, and links show their URL without becoming clickable; the Go service normalizes uploads
 with the same ingestion package as the CLI and invokes the same investigator.
 No database, queue service, browser model SDK, or alternate execution backend
 is introduced.

@@ -70,6 +70,15 @@ tickets:
     key: ""    # defaults to tickets.config.token_env
     value: ""
 
+# Optional namespaced reconciliation of TicketConnection/TicketProcedure CRs.
+# Install chart/triagelab/crds before enabling. One workspace owns each name.
+# Only these same-namespace Secrets may be fetched (get only, no list/watch).
+gitops:
+  enabled: false
+  workspace: "" # defaults to the release's full name
+  pollSeconds: 30
+  secretNames: []
+
 # Optional web sign-in (docs/ui.md). auth.config renders verbatim to
 # auth.json; an `oidc` section enables single sign-on and its
 # client_secret_env names the environment variable holding the client
@@ -113,8 +122,8 @@ persistence:
 serviceAccount:
   create: true
   name: ""
-  # The workspace reads no cluster state; deployment status and resource
-  # writes are not enabled by this chart.
+  # GitOps uses an explicit projected token when enabled, independent of
+  # automatic mounting. Deployment status/resource editing remain disabled.
   automountServiceAccountToken: false
 
 # Extra environment variables (name/value only) appended after the token.

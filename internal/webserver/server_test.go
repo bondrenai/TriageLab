@@ -40,6 +40,9 @@ func (b testBackend) TaskItems(context.Context, string, string) ([]map[string]an
 func (b testBackend) CancelTask(context.Context, string, string) error {
 	return fmt.Errorf("unexpected task cancellation")
 }
+func (testBackend) SandboxRetention(context.Context) (bool, error) {
+	return true, nil
+}
 
 func newTestServer(t *testing.T, backend investigation.Backend) *Server {
 	t.Helper()

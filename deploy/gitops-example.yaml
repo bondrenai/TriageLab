@@ -1,0 +1,58 @@
+# Use your explicit disposable-cluster context; change namespace/workspace to
+# match the chart release. This example authorizes no automatic runs or sends.
+apiVersion: triagelab.bondren.ai/v1alpha1
+kind: TicketProcedure
+metadata:
+  name: python-timeout
+  namespace: triagelab
+spec:
+  workspace: support
+  procedure:
+    policy:
+      tag: reproduce
+      auto_questions: false
+      max_questions: 0
+      auto_runs: false
+    evidence:
+      - kind: field
+        match: Expected
+        required: true
+        question: "Expected: What behavior did you expect?"
+      - kind: field
+        match: Actual
+        required: true
+        question: "Actual: What happened instead?"
+      - kind: attachment
+        match: .py
+        required: true
+        question: Attach a small Python reproduction with secrets removed.
+    clarification: Please provide the following reproduction details.
+    default_agent: triagelab-investigator
+    sandbox: triagelab-python
+    routes: []
+---
+apiVersion: triagelab.bondren.ai/v1alpha1
+kind: TicketConnection
+metadata:
+  name: github-support
+  namespace: triagelab
+spec:
+  workspace: support
+  label: GitHub support
+  config:
+    source: github
+    repository: YOUR-ORG/YOUR-REPO
+    poll_seconds: 60
+    investigation_comments: false
+    policy:
+      tag: reproduce
+      auto_questions: false
+      max_questions: 0
+      auto_runs: false
+  # Omit for anonymous reads of public GitHub issues. The chart's
+  # gitops.secretNames must explicitly include github-support-token.
+  tokenSecretRef:
+    name: github-support-token
+    key: token
+  procedureRefs:
+    - python-timeout

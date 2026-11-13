@@ -79,6 +79,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/* Render-time configuration checks so mistakes fail at install, not as a
      crash-looping pod. */}}
 {{- define "triagelab.checks" -}}
+{{- if and .Values.gitops.enabled (or (lt (int .Values.gitops.pollSeconds) 5) (gt (int .Values.gitops.pollSeconds) 300)) -}}
+{{- fail "gitops.pollSeconds must be between 5 and 300" -}}
+{{- end -}}
+{{- if gt (len .Values.gitops.secretNames) 8 -}}
+{{- fail "gitops.secretNames permits at most eight named Secrets" -}}
+{{- end -}}
 {{- if gt (int .Values.replicaCount) 1 -}}
 {{- fail "replicaCount must stay at 1: the workspace is single-user with in-memory active-run and ticket state" -}}
 {{- end -}}

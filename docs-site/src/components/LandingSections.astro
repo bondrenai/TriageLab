@@ -1,598 +1,680 @@
 ---
+/**
+ * The home page's designed sections, between the hero (Hero.astro) and the
+ * prose notes and closing that follow in index.mdx.
+ *
+ * Each section opens with a label led by the evidence dot and a serif
+ * heading closed by the cut rule. Cards are 8px plates in a 12px tray.
+ * Solid means settled or observed; dashed means not yet.
+ */
+import { Image } from "astro:assets";
 import HairlineFigure from "./HairlineFigure.astro";
 import SystemMap from "./diagrams/SystemMap.astro";
+import walkthroughPoster from "../assets/walkthrough-poster.jpg";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const walkthroughId = "BXYmfvuqTPg";
+
+const stages = [
+  {
+    figure: "sieve",
+    label: "A stack of test sieves; the top one rises clear of the stack",
+    title: "Route",
+    body: "Ticket tags and labels select a procedure, which sets the checklist, clarification policy, agent, and sandbox template for the case.",
+  },
+  {
+    figure: "query",
+    label: "A question mark built as a solid, its dot a loose ball",
+    title: "Classify",
+    body: "The procedure’s checklist names the facts and files the case needs. Facts found in the ticket are sanitized into evidence, and anything missing becomes a clarification question.",
+  },
+  {
+    figure: "padlock",
+    label: "A padlock whose shackle springs open",
+    title: "Review or automate",
+    body: "Review the sanitized facts, file hashes, agent, and limits, or enable a policy to start when evidence is ready. Freshness is checked again at launch.",
+  },
+  {
+    figure: "terminal",
+    label: "A terminal window; lines lift off the screen under the pointer",
+    title: "Investigate",
+    body: "Each run gets its own disposable gVisor or microVM sandbox with egress denied. A kagent investigator runs the experiments, and TriageLab records every process directly from the sandbox.",
+  },
+  {
+    figure: "format",
+    label: "A formatter squaring crooked lines to their indents",
+    title: "Report",
+    body: "JSON and Markdown reports keep what was observed separate from the model’s hypothesis. A reviewed summary can go back to the ticket with the full evidence trail.",
+  },
+];
+
+const features = [
+  {
+    title: "Evidence, not answers",
+    body: "Process state, exit codes, and output come straight from the sandbox, never from the model’s say-so. Any explanation of the cause is labeled as a hypothesis.",
+    link: { text: "Read the article", href: `${base}/articles/evidence-not-answers/` },
+  },
+  {
+    title: "Sandboxed by default",
+    body: "Every run uses a disposable gVisor or microVM sandbox. Egress is denied by default, and watchdogs enforce time and size limits. kagent runs the investigator; Agent Substrate provides the isolation.",
+    link: { text: "Architecture", href: `${base}/reference/architecture/` },
+  },
+  {
+    title: "Review by default",
+    body: "Review the exact evidence and run settings, or explicitly enable automatic starts. Launch checks prevent outdated plans from starting.",
+  },
+  {
+    title: "Your tracker stays the record",
+    body: "Zendesk, GitHub, GitLab, Linear, Bondren, and Jira tickets enter the same workflow through policy-checked sources. The conversation stays in your tracker.",
+    link: { text: "Ticket guides", href: `${base}/guides/tickets-zendesk/` },
+  },
+];
 ---
 
-<div class="landing">
+<div class="landing not-content">
+  <section class="section walkthrough" id="walkthrough">
+    <div class="tl-wrap walkthrough-grid">
+      <div class="walkthrough-copy" data-reveal>
+        <p class="tl-eyebrow">Two-minute walkthrough</p>
+        <h2 class="tl-display">From a GitHub issue to a verified fix</h2>
+        <p class="tl-lede">
+          A customer&rsquo;s GitHub issue blames lock retries for 11 missing
+          orders. A ticket procedure starts the investigation, a replay of
+          the customer&rsquo;s own data loses the same orders with zero
+          retries, adding the order ID to the cursor delivers all 625, and
+          the reviewed findings go back to the issue. The customer is
+          fiction; the code, the data, and the run are real.
+        </p>
+        <p class="walkthrough-note">
+          Playing loads YouTube&rsquo;s privacy-enhanced player. Nothing is
+          requested from YouTube until then.
+        </p>
+      </div>
+      <div class="tray player-tray" data-reveal style="--reveal-delay: 80ms">
+        <a
+          class="player"
+          href={`https://www.youtube.com/watch?v=${walkthroughId}`}
+          data-youtube-id={walkthroughId}
+          aria-label="Play the TriageLab walkthrough video (2 minutes 8 seconds)"
+        >
+          <Image
+            src={walkthroughPoster}
+            alt="TriageLab walkthrough: a GitHub issue, reproduced in a sandbox. The replay output shows 0 lock retries and 11 rows that never reached the sink."
+            widths={[640, 960, 1440]}
+            sizes="(max-width: 64rem) 100vw, 44rem"
+          />
+        </a>
+      </div>
+    </div>
+  </section>
+
   <section class="audience" aria-label="Who TriageLab is for">
-    <p class="overline">Who it&rsquo;s for</p>
-    <p class="audience-lead">
-      Platform, SRE, and support engineers who see the same technical tickets
-      week after week (timeouts, misconfigurations, failed deploys) and want
-      every answer backed by evidence, not just a confident reply.
-    </p>
-    <ul class="chips">
-      <li>On-call &amp; platform teams</li>
-      <li>Support engineering</li>
-      <li>Small teams on Kubernetes</li>
-    </ul>
+    <div class="tl-wrap audience-grid" data-reveal>
+      <p class="tl-eyebrow">Who it&rsquo;s for</p>
+      <div class="audience-body">
+        <p class="audience-lead">
+          Platform, SRE, and support engineers who see the same technical
+          tickets week after week (timeouts, misconfigurations, failed
+          deploys) and want every answer backed by evidence, not just a
+          confident reply.
+        </p>
+        <ul class="chips" role="list">
+          <li>On-call &amp; platform teams</li>
+          <li>Support engineering</li>
+          <li>Small teams on Kubernetes</li>
+        </ul>
+      </div>
+    </div>
   </section>
 
   <section class="section" id="how-a-case-moves">
-    <p class="overline">The workflow</p>
-    <h2>How a case moves</h2>
-    <ol class="pipeline">
-      <li class="stage">
-        <HairlineFigure
-          name="sieve"
-          label="A stack of test sieves; the top one rises clear of the stack"
-        />
-        <p class="stage-num">01</p>
-        <h3>Route</h3>
-        <p>
-          Ticket tags and labels select a procedure, which sets the
-          checklist, clarification policy, agent, and sandbox template for
-          the case.
-        </p>
-      </li>
-      <li class="stage">
-        <HairlineFigure
-          name="query"
-          label="A question mark built as a solid, its dot a loose ball"
-        />
-        <p class="stage-num">02</p>
-        <h3>Classify</h3>
-        <p>
-          The procedure&rsquo;s checklist names the facts and files the case
-          needs. Facts found in the ticket are sanitized into evidence, and
-          anything missing becomes a clarification question.
-        </p>
-      </li>
-      <li class="stage">
-        <HairlineFigure
-          name="padlock"
-          label="A padlock whose shackle springs open"
-        />
-        <p class="stage-num">03</p>
-        <h3>Review or automate</h3>
-        <p>
-          Review the sanitized facts, file hashes, agent, and limits, or
-          enable a policy to start when evidence is ready. Freshness is checked
-          again at launch.
-        </p>
-      </li>
-      <li class="stage">
-        <HairlineFigure
-          name="terminal"
-          label="A terminal window; lines lift off the screen under the pointer"
-        />
-        <p class="stage-num">04</p>
-        <h3>Investigate</h3>
-        <p>
-          Each run gets its own disposable gVisor or microVM sandbox with
-          egress denied. A kagent investigator runs the experiments, and
-          TriageLab records every process directly from the sandbox.
-        </p>
-      </li>
-      <li class="stage">
-        <HairlineFigure
-          name="format"
-          label="A formatter squaring crooked lines to their indents"
-        />
-        <p class="stage-num">05</p>
-        <h3>Report</h3>
-        <p>
-          JSON and Markdown reports keep what was observed separate from the
-          model&rsquo;s hypothesis. A reviewed summary can go back to the
-          ticket with the full evidence trail.
-        </p>
-      </li>
-    </ol>
-    <p class="pipeline-note">
-      No untrusted ticket content reaches the sandbox until a person has seen
-      exactly what will run. Once a run starts, upstream isolation and egress
-      policy enforce the hard limits, not the prompt.
-    </p>
+    <div class="tl-wrap">
+      <header class="head" data-reveal>
+        <p class="tl-eyebrow">The workflow</p>
+        <h2 class="tl-display">How a case moves</h2>
+      </header>
+      <ol class="tray pipeline" role="list">
+        {
+          stages.map((stage, index) => (
+            <li
+              class="card stage"
+              data-reveal
+              style={`--reveal-delay: ${index * 70}ms`}
+            >
+              <div class="figure-panel tl-graph">
+                <HairlineFigure name={stage.figure} label={stage.label} />
+              </div>
+              <p class="stage-num">{String(index + 1).padStart(2, "0")}</p>
+              <h3>{stage.title}</h3>
+              <p class="stage-body">{stage.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="boundary-note" data-reveal>
+        No untrusted ticket content reaches the sandbox until a person has
+        seen exactly what will run. Once a run starts, upstream isolation and
+        egress policy enforce the hard limits, not the prompt.
+      </p>
+    </div>
   </section>
 
   <section class="section" id="where-the-work-runs">
-    <p class="overline">Under the hood</p>
-    <h2>Where the work runs</h2>
-    <SystemMap />
+    <div class="tl-wrap">
+      <header class="head" data-reveal>
+        <p class="tl-eyebrow">Under the hood</p>
+        <h2 class="tl-display">Where the work runs</h2>
+      </header>
+      <div data-reveal>
+        <SystemMap />
+      </div>
+    </div>
   </section>
 
   <section class="section" id="why-triagelab">
-    <p class="overline">Why TriageLab</p>
-    <h2>Evidence you can defend</h2>
-    <div class="features">
-      <div class="feature">
-        <h3>Evidence, not answers</h3>
-        <p>
-          Process state, exit codes, and output come straight from the
-          sandbox, never from the model&rsquo;s say-so. Any explanation of
-          the cause is labeled as a hypothesis.
-        </p>
-        <a class="feature-link" href="/TriageLab/articles/evidence-not-answers/"
-          >Read the article &rarr;</a
-        >
-      </div>
-      <div class="feature">
-        <h3>Sandboxed by default</h3>
-        <p>
-          Every run uses a disposable gVisor or microVM sandbox. Egress is
-          denied by default, and watchdogs enforce time and size limits.
-          kagent runs the investigator; Agent Substrate provides the
-          isolation.
-        </p>
-        <a class="feature-link" href="/TriageLab/reference/architecture/"
-          >Architecture &rarr;</a
-        >
-      </div>
-      <div class="feature">
-        <h3>Review by default</h3>
-        <p>
-          Review the exact evidence and run settings, or explicitly enable
-          automatic starts. Launch checks prevent outdated plans from starting.
-        </p>
-      </div>
-      <div class="feature">
-        <h3>Your tracker stays the record</h3>
-        <p>
-          Zendesk, GitHub, Linear, Bondren, and Jira tickets enter the same workflow through
-          policy-checked sources. The conversation stays in your tracker.
-        </p>
-        <a class="feature-link" href="/TriageLab/guides/tickets-zendesk/"
-          >Ticket guides &rarr;</a
-        >
+    <div class="tl-wrap">
+      <header class="head" data-reveal>
+        <p class="tl-eyebrow">Why TriageLab</p>
+        <h2 class="tl-display">Evidence you can defend</h2>
+      </header>
+      <div class="features">
+        {
+          features.map((feature, index) => (
+            <article
+              class="feature"
+              data-reveal
+              style={`--reveal-delay: ${index * 70}ms`}
+            >
+              <h3>{feature.title}</h3>
+              <p>{feature.body}</p>
+              {feature.link && (
+                <a class="tl-link" href={feature.link.href}>
+                  {feature.link.text}
+                </a>
+              )}
+            </article>
+          ))
+        }
       </div>
     </div>
   </section>
 
   <section class="section" id="is-it-for-you">
-    <p class="overline">Honest fit</p>
-    <h2>Is it for you?</h2>
-    <div class="fit">
-      <div class="fit-card">
-        <h3>A good fit today</h3>
-        <ul class="fit-list yes">
-          <li>
-            Your small team handles repetitive technical tickets: timeouts,
-            misconfigurations, failed deploys.
-          </li>
-          <li>
-            You already run Kubernetes and can dedicate a cluster to
-            TriageLab.
-          </li>
-          <li>
-            You want AI help that shows its work, with every claim traced to
-            a recorded process.
-          </li>
-        </ul>
+    <div class="tl-wrap">
+      <header class="head" data-reveal>
+        <p class="tl-eyebrow">Honest fit</p>
+        <h2 class="tl-display">Is it for you?</h2>
+      </header>
+      <div class="tray fit">
+        <div class="card fit-card" data-reveal>
+          <h3>A good fit today</h3>
+          <ul class="fit-list yes" role="list">
+            <li>
+              Your small team handles repetitive technical tickets: timeouts,
+              misconfigurations, failed deploys.
+            </li>
+            <li>
+              You already run Kubernetes and can dedicate a cluster to
+              TriageLab.
+            </li>
+            <li>
+              You want AI help that shows its work, with every claim traced
+              to a recorded process.
+            </li>
+          </ul>
+        </div>
+        <div class="card fit-card not" data-reveal style="--reveal-delay: 70ms">
+          <h3>Not yet</h3>
+          <ul class="fit-list no" role="list">
+            <li>
+              It is an early, single-user pilot, not a production support
+              platform.
+            </li>
+            <li>
+              The workflow is general, but only a Python 3.12 timeout
+              procedure ships with it. Other kinds of tickets need procedures
+              you write.
+            </li>
+            <li>
+              There is no database, operator, or multi-tenant deployment.
+            </li>
+          </ul>
+        </div>
       </div>
-      <div class="fit-card not">
-        <h3>Not yet</h3>
-        <ul class="fit-list no">
-          <li>
-            It is an early, single-user pilot, not a production support
-            platform.
-          </li>
-          <li>
-            The workflow is general, but only a Python 3.12 timeout procedure
-            ships with it. Other kinds of tickets need procedures you write.
-          </li>
-          <li>There is no database, operator, or multi-tenant deployment.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="cta-band" aria-label="Get started">
-    <div class="cta-copy">
-      <h2>Start with the included example</h2>
-      <p>
-        The quickstart runs a full investigation of a small Python
-        application with a timeout configuration error: it reproduces the
-        error, finds the units mismatch, and verifies the fix.
-      </p>
-    </div>
-    <div class="cta-actions">
-      <a class="cta-btn" href="/TriageLab/start/quickstart/"
-        >Run the quickstart</a
-      >
-      <a class="cta-btn ghost" href="/TriageLab/reference/cli/"
-        >Browse the CLI reference</a
-      >
     </div>
   </section>
 </div>
 
 <script>
-  import {
-    loupe,
-    sieve,
-    query,
-    padlock,
-    terminal,
-    format,
-  } from "@lucasmarkes/hairline";
-
-  const figures = { loupe, sieve, query, padlock, terminal, format };
-
-  for (const el of document.querySelectorAll<HTMLElement>("[data-hairline]")) {
-    const draw = figures[el.dataset.hairline as keyof typeof figures];
-    if (!draw) continue;
-    const intensity = Number.parseFloat(el.dataset.intensity ?? "");
-    draw(el, {
-      play: el.dataset.play === "true",
-      intensity: Number.isFinite(intensity) ? intensity : undefined,
-      label: el.getAttribute("aria-label") ?? undefined,
+  // The walkthrough is a link to YouTube until it is played; only then does
+  // the page load YouTube's privacy-enhanced player in place of the poster.
+  for (const link of document.querySelectorAll<HTMLAnchorElement>(
+    "a[data-youtube-id]",
+  )) {
+    link.addEventListener("click", (event) => {
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      event.preventDefault();
+      const frame = document.createElement("iframe");
+      frame.src = `https://www.youtube-nocookie.com/embed/${link.dataset.youtubeId}?autoplay=1&rel=0`;
+      frame.title =
+        "TriageLab walkthrough: a GitHub issue, reproduced in a sandbox";
+      frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      frame.allowFullscreen = true;
+      frame.referrerPolicy = "strict-origin-when-cross-origin";
+      const player = document.createElement("div");
+      player.className = link.className;
+      // Keep Astro's scoped-style attribute so the player keeps its frame.
+      for (const attr of link.attributes) {
+        if (attr.name.startsWith("data-astro-cid"))
+          player.setAttribute(attr.name, attr.value);
+      }
+      player.append(frame);
+      link.replaceWith(player);
+      frame.focus();
     });
+  }
+
+  // Scroll reveal: one observer, enter-once, never scroll-linked. The hidden
+  // state only exists once this script has marked the page (global.css), so
+  // the sections are fully visible without JavaScript.
+  const targets = document.querySelectorAll<HTMLElement>("[data-reveal]");
+  if (targets.length > 0 && "IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-in");
+          observer.unobserve(entry.target);
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px" },
+    );
+    document.documentElement.classList.add("tl-js");
+    for (const target of targets) observer.observe(target);
   }
 </script>
 
 <style>
-  /* --- Page rhythm ------------------------------------------------ */
-
   .landing {
-    display: flex;
-    flex-direction: column;
-    gap: 3.5rem;
-    font-family: var(--bondren-font-sans);
+    font-family: var(--tl-font-sans);
+    color: var(--tl-ink-1);
+  }
+
+  .landing :where(h2, h3, p, ul, ol) {
+    margin: 0;
   }
 
   .section {
+    padding-block: var(--tl-section-y);
+    scroll-margin-top: var(--sl-nav-height);
+  }
+
+  /* --- Section header: label, serif heading, cut rule ------------------ */
+
+  .head {
     display: flex;
     flex-direction: column;
     gap: 0.875rem;
-  }
-
-  .landing h2 {
-    margin: 0;
-    font-size: clamp(1.5rem, 3vw, 1.9rem);
-    font-weight: 500;
-    line-height: 1.2;
-    color: var(--bondren-ink);
+    margin-bottom: clamp(2rem, 1.5rem + 2vw, 3rem);
+    border-bottom: 2px solid var(--tl-ink-1);
+    padding-bottom: 1.5rem;
   }
 
   .landing h3 {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    font-family: var(--bondren-font-sans);
-    color: var(--bondren-ink);
+    font-family: var(--tl-font-display);
+    font-size: 1.3125rem;
+    font-weight: 400;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
+    text-wrap: balance;
+    color: var(--tl-ink);
   }
 
-  .landing p {
-    margin: 0;
+  /* --- Trays and cards: 8px plates in a 12px frame ---------------------- */
+
+  .tray {
+    display: grid;
+    gap: 0.375rem;
+    border: 1px solid var(--tl-line-object);
+    border-radius: var(--tl-radius-xl);
+    padding: 0.375rem;
+    background: var(--tl-well);
+    list-style: none;
   }
 
-  /* Starlight's content styles give every element after its first sibling a
-     top margin. In these grid and flex rows that drops all but the first item
-     and leaves it shorter, so the rows space their items with gap alone. */
-  .pipeline > *,
-  .features > *,
-  .fit > *,
-  .fit-list > *,
-  .chips > *,
-  .cta-band > * {
-    margin-top: 0;
-  }
-
-  /* Mono overline with a short drafter's rule in the accent. */
-  .overline {
-    font-family: var(--bondren-font-mono);
-    font-size: 0.72rem;
-    font-weight: 500;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--bondren-accent);
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-  .overline::before {
-    content: "";
-    width: 1.5rem;
-    border-top: 1px solid var(--bondren-accent);
-  }
-
-  /* --- Audience band ---------------------------------------------- */
-
-  .audience {
-    background: var(--bondren-plate);
-    border: 1px solid var(--bondren-line-frame);
-    border-left: 3px solid var(--bondren-accent);
-    border-radius: var(--bondren-radius);
+  .card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--tl-radius-lg);
+    background: var(--tl-plate);
     box-shadow: var(--shadow-plate);
-    padding: 1.375rem 1.5rem;
+    transition:
+      opacity var(--tl-slow) var(--tl-ease),
+      transform var(--tl-slow) var(--tl-ease),
+      border-color var(--tl-fast) var(--tl-ease);
+  }
+  .card:hover {
+    border-color: var(--tl-rule-cut);
+  }
+
+  /* --- Walkthrough -------------------------------------------------------- */
+
+  .walkthrough {
+    padding-top: clamp(1rem, 0.5rem + 2vw, 2.5rem);
+  }
+  .walkthrough-grid {
+    display: grid;
+    gap: 2.5rem;
+    align-items: center;
+  }
+  .walkthrough-copy {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1.125rem;
+    min-width: 0;
+  }
+  .walkthrough-copy .tl-display {
+    font-size: clamp(1.75rem, 1.35rem + 1.6vw, 2.5rem);
+  }
+  .walkthrough-copy .tl-lede {
+    font-size: 1.0625rem;
+  }
+  .walkthrough-note {
+    font-family: var(--tl-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--tl-hinge);
+  }
+
+  .player-tray {
+    min-width: 0;
+  }
+  .player {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--tl-radius-lg);
+    background-color: var(--tl-plate);
+    box-shadow: var(--shadow-plate);
+  }
+  .player:focus-visible {
+    outline: 2px solid var(--tl-accent);
+    outline-offset: 4px;
+  }
+  .player img,
+  .player :global(iframe) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .player img {
+    object-fit: cover;
+    transition: transform var(--tl-slow) var(--tl-ease);
+  }
+  a.player:hover img {
+    transform: scale(1.012);
+  }
+
+  @media (min-width: 64rem) {
+    .walkthrough-grid {
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: 3.5rem;
+    }
+    .walkthrough-copy {
+      order: 2;
+    }
+  }
+
+  /* --- Audience ------------------------------------------------------------ */
+
+  .audience {
+    border-block: 1px solid var(--tl-line-object);
+    padding-block: clamp(3rem, 2.25rem + 3vw, 5rem);
+    background: color-mix(in srgb, var(--tl-plate) 55%, transparent);
+  }
+  .audience-grid {
+    display: grid;
+    gap: 1.25rem 3rem;
+  }
+  .audience-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
   }
   .audience-lead {
-    font-size: 1.05rem;
-    line-height: 1.6;
-    color: var(--bondren-ink-2);
-    max-width: 58ch;
+    max-width: 54rem;
+    font-family: var(--tl-font-display);
+    font-size: clamp(1.375rem, 1.1rem + 1.15vw, 1.9375rem);
+    font-weight: 300;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+    text-wrap: pretty;
+    color: var(--tl-ink);
   }
   .chips {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    padding: 0;
+    list-style: none;
   }
   .chips li {
-    font-family: var(--bondren-font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
-    color: var(--bondren-ink-muted);
-    background: var(--bondren-paper);
-    border: 1px solid var(--bondren-line-frame);
-    border-radius: var(--bondren-radius-sm);
-    padding: 0.1875rem 0.5625rem;
+    border: 1px solid var(--tl-line-frame);
+    border-radius: var(--tl-radius-xs);
+    padding: 0.25rem 0.625rem;
+    background: var(--tl-plate);
+    font-family: var(--tl-font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: var(--tl-ink-muted);
+  }
+  @media (min-width: 64rem) {
+    .audience-grid {
+      grid-template-columns: 12rem minmax(0, 1fr);
+      align-items: baseline;
+    }
   }
 
-  /* --- Pipeline ---------------------------------------------------- */
+  /* --- Pipeline -------------------------------------------------------------
+     Each card subgrids the tray's four rows (figure, number, title, body)
+     so a two-line title in one card never pushes its neighbours' copy out
+     of line. */
 
   .pipeline {
-    list-style: none;
-    margin: 0.875rem 0 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
   }
   .stage {
-    background: var(--bondren-plate);
-    border: 1px solid var(--bondren-line-frame);
-    border-top: 2px solid var(--bondren-rule-cut);
-    border-radius: var(--bondren-radius);
-    box-shadow: var(--shadow-plate);
-    padding: 0.875rem 1rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+    align-items: start;
   }
-  .stage .hairline-figure {
-    --hairline-plate: var(--bondren-plate);
-    margin-bottom: 0.375rem;
-    max-width: 14rem;
+  .figure-panel {
+    align-self: stretch;
+    border-bottom: 1px solid var(--tl-line-object);
+    padding: 1.25rem 1.5rem;
+    background-color: var(--tl-paper);
+  }
+  .figure-panel :global(.hairline-figure) {
+    --hairline-plate: var(--tl-paper);
+    max-width: 9.5rem;
+    margin-inline: auto;
   }
   .stage-num {
-    font-family: var(--bondren-font-mono);
-    font-size: 0.7rem;
+    padding: 1.375rem 1.375rem 0;
+    font-family: var(--tl-font-mono);
+    font-size: 0.75rem;
     font-weight: 500;
-    letter-spacing: 0.14em;
-    color: var(--bondren-accent);
+    letter-spacing: 0.1em;
+    color: var(--tl-accent-press);
   }
-  .stage p {
-    font-size: 0.85rem;
-    line-height: 1.55;
-    color: var(--bondren-ink-muted);
+  .stage h3 {
+    padding: 0.375rem 1.375rem 0;
   }
-  .pipeline-note {
-    margin-top: 0.875rem;
-    padding: 0.875rem 1rem;
-    background: var(--bondren-well);
-    border-left: 3px solid var(--bondren-rule-cut);
-    border-radius: var(--bondren-radius-sm);
-    font-size: 0.9rem;
+  .stage-body {
+    padding: 0.625rem 1.375rem 1.625rem;
+    font-size: 0.9375rem;
     line-height: 1.6;
-    color: var(--bondren-ink-2);
-    max-width: 72ch;
+    text-wrap: pretty;
+    color: var(--tl-ink-muted);
   }
 
-  /* --- Feature cards ----------------------------------------------- */
+  @media (min-width: 40rem) {
+    .pipeline {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .stage:last-child {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (min-width: 60rem) {
+    .pipeline {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .stage,
+    .stage:last-child {
+      grid-column: span 2;
+    }
+    .stage:nth-child(n + 4) {
+      grid-column: span 3;
+    }
+  }
+  @media (min-width: 76rem) {
+    .pipeline {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .stage,
+    .stage:last-child,
+    .stage:nth-child(n + 4) {
+      grid-column: auto;
+    }
+  }
+
+  .boundary-note {
+    max-width: 45rem;
+    margin-top: 2rem;
+    border-left: 2px solid var(--tl-ink-1);
+    padding-left: 1rem;
+    line-height: 1.65;
+    text-wrap: pretty;
+    color: var(--tl-ink-2);
+  }
+
+  /* --- Features: ledger columns parted by hairlines ----------------------- */
 
   .features {
-    margin-top: 0.875rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 1rem;
+    gap: 2.5rem 0;
   }
   .feature {
-    background: var(--bondren-plate);
-    border: 1px solid var(--bondren-line-frame);
-    border-radius: var(--bondren-radius);
-    box-shadow: var(--shadow-plate);
-    padding: 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: 0.75rem;
   }
   .feature p {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    color: var(--bondren-ink-muted);
-    flex-grow: 1;
+    line-height: 1.65;
+    text-wrap: pretty;
+    color: var(--tl-ink-muted);
   }
-  .feature-link {
-    font-family: var(--bondren-font-mono);
-    font-size: 0.75rem;
-    letter-spacing: 0.03em;
-    color: var(--bondren-accent);
-    text-decoration: none;
-    width: fit-content;
+  .feature .tl-link {
+    margin-top: 0.25rem;
   }
-  .feature-link:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  /* From two columns up each feature subgrids three rows (title, body,
+     link), so a two-line title never knocks the copy beside it out of line. */
+  @media (min-width: 40rem) {
+    .features {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .feature {
+      display: grid;
+      grid-row: span 3;
+      grid-template-rows: subgrid;
+      align-items: start;
+      border-left: 1px solid var(--tl-line-frame);
+      padding-inline: 1.75rem;
+    }
+    .feature:nth-child(odd) {
+      border-left: 0;
+      padding-left: 0;
+    }
+  }
+  @media (min-width: 68rem) {
+    .features {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .feature:nth-child(odd) {
+      border-left: 1px solid var(--tl-line-frame);
+      padding-left: 1.75rem;
+    }
+    .feature:first-child {
+      border-left: 0;
+      padding-left: 0;
+    }
+    .feature:last-child {
+      padding-right: 0;
+    }
   }
 
-  /* --- Fit columns -------------------------------------------------- */
+  /* --- Fit: solid is settled, dashed is not yet ---------------------------- */
 
   .fit {
-    margin-top: 0.875rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
   }
   .fit-card {
-    background: var(--bondren-plate);
-    border: 1px solid var(--bondren-line-frame);
-    border-radius: var(--bondren-radius);
-    box-shadow: var(--shadow-plate);
-    padding: 1.25rem;
+    padding: clamp(1.5rem, 1.25rem + 1vw, 2.25rem);
   }
-  .fit-card.not {
-    background: var(--bondren-well);
-    border-color: var(--bondren-line-frame);
+  .fit-card.not,
+  .fit-card.not:hover {
+    border: 1px dashed var(--tl-rule-cut);
+    background: transparent;
+    box-shadow: none;
   }
   .fit-list {
-    list-style: none;
-    margin: 0.875rem 0 0;
-    padding: 0;
     display: grid;
-    gap: 0.625rem;
+    gap: 0.875rem;
+    margin-top: 1.25rem;
+    padding: 0;
+    list-style: none;
   }
   .fit-list li {
     position: relative;
-    padding-left: 1.375rem;
-    font-size: 0.9rem;
-    line-height: 1.55;
-    color: var(--bondren-ink-2);
+    padding-left: 1.625rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+    color: var(--tl-ink-2);
   }
   .fit-list li::before {
+    content: "";
     position: absolute;
     left: 0;
-    font-family: var(--bondren-font-mono);
+    top: 0.5em;
+    width: 0.5rem;
+    height: 0.5rem;
+    border: 1px solid var(--tl-ink);
+    border-radius: 50%;
+    background: var(--tl-ink);
   }
-  .fit-list.yes li::before {
-    content: "+";
-    color: var(--bondren-success);
+  .fit-list.no li {
+    color: var(--tl-ink-muted);
   }
   .fit-list.no li::before {
-    content: "\2013";
-    color: var(--bondren-rule-cut);
-  }
-
-  /* --- Closing CTA band --------------------------------------------- */
-
-  .cta-band {
-    background: var(--bondren-ink);
-    color: var(--bondren-paper);
-    border-radius: var(--bondren-radius);
-    box-shadow: var(--shadow-pop);
-    padding: clamp(1.5rem, 4vw, 2.5rem);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.5rem;
-  }
-  .cta-copy {
-    max-width: 44ch;
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-  .cta-band h2 {
-    color: var(--bondren-paper);
-  }
-  .cta-band p {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--bondren-paper);
-    opacity: 0.78;
-  }
-  .cta-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-  .cta-btn {
-    font-family: var(--bondren-font-mono);
-    font-size: 0.8rem;
-    font-weight: 500;
-    letter-spacing: 0.03em;
-    text-decoration: none;
-    border-radius: var(--bondren-radius);
-    padding: 0.6875rem 1.125rem;
-    background: var(--bondren-accent);
-    border: 1px solid var(--bondren-accent);
-    color: var(--bondren-paper);
-  }
-  .cta-btn:hover {
-    background: var(--bondren-accent-press);
-    border-color: var(--bondren-accent-press);
-  }
-  .cta-btn.ghost {
+    border: 1px dashed var(--tl-rule-cut);
     background: transparent;
-    border: 1px solid color-mix(in srgb, var(--bondren-paper) 45%, transparent);
-    color: var(--bondren-paper);
   }
-  .cta-btn.ghost:hover {
-    border-color: var(--bondren-paper);
-    background: color-mix(in srgb, var(--bondren-paper) 10%, transparent);
-  }
-
-  @media (max-width: 50rem) {
-    .landing {
-      gap: 2.75rem;
+  @media (min-width: 52rem) {
+    .fit {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-  }
-</style>
-
-<style is:global>
-  /* Starlight renders the hero from frontmatter and wraps this component's
-     markup in .sl-markdown-content, so those elements need global rules.
-     This stylesheet is bundled only on pages that use LandingSections. */
-
-  .hero {
-    padding-block: clamp(2rem, 5vmin, 3.5rem);
-  }
-  .hero > .hero-html {
-    order: 2;
-    width: min(100%, 24rem);
-  }
-  .hero h1 {
-    font-weight: 500;
-    letter-spacing: -0.02em;
-  }
-  .hero .tagline {
-    color: var(--bondren-ink-muted);
-    line-height: 1.6;
-  }
-  .hero-accent {
-    color: var(--bondren-accent);
-  }
-
-  /* Square the pill-shaped action buttons to the Bondren radius. */
-  .hero .sl-link-button {
-    border-radius: var(--bondren-radius);
-    font-family: var(--bondren-font-mono);
-    font-weight: 500;
-    letter-spacing: 0.03em;
-  }
-  .hero .sl-link-button.secondary {
-    border-color: var(--bondren-line-frame);
-  }
-  .hero .sl-link-button.minimal {
-    text-decoration: underline;
-    text-underline-offset: 4px;
-  }
-
-  /* Prose on the landing page keeps a reading measure while the designed
-     sections span the full splash width. */
-  .sl-markdown-content > :not(.landing) {
-    max-width: 46rem;
-  }
-
-  /* Isometric line figures: graphite ink on the surface they sit on. The
-     Bondren tokens swap automatically in dark mode. */
-  .hairline-figure,
-  .hairline-hero {
-    --hairline-plate: var(--bondren-paper);
-    --hairline-hi: var(--bondren-ink);
-    --hairline-edge: var(--bondren-ink-2);
-    --hairline-mid: var(--bondren-ink-muted);
-    --hairline-lo: var(--bondren-line-object);
-    --hairline-stroke: 1.15;
-  }
-  .hairline-hero {
-    width: 100%;
   }
 </style>

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { InvestigationReport } from "../lib/types";
 import { formatDate } from "../lib/investigations";
+import { MarkdownBlocks, MarkdownInline } from "./markdown";
 import { Button, Panel, Stamp, type StampHue } from "./ui";
 
 export function reproductionLabel(outcome: string) {
@@ -35,7 +36,7 @@ export function ReportStatusBand({ latest, report, reproductionEvidence }: { lat
 }
 
 function BriefList({ items }: { items: string[] }) {
-  return <><ul className="prose-list">{items.slice(0, 3).map((item, index) => <li key={index}>{item}</li>)}</ul>{items.length > 3 && <details className="brief-more"><summary>Show {items.length - 3} more</summary><ul className="prose-list">{items.slice(3).map((item, index) => <li key={index}>{item}</li>)}</ul></details>}</>;
+  return <><ul className="prose-list">{items.slice(0, 3).map((item, index) => <li key={index}><MarkdownInline text={item} /></li>)}</ul>{items.length > 3 && <details className="brief-more"><summary>Show {items.length - 3} more</summary><ul className="prose-list">{items.slice(3).map((item, index) => <li key={index}><MarkdownInline text={item} /></li>)}</ul></details>}</>;
 }
 
 export function InvestigationBrief({ report, active, leadingEvidence }: { report: InvestigationReport; active: boolean; leadingEvidence: ReactNode }) {
@@ -45,8 +46,8 @@ export function InvestigationBrief({ report, active, leadingEvidence }: { report
   const next = analysis?.next_actions ?? [];
   return <Panel title="Investigation brief" aside={<span className="quiet text-meta">Agent analysis · round {report.round ?? 1}</span>}>
     <div className="panel-body investigation-brief">
-      <p className="finding-summary">{analysis?.summary || (active ? "The investigator is gathering evidence. Findings will appear when a validated analysis is saved." : "No validated analysis was recorded. Review the process evidence and run messages.")}</p>
-      {analysis?.root_cause?.statement && <div className="brief-leading"><h3>Leading hypothesis</h3><p>{analysis.root_cause.statement}</p>{leadingEvidence}</div>}
+      {analysis?.summary ? <MarkdownBlocks className="finding-summary" text={analysis.summary} /> : <p className="finding-summary">{active ? "The investigator is gathering evidence. Findings will appear when a validated analysis is saved." : "No validated analysis was recorded. Review the process evidence and run messages."}</p>}
+      {analysis?.root_cause?.statement && <div className="brief-leading"><h3>Leading hypothesis</h3><p><MarkdownInline text={analysis.root_cause.statement} /></p>{leadingEvidence}</div>}
       {observations.length > 0 && <section><h3>Agent-reported observations</h3><BriefList items={observations} /></section>}
       {(blockers.length > 0 || next.length > 0) && <div className="brief-next-grid">
         {blockers.length > 0 && <section><h3>Information needed to continue</h3><BriefList items={blockers} /></section>}
@@ -70,9 +71,9 @@ export function RoundHistory({ latest, selectedRound, onSelect }: { latest: Inve
       return <li key={item.round} aria-current={selected ? "step" : undefined}>
         <div className="round-history-heading"><div><h3>Round {item.round}{item.latest ? " · latest" : ""}</h3><time dateTime={item.report.round_started_at ?? item.report.started_at}>{formatDate(item.report.round_started_at ?? item.report.started_at)}</time></div><Button variant="ghost" onClick={() => onSelect(item.latest ? null : item.round)} disabled={selected}>{selected ? "Viewing" : `View round ${item.round}`}</Button></div>
         <p className="text-meta quiet">{experiments.length} recorded experiment{experiments.length === 1 ? "" : "s"} · {reproductionLabel(item.report.outcome)}</p>
-        {input ? <div className="round-input"><h4>Information added</h4><p>{input.description}</p><span className="annotation">{input.attachments?.length ?? 0} additional files</span></div> : <p className="text-meta quiet">Original case · {item.report.case?.attachments?.length ?? 0} supplied files</p>}
-        {item.report.analysis?.summary && <div className="round-analysis"><h4>Saved agent analysis</h4><p>{item.report.analysis.summary}</p></div>}
-        {blockers.length > 0 && <details className="brief-more"><summary>{blockers.length} blocking question{blockers.length === 1 ? "" : "s"} recorded</summary><ul className="prose-list">{blockers.map((question, index) => <li key={index}>{question}</li>)}</ul></details>}
+        {input ? <div className="round-input"><h4>Information added</h4><MarkdownBlocks className="round-text" text={input.description} /><span className="annotation">{input.attachments?.length ?? 0} additional files</span></div> : <p className="text-meta quiet">Original case · {item.report.case?.attachments?.length ?? 0} supplied files</p>}
+        {item.report.analysis?.summary && <div className="round-analysis"><h4>Saved agent analysis</h4><MarkdownBlocks className="round-text" text={item.report.analysis.summary} /></div>}
+        {blockers.length > 0 && <details className="brief-more"><summary>{blockers.length} blocking question{blockers.length === 1 ? "" : "s"} recorded</summary><ul className="prose-list">{blockers.map((question, index) => <li key={index}><MarkdownInline text={question} /></li>)}</ul></details>}
       </li>;
     })}</ol>
     <p className="analysis-note">Each round preserves its own inputs, analysis, and process evidence. Earlier findings are historical.</p>

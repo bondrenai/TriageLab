@@ -20,9 +20,10 @@ import (
 // flow for each record. A record without a live flow failed to open after an
 // edit or restart and is retried on the next start.
 type ticketConn struct {
-	id    string
-	label string
-	flow  *ticketflow.Flow
+	id      string
+	label   string
+	flow    *ticketflow.Flow
+	managed *managedTicket
 }
 
 var connectionIDPath = regexp.MustCompile(`^[0-9a-f]{8}$`)
@@ -140,6 +141,8 @@ type connectionStatus struct {
 	Account    string `json:"account"`
 	Running    bool   `json:"running"`
 	Connected  bool   `json:"connected"`
+	ManagedBy  string `json:"managed_by,omitempty"`
+	Error      string `json:"error,omitempty"`
 	Credential struct {
 		Mode string `json:"mode"`
 		Env  string `json:"env,omitempty"`
@@ -172,6 +175,10 @@ func (s *Server) connectionsRoute(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(path, "/")
 	if !connectionIDPath.MatchString(parts[0]) {
 		fail(w, 404, "Unknown ticket connection route")
+		return
+	}
+	if s.gitopsOwns(parts[0]) {
+		fail(w, http.StatusConflict, "This connection is managed by GitOps. Edit its Kubernetes resources.")
 		return
 	}
 	switch {
@@ -214,6 +221,7 @@ func (s *Server) listConnections(w http.ResponseWriter) {
 		}
 		statuses = append(statuses, status)
 	}
+	statuses = append(statuses, s.gitopsStatuses()...)
 	jsonResponse(w, 200, map[string]any{"connections": statuses})
 }
 

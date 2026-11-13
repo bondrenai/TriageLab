@@ -13,21 +13,22 @@ import type {
 } from "../lib/types/connection";
 import type { TicketSource } from "../lib/types/ticket";
 
-const SOURCES: TicketSource[] = ["zendesk", "github", "linear", "bondren", "jira"];
+const SOURCES: TicketSource[] = ["zendesk", "github", "gitlab", "linear", "bondren", "jira"];
 
 const sourceName = (source: TicketSource) =>
-  source === "github" ? "GitHub" : source === "linear" ? "Linear" : source === "bondren" ? "Bondren"
+  source === "github" ? "GitHub" : source === "gitlab" ? "GitLab" : source === "linear" ? "Linear" : source === "bondren" ? "Bondren"
     : source === "jira" ? "Jira" : "Zendesk";
 
 const sourceDescription = (source: TicketSource) =>
   source === "github" ? "Repository issues, author comments, and text attachments."
-    : source === "linear" ? "Workspace issues for one team, keyed by issue number."
-      : source === "bondren" ? "Support mailbox issues and requester conversations."
-        : source === "jira" ? "Jira Cloud site issues with internal-note summaries."
-          : "Helpdesk tickets and conversations through a browser OAuth grant.";
+    : source === "gitlab" ? "Project issues from GitLab.com or a self-managed instance."
+      : source === "linear" ? "Workspace issues for one team, keyed by issue number."
+        : source === "bondren" ? "Support mailbox issues and requester conversations."
+          : source === "jira" ? "Jira Cloud site issues with internal-note summaries."
+            : "Helpdesk tickets and conversations through a browser OAuth grant.";
 
 const writeCapability = (source: TicketSource) =>
-  source === "github" || source === "linear"
+  source === "github" || source === "gitlab" || source === "linear"
     ? { field: "investigation_comments" as const, label: "Post investigation comments on completed runs" }
     : { field: "internal_notes" as const, label: "Post internal notes on completed runs" };
 
@@ -86,6 +87,13 @@ function configFrom(form: FormState): ConnectionConfig {
       config.repository = form.repository.trim();
       config.token_env = tokenEnv;
       break;
+    case "gitlab": {
+      config.repository = form.repository.trim();
+      const origin = form.origin.trim().replace(/\/+$/, "");
+      if (origin) config.origin = origin;
+      config.token_env = tokenEnv;
+      break;
+    }
     case "linear":
       config.workspace = form.workspace.trim();
       config.team = form.team.trim().toUpperCase();
@@ -155,6 +163,18 @@ function ConnectionForm({ source, status, onDone }: { source: TicketSource; stat
         <input id="connection-repository" className="field mono" required spellCheck={false} placeholder="owner/repo"
           value={form.repository} onChange={e => set("repository", e.target.value)} />
       </div>}
+    {form.source === "gitlab" && <>
+      <div>
+        <label className="field-label" htmlFor="connection-repository">Project</label>
+        <input id="connection-repository" className="field mono" required spellCheck={false} placeholder="group/project"
+          value={form.repository} onChange={e => set("repository", e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label" htmlFor="connection-origin">Instance (optional, defaults to gitlab.com)</label>
+        <input id="connection-origin" className="field mono" spellCheck={false} placeholder="https://gitlab.example.com"
+          value={form.origin} onChange={e => set("origin", e.target.value)} />
+      </div>
+    </>}
     {form.source === "linear" && <>
       <div>
         <label className="field-label" htmlFor="connection-workspace">Workspace</label>
@@ -262,7 +282,8 @@ function ConnectionRow({ status, onEdit }: { status: ConnectionStatus; onEdit: (
     <td className="mono">{status.label || status.account}</td>
     <td className="quiet">
       {status.credential.mode === "stored" ? "Stored token"
-        : status.credential.mode === "env" ? `Environment: ${status.credential.env}` : "Anonymous"}
+        : status.credential.mode === "env" ? `Environment: ${status.credential.env}`
+          : status.credential.mode === "secret" ? "Kubernetes Secret" : "Anonymous"}
     </td>
     <td>
       {!status.running ? <Stamp hue="red">Not running</Stamp>
@@ -270,9 +291,11 @@ function ConnectionRow({ status, onEdit }: { status: ConnectionStatus; onEdit: (
           : <Stamp hue="green">Connected</Stamp>}
     </td>
     <td className="account-actions">
+      {status.managed_by && <p>Managed by GitOps: <code>{status.managed_by}</code></p>}
+      {status.error && <p role="status">{status.error}</p>}
       <div className="button-row">
-        <Button type="button" onClick={onEdit} disabled={busy}>Edit</Button>
-        <Button type="button" disabled={busy}
+        <Button type="button" onClick={onEdit} disabled={busy || !!status.managed_by}>Edit</Button>
+        <Button type="button" disabled={busy || !!status.managed_by}
           onClick={() => test.mutate({ id: status.id, input: { config: status.config } }, { onSuccess: setResult })}>
           Test
         </Button>
@@ -284,7 +307,7 @@ function ConnectionRow({ status, onEdit }: { status: ConnectionStatus; onEdit: (
           ? <><Button type="button" variant="primary" disabled={busy}
               onClick={() => remove.mutate(status.id, { onSuccess: () => setConfirmRemove(false) })}>Remove connection</Button>
             <Button type="button" variant="ghost" onClick={() => setConfirmRemove(false)}>Keep</Button></>
-          : <Button type="button" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove…</Button>}
+          : <Button type="button" disabled={busy || !!status.managed_by} onClick={() => setConfirmRemove(true)}>Remove…</Button>}
       </div>
       {result && <p className="quiet" role="status">
         {result.ok ? <Stamp hue="green">Verified</Stamp> : <Stamp hue="red">Failed</Stamp>} {result.detail ?? ""}

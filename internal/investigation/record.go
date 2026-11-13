@@ -155,8 +155,9 @@ type CleanupRecord struct {
 
 // UpstreamVersions records the pinned upstream releases this build targets.
 type UpstreamVersions struct {
-	KAgent    string `json:"kagent"`
-	Substrate string `json:"substrate"`
+	KAgent           string `json:"kagent"`
+	Substrate        string `json:"substrate"`
+	SandboxRetention bool   `json:"sandbox_retention"`
 }
 
 // BuildProvenance identifies this binary and the definitions embedded in it.

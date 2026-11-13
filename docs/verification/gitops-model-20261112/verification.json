@@ -1,0 +1,30 @@
+{
+  "verified_at": "2026-11-12T19:22:51.752076+00:00",
+  "run_id": "341019f5-3ace-498d-80a4-e022a71d9662",
+  "model": "gpt-6.1-sol",
+  "controller_image": "localhost/triagelab-kagent-controller:048e1016d50b209dba01065d0d10dfd80b78fb41",
+  "binary_sha256": "f954229d4d06e226e7bbfe5fc28705b56864f5b6aa51c104a44238ec38dcb5b8",
+  "report_sha256": "2e8433f59c9b1399852f7b305d46b5405ee2057a519eb7789634b39932ce9b87",
+  "connection_uid": "a6788f72-001c-4548-9bf2-59f0315c3544",
+  "connection_generation": 2,
+  "source": "self-managed GitLab CE 19.5.5",
+  "source_project": "gitops-model-verification-2/timeout-reproduction",
+  "source_issue_iid": 1,
+  "expected_attachment_hashes": {
+    "app.py": "434fa9870e0cf5686bec6159fd8fa36fa197e0927a01587836aed8c47ef98c76",
+    "config.json": "0eaa29f86548b4bcf25b0919d46d2f311ef0b578a3ae871f27248041e3599204"
+  },
+  "failure_process_ids": [
+    "proc-b29ffe81488b100ccd6e872e"
+  ],
+  "correction_process_ids": [
+    "proc-7ad23ca76d77c8fb80bf1c2a"
+  ],
+  "started_by": "ticket policy",
+  "unattended": true,
+  "restart_preserved_single_launch": true,
+  "investigation_comments_disabled": true,
+  "independent_cleanup_verified": true,
+  "status": "completed",
+  "outcome": "reproduced"
+}

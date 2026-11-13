@@ -3,8 +3,10 @@ title: What is TriageLab
 description: "TriageLab investigates technical tickets on Kubernetes: it routes each case, gathers missing evidence, and runs an investigation in a disposable sandbox."
 template: splash
 tableOfContents: false
+prev: false
+next: false
 hero:
-  title: 'Every ticket gets a <span class="hero-accent">real investigation.</span>'
+  title: "Every ticket gets a <em>real investigation.</em>"
   tagline: "TriageLab routes each ticket to a procedure, gathers the evidence it is missing, and starts after review or according to policy. Then it investigates in a disposable sandbox on Kubernetes and reports what it found, with the evidence behind every finding."
   actions:
     - text: Start the quickstart
@@ -16,13 +18,16 @@ hero:
     - text: GitHub
       link: https://github.com/bondrenai/TriageLab
       variant: minimal
-  image:
-    html: '<div class="hairline-hero" data-hairline="loupe" data-play="true" data-intensity="0.7" role="img" aria-label="A stand loupe sliding across a ruled sheet, the rules magnified under the glass"></div>'
 ---
 
 import LandingSections from "../../components/LandingSections.astro";
+import SheetNotes from "../../components/SheetNotes.astro";
+import LandingClose from "../../components/LandingClose.astro";
 
 <LandingSections />
+
+<SheetNotes>
+<div>
 
 ## How the pieces fit
 
@@ -35,6 +40,9 @@ files yourself, or let a ticket source start the case. Inputs are capped at 64
 files, 1 MiB per file and 4 MiB in total, and unsafe inputs are rejected before
 anything is transferred.
 
+</div>
+<div>
+
 ## Review or automate
 
 Ticket cases default to review before launch. TriageLab binds sanitized facts,
@@ -42,6 +50,9 @@ file hashes, the chosen agent, and run limits to each run. An explicitly enabled
 policy can start an investigation once evidence is ready and source freshness
 checks pass. Sandbox isolation and egress policy enforce the boundaries.
 [Configure automatic investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).
+
+</div>
+<div>
 
 ## Status and scope
 
@@ -55,3 +66,8 @@ failures are never reported as "not reproduced."
 
 Next, run the included example with the [quickstart](/TriageLab/start/quickstart/),
 or see every command in the [CLI reference](/TriageLab/reference/cli/).
+
+</div>
+</SheetNotes>
+
+<LandingClose />

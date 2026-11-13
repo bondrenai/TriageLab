@@ -38,15 +38,28 @@ describe synchronization with Agent Substrate. Installing the core project's
 source installer alongside kagent's Helm installer would duplicate infrastructure;
 TriageLab uses only the supported kagent installation path.
 
-The controller fork adds the opt-in `retain_while_suspended` field and durable
-active TTL bookkeeping. It reuses the released Sandbox lifecycle and Substrate
-snapshot operations. The CLI, charts, investigator runtime, sandbox guest, and
+The controller fork is optional. It adds the opt-in `retain_while_suspended`
+field and durable active TTL bookkeeping, which TriageLab needs to keep a
+paused investigation's sandbox and session alive for days or weeks. The fork
+reuses the released Sandbox lifecycle and Substrate snapshot operations; the
+suspend and resume MCP tools themselves exist in the release controller. A
+release kagent controller at the same pin runs every other part of the
+workflow unchanged. Before creating a sandbox, TriageLab probes the
+controller's `tools/list` schema for the `retain_while_suspended` input,
+journals the answer in the run's lifecycle record, and rebuilds the exact
+creation request from that journal on retries. When the probe reports a
+release controller, TriageLab omits the fork-only input, pause requests are
+refused with a clear error, an analysis that asks for missing information
+simply completes its round, and the report records `"sandbox_retention":
+false` under `upstream`. A probe that cannot reach a definitive answer fails
+the run before any resource is created; TriageLab never guesses between the
+two controllers. The CLI, charts, investigator runtime, sandbox guest, and
 Substrate remain at their release pins. `scripts/install-fork-controller.sh`
-builds the exact fork commit on the Linux development host, layers its executable
-onto the pinned 1.0.0 controller image, loads it into Kind, and waits for the
-controller rollout. There is no published fork image dependency. Reports identify
-the expected integration as `v1.0.0+bondrenai.048e1016`; that pin is not an
-independent attestation of the running controller.
+builds the exact fork commit on the Linux development host, layers its
+executable onto the pinned 1.0.0 controller image, loads it into Kind, and
+waits for the controller rollout. There is no published fork image dependency.
+Reports identify the expected integration as `v1.0.0+bondrenai.048e1016`; that
+pin is not an independent attestation of the running controller.
 
 The fork commit is rebased onto each pinned release. v1.0.0 added migration
 `000003_session_revert_operation`, so the retention schema is migration `000004`.
@@ -69,6 +82,20 @@ including conversation runtime restoration and process restart; see
 [verification.md](verification.md). Neither check claims weeks of elapsed uptime.
 
 ## Interfaces used
+
+TriageLab's optional ticket GitOps API is separate from the pinned kagent APIs:
+`triagelab.bondren.ai/v1alpha1` defines namespaced `TicketConnection` and
+`TicketProcedure` resources. Its small standard-library REST client uses
+Kubernetes `apiextensions.k8s.io/v1` structural schemas, CEL transition rules
+for immutable source identity, bounded namespace lists, exact-name Secret
+reads, and merge patches of the connection status subresource with UID and
+resource-version preconditions. The chart projects a rotating service-account
+token and CA; it adds no cluster-wide runtime permissions or kagent lifecycle
+operations. The definitions were checked against the development Kubernetes
+1.35.0 API. Contracts: [CRD schemas and status](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/),
+[projected service-account tokens](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/),
+and [Helm CRD lifecycle](https://helm.sh/docs/chart_best_practices/custom_resource_definitions/).
+See [GitOps operations](../docs-site/src/content/docs/guides/gitops.md).
 
 1. Kubernetes configuration uses **`api.kagent.dev/v1alpha3`**: `Harness`,
    `AgentTemplate`, `Agent`, `RemoteMCPServer`, `SandboxTemplate`, and the
@@ -121,6 +148,9 @@ Authoritative references:
   omits `expires_at` in that state. Its first resume admission starts one new
   interval of the original bounded TTL. Retries do not renew it. Pending create,
   suspend, or resume work still expires, and explicit deletion always applies.
+  A release controller keeps the original deadline while suspended, so a
+  "paused" sandbox there is really a countdown; TriageLab treats durable
+  retention as a fork capability rather than attempting TTL-bounded pauses.
   TriageLab requires the returned retention flag before treating work as
   resumable. Ordinary pending lifecycle
   operations need retries; reads alone do not advance them. Creation has a

@@ -175,7 +175,7 @@ func TestProcedureDraftRoutingAndApproval(t *testing.T) {
 	f := newFixture(t)
 	dir := filepath.Join(t.TempDir(), "state")
 	flow := openTestFlow(t, dir, f, true)
-	flow.ResolveTarget = func(_ context.Context, agent, sandbox string) (RunTarget, error) {
+	flow.ResolveTarget = func(_ context.Context, agent, sandbox, _ string) (RunTarget, error) {
 		if agent == "billing" {
 			return RunTarget{}, errors.New("not ready")
 		}
@@ -216,7 +216,7 @@ func TestProcedureDraftRoutingAndApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	flow = openTestFlow(t, dir, f, true)
-	flow.ResolveTarget = func(_ context.Context, agent, sandbox string) (RunTarget, error) {
+	flow.ResolveTarget = func(_ context.Context, agent, sandbox, _ string) (RunTarget, error) {
 		return RunTarget{Agent: agent, Sandbox: sandbox, AgentRevision: "revision", Tools: []string{"lookup"}}, nil
 	}
 	if len(flow.Procedure().Procedure.Routes) != 2 {

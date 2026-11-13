@@ -15,19 +15,20 @@ triagelab investigate [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --agent | (none) | agent name configured under manual_agents |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --description | (none) | local issue description |
-| --description-file | (none) | UTF-8 issue description file |
-| --file | (repeatable) | attachment (repeatable) |
-| --log | (repeatable) | log file (repeatable) |
-| --output | reports | parent directory for private reports |
-| --repo | (none) | small local repository or fixture directory |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--agent` | (none) | agent name configured under manual_agents |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--description` | (none) | local issue description |
+| `--description-file` | (none) | UTF-8 issue description file |
+| `--file` | (repeatable) | attachment (repeatable) |
+| `--log` | (repeatable) | log file (repeatable) |
+| `--namespace` | (none) | namespace configured under run_namespaces (default: the configured namespace) |
+| `--output` | reports | parent directory for private reports |
+| `--repo` | (none) | small local repository or fixture directory |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## pause
 
-Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused.
+Ask an active investigation to settle its turn, capture evidence, and suspend its sandbox. The report confirms when it is safely paused. Requires the TriageLab kagent controller fork; release controllers keep running without pausing.
 
 ```text
 triagelab pause --report <report.json> [options]
@@ -35,9 +36,9 @@ triagelab pause --report <report.json> [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --report | (none) | saved report.json for pause, resume, close, or cleanup |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## resume
 
@@ -49,14 +50,14 @@ triagelab resume --report <report.json> --description <new-information> [options
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --description | (none) | local issue description |
-| --description-file | (none) | UTF-8 issue description file |
-| --file | (repeatable) | attachment (repeatable) |
-| --log | (repeatable) | log file (repeatable) |
-| --repo | (none) | small local repository or fixture directory |
-| --report | (none) | saved report.json for pause, resume, close, or cleanup |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--description` | (none) | local issue description |
+| `--description-file` | (none) | UTF-8 issue description file |
+| `--file` | (repeatable) | attachment (repeatable) |
+| `--log` | (repeatable) | log file (repeatable) |
+| `--repo` | (none) | small local repository or fixture directory |
+| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## close
 
@@ -68,9 +69,9 @@ triagelab close --report <report.json> [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --report | (none) | saved report.json for pause, resume, close, or cleanup |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## serve
 
@@ -82,24 +83,25 @@ triagelab serve [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --allow-resource-writes | false | allow the workspace to save kagent definitions in the configured namespace |
-| --assets | web/dist | built frontend directory |
-| --auth | (none) | optional sign-in configuration JSON with an oidc section |
-| --chat | (none) | optional results chat model configuration JSON |
-| --clients | (none) | API client file for OAuth access (default <output>/.auth/clients.json) |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --listen | 127.0.0.1:8080 | loopback address for the private web UI |
-| --mcp | (none) | optional HTTP MCP credentials and origins configuration JSON |
-| --output | reports | parent directory for private reports |
-| --status-context | (none) | Kubernetes context for live deployment status |
-| --status-kubeconfig | (none) | explicit Kubernetes config for live deployment status and optional saves |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| --tickets | (none) | optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only) |
-| --users | (none) | account file for web sign-in (default <output>/.auth/users.json) |
+| `--allow-resource-writes` | false | allow the workspace to save kagent definitions in the configured namespace |
+| `--assets` | web/dist | built frontend directory |
+| `--auth` | (none) | optional sign-in configuration JSON with an oidc section |
+| `--chat` | (none) | optional results chat model configuration JSON |
+| `--clients` | (none) | API client file for OAuth access (default <output>/.auth/clients.json) |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--gitops` | (none) | optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation |
+| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
+| `--mcp` | (none) | optional HTTP MCP credentials and origins configuration JSON |
+| `--output` | reports | parent directory for private reports |
+| `--status-context` | (none) | Kubernetes context for live deployment status |
+| `--status-kubeconfig` | (none) | explicit Kubernetes config for live deployment status and optional saves |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
+| `--users` | (none) | account file for web sign-in (default <output>/.auth/users.json) |
 
 ## doctor
 
-Check that the kagent sandbox API is reachable with the configured credentials. A live investigation is still needed to verify runtime and model access.
+Check that the kagent sandbox API is reachable with the configured credentials, and report whether durable pause retention is available or a release controller runs without it. A live investigation is still needed to verify runtime and model access.
 
 ```text
 triagelab doctor [options]
@@ -107,12 +109,12 @@ triagelab doctor [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## cleanup
 
-Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.
+Finish sandbox and session cleanup. When a lifecycle journal exists, use its recorded resource identities and close the run. For older runs, use the saved report. The endpoint and user must match the configuration, and the namespace must be allowed.
 
 ```text
 triagelab cleanup [options]
@@ -120,9 +122,9 @@ triagelab cleanup [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --config | (none) | JSON configuration (default: built-in localhost settings) |
-| --report | (none) | saved report.json for pause, resume, close, or cleanup |
-| --telemetry | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
+| `--config` | (none) | JSON configuration (default: built-in localhost settings) |
+| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
+| `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
 
 ## manifest
 
@@ -134,7 +136,7 @@ triagelab manifest [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --workload-image | (none) | digest-pinned replacement tools image |
+| `--workload-image` | (none) | digest-pinned replacement tools image |
 
 ## agent-manifest
 
@@ -146,8 +148,8 @@ triagelab agent-manifest [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --definition | (none) | local agent definition JSON file |
-| --namespace | kagent | kagent namespace |
+| `--definition` | (none) | local agent definition JSON file |
+| `--namespace` | kagent | kagent namespace |
 
 ## user
 
@@ -159,12 +161,12 @@ triagelab user <add|list|remove|set-role|set-password> [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| --output | reports | parent directory for the default account file |
-| --password | (none) | initial or replacement password (prefer --password-stdin) |
-| --password-stdin | false | read the password from standard input |
-| --role | (none) | viewer, user, or admin |
-| --username | (none) | account name |
-| --users | (none) | account file (default <output>/.auth/users.json) |
+| `--output` | reports | parent directory for the default account file |
+| `--password` | (none) | initial or replacement password (prefer `--password-stdin`) |
+| `--password-stdin` | false | read the password from standard input |
+| `--role` | (none) | viewer, user, or admin |
+| `--username` | (none) | account name |
+| `--users` | (none) | account file (default <output>/.auth/users.json) |
 
 ## version
 

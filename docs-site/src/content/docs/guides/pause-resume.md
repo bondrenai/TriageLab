@@ -7,6 +7,18 @@ Investigations can wait for weeks without keeping active compute running.
 TriageLab uses kagent's existing sandbox suspension and restoration, retaining
 the same sandbox and investigator session until you resume or close the work.
 
+Pausing needs the TriageLab controller fork
+([bondrenai/kagent#1](https://github.com/bondrenai/kagent/pull/1)), which keeps
+a suspended sandbox past its original lifetime. Install it by running the
+installer with `TRIAGELAB_CONTROLLER=fork`, or by running
+`scripts/install-fork-controller.sh` on the existing development cluster. With
+a release kagent
+controller everything else works the same, but TriageLab detects that at run
+start, hides pause controls, refuses pause requests with an explanation, and
+lets runs that need more information finish their round instead of parking
+them. The saved report still lists `missing_information`; start a new
+investigation once you have it.
+
 ## Pause
 
 When the investigator returns blocking questions in `missing_information`,
@@ -60,11 +72,12 @@ blocking questions cleans up automatically.
 
 ## Deployment and storage
 
-Every controller must run the pinned
+Controllers that support pausing must run the pinned
 [bondrenai/kagent retention patch](https://github.com/bondrenai/kagent/commit/048e1016d50b209dba01065d0d10dfd80b78fb41).
 The dedicated deployment must set `config.sessions.idleTtl: 0s`; the development
-installer configures both. Released 1.0.0 controllers do not provide this retention
-guarantee, and TriageLab rejects a sandbox without the retention flag.
+installer configures both. Released 1.0.0 controllers do not provide this
+retention guarantee; TriageLab detects them at run start and runs without
+pause and resume instead of keeping suspended workspaces.
 
 Keep the entire private `reports/<case-id>/` directory, including `lifecycle.json`,
 plus kagent's database and Substrate snapshot storage. Downloaded reports alone

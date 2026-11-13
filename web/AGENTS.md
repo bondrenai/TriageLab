@@ -17,7 +17,10 @@ not identity pills. One ink-filled primary action per page.
 Preserve loading, failure, empty, active and interrupted states separately.
 Model analysis is a hypothesis; collected process output is evidence. The saved
 example is explicitly labelled and never enters live history. Render imported
-content as text, never HTML. Downloads refer to server-saved reports.
+content and model output as text, or through `components/markdown.tsx`, which
+builds React elements from the safe subset parsed in `lib/markdown.ts`: never
+HTML, images or live links. Command output and exact-text previews of what
+TriageLab will post stay literal. Downloads refer to server-saved reports.
 
 Support mobile widths, visible focus, labelled inputs, reduced motion and native
 keyboard interactions. All fonts and assets are served locally. No analytics or

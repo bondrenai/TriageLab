@@ -196,6 +196,26 @@ func TestCleanupRefusesActiveRunAndShutdown(t *testing.T) {
 	}
 }
 
+func TestCleanupCannotBypassLifecycleJournal(t *testing.T) {
+	for _, phase := range []string{"paused", "resuming", "closing", "invalid"} {
+		t.Run(phase, func(t *testing.T) {
+			s := newTestServer(t, nil) // No backend calls should be made.
+			state := retainedState(s)
+			state.Phase = phase
+			saveRetainedRun(t, s, state)
+			savedRun(t, s, state.RunID, nil) // A report that would otherwise allow cleanup.
+			_, before := readBack(t, s, state.RunID)
+			w := request(s, "POST", "/api/runs/"+state.RunID+"/cleanup", nil)
+			if w.Code != 409 || !strings.Contains(w.Body.String(), "Close investigation") {
+				t.Fatalf("got %d: %s", w.Code, w.Body)
+			}
+			if _, after := readBack(t, s, state.RunID); before != after {
+				t.Fatal("cleanup rewrote the report for a run with a lifecycle journal")
+			}
+		})
+	}
+}
+
 func TestConcurrentCleanupRunsOnce(t *testing.T) {
 	release := make(chan struct{})
 	var mu sync.Mutex

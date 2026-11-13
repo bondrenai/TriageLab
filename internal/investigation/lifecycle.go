@@ -39,6 +39,10 @@ func stampTime() *time.Time {
 // ErrBusy means another process owns this investigation's lifecycle.
 var ErrBusy = errors.New("investigation is active in another operation")
 
+// ErrRetentionUnsupported means the connected kagent controller is a release
+// build without the TriageLab fork's durable suspended-sandbox retention.
+var ErrRetentionUnsupported = errors.New("this kagent controller does not retain suspended sandboxes; pausing requires the TriageLab controller fork")
+
 // State is the private lifecycle journal. It contains no credentials, imported
 // case text, process output, or model replies. Reports are evidence views, not
 // authority for resource identity or continuation settings.
@@ -61,6 +65,10 @@ type State struct {
 	ContinuationDigest     string   `json:"continuation_digest,omitempty"`
 	SandboxCreationPending bool     `json:"sandbox_creation_pending,omitempty"`
 	SessionCreationPending bool     `json:"session_creation_pending,omitempty"`
+	// Retention records the controller capability probed when the run was
+	// created. It gates every pause path and rebuilds the exact sandbox
+	// creation request, so resume and close never re-probe.
+	Retention bool `json:"retention,omitempty"`
 }
 
 func readJSON(name string, limit int64, target any, strict bool) error {
@@ -175,6 +183,26 @@ func lockRun(dir string) (func(), error) {
 	return func() { _ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN); _ = file.Close() }, nil
 }
 
+// ErrLifecycleExists directs saved-report cleanup to the lifecycle journal.
+var ErrLifecycleExists = errors.New("this investigation has a lifecycle journal; use close to release its resources")
+
+// LockLegacyCleanup serializes report-based recovery with other operations on
+// this run. Any lifecycle journal, even an unreadable one, requires Close.
+func LockLegacyCleanup(dir string) (func(), error) {
+	unlock, err := lockRun(dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "lifecycle.json")); !errors.Is(err, os.ErrNotExist) {
+		unlock()
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrLifecycleExists
+	}
+	return unlock, nil
+}
+
 type pauseRequest struct {
 	RunID  string `json:"run_id"`
 	Round  int    `json:"round"`
@@ -190,6 +218,9 @@ func RequestPause(dir string) error {
 	}
 	if state.Phase != "running" || state.TaskID == "" {
 		return fmt.Errorf("only an active investigation can be asked to pause")
+	}
+	if !state.Retention {
+		return ErrRetentionUnsupported
 	}
 	unlock, err := lockRun(dir)
 	if err == nil {
@@ -215,7 +246,11 @@ func pauseRequested(dir string, state *State) (bool, error) {
 }
 
 func sandboxRequest(state State) map[string]any {
-	return map[string]any{"namespace": state.Config.Namespace, "template": state.Config.Template, "request_id": state.RunID, "name": "triagelab-" + state.RunID, "ttl_seconds": state.Config.SandboxTTL, "retain_while_suspended": true}
+	request := map[string]any{"namespace": state.Config.Namespace, "template": state.Config.Template, "request_id": state.RunID, "name": "triagelab-" + state.RunID, "ttl_seconds": state.Config.SandboxTTL}
+	if state.Retention {
+		request["retain_while_suspended"] = true
+	}
+	return request
 }
 
 func stateFromReport(state *State, r *Report) {
@@ -302,7 +337,9 @@ func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r
 			return i.pauseRound(ctx, dir, state, r)
 		}
 		if finished {
-			if listLen(r.Analysis["missing_information"]) > 0 {
+			// Without durable retention a suspended sandbox still expires at its
+			// original deadline, so a missing-information pause is pointless.
+			if state.Retention && listLen(r.Analysis["missing_information"]) > 0 {
 				return i.pauseRound(ctx, dir, state, r)
 			}
 			return nil
@@ -449,6 +486,7 @@ func (i *Investigator) validateSaved(state State) error {
 	}
 	current, saved := i.Config, state.Config
 	current.TokenEnv, saved.TokenEnv = "", ""
+	current.Version, saved.Version = "", ""
 	current.ManualAgents, saved.ManualAgents = nil, nil
 	if !reflect.DeepEqual(current, saved) || !slices.Equal(i.AdditionalTools, state.AdditionalTools) {
 		return fmt.Errorf("resume requires the saved connection, identity, agent, template, tools, and execution limits")

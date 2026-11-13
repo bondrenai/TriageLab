@@ -1,4 +1,4 @@
-export type TicketSource = "zendesk" | "github" | "linear" | "bondren" | "jira";
+export type TicketSource = "zendesk" | "github" | "gitlab" | "linear" | "bondren" | "jira";
 
 export interface TicketCase {
   ticket_id: string;
@@ -24,6 +24,7 @@ export interface TicketCase {
   procedure_revision?: string;
   agent?: string;
   sandbox?: string;
+  namespace?: string;
   matches?: RouteRule[];
   agent_choices?: string[];
   matched_tag?: string;
@@ -50,6 +51,7 @@ export interface TicketProcedure {
   clarification: string;
   default_agent: string;
   sandbox: string;
+  namespace?: string;
   routes: RouteRule[];
 }
 
@@ -82,6 +84,7 @@ export interface TicketSettings {
 }
 
 export interface TicketConnectionView {
+  managed_by?: string;
   id: string;
   label?: string;
   source: TicketSource;

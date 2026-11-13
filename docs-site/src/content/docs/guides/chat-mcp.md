@@ -145,7 +145,8 @@ enabling `--mcp` does not deploy those services.
 ## Limits
 
 Prompt injection remains possible in imported reports and discussion. Text is
-treated as untrusted and displayed literally; the chat model has no tools, but
+treated as untrusted: answers render a small Markdown subset with no HTML, images
+or clickable links; the chat model has no tools, but
 its interpretation can still be wrong. Redaction is best effort, and context
 excerpts may omit relevant material. Read the full saved evidence when a
 conclusion matters. The endpoint has no per-user quota or distributed job

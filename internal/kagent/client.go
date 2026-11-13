@@ -450,6 +450,50 @@ func nonzero(value any) bool {
 	return !ok || number != 0
 }
 
+// SandboxRetention reports whether the connected controller's create_sandbox
+// accepts retain_while_suspended. Only the TriageLab controller fork advertises
+// that input, so this distinguishes the fork from a release controller before
+// any sandbox exists. Release controllers still run investigations; they just
+// cannot retain a suspended sandbox beyond its original TTL.
+func (c *Client) SandboxRetention(ctx context.Context) (bool, error) {
+	cursor := ""
+	for pages := 0; ; pages++ {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		result, err := c.rpc(ctx, "tools/list", params)
+		if err != nil {
+			return false, err
+		}
+		tools, ok := result["tools"].([]any)
+		if !ok {
+			return false, protocolError("kagent tool list is invalid")
+		}
+		for _, value := range tools {
+			tool, ok := value.(map[string]any)
+			if !ok || tool["name"] != "create_sandbox" {
+				continue
+			}
+			schema, _ := tool["inputSchema"].(map[string]any)
+			properties, _ := schema["properties"].(map[string]any)
+			if properties == nil {
+				return false, protocolError("kagent create_sandbox schema is invalid")
+			}
+			_, supported := properties["retain_while_suspended"]
+			return supported, nil
+		}
+		next, _ := result["nextCursor"].(string)
+		if next == "" {
+			return false, protocolError("kagent does not expose create_sandbox")
+		}
+		if next == cursor || pages >= 16 {
+			return false, protocolError("kagent tool list pagination did not advance")
+		}
+		cursor = next
+	}
+}
+
 // CancelTask uses the kagent 1.0.0 MCP task extension reference. The caller must observe
 // cancellation before declaring the task stopped; acknowledgement alone is not exit.
 func (c *Client) CancelTask(ctx context.Context, session, task string) error {

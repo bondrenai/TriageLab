@@ -1,0 +1,64 @@
+{
+  "apiVersion": "triagelab.bondren.ai/v1alpha1",
+  "kind": "TicketProcedure",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"triagelab.bondren.ai/v1alpha1\",\"kind\":\"TicketProcedure\",\"metadata\":{\"annotations\":{},\"name\":\"timeout\",\"namespace\":\"triagelab-gitops-model\"},\"spec\":{\"procedure\":{\"clarification\":\"Provide the missing synthetic reproduction inputs.\",\"default_agent\":\"triagelab-investigator\",\"evidence\":[{\"kind\":\"field\",\"match\":\"Python version\",\"question\":\"Python version: Which version runs the script?\",\"required\":true},{\"kind\":\"field\",\"match\":\"Expected\",\"question\":\"Expected: What behavior did you expect?\",\"required\":true},{\"kind\":\"field\",\"match\":\"Actual\",\"question\":\"Actual: What happened?\",\"required\":true},{\"kind\":\"attachment\",\"match\":\"app.py\",\"question\":\"Attach app.py.\",\"required\":true},{\"kind\":\"attachment\",\"match\":\"config.json\",\"question\":\"Attach config.json.\",\"required\":true}],\"policy\":{\"auto_questions\":false,\"auto_run_condition\":\"ticket.source == \\\"gitlab\\\" \\u0026\\u0026 \\\"gitops-e2e\\\" in ticket.tags\",\"auto_runs\":true,\"match_condition\":\"ticket.source == \\\"gitlab\\\" \\u0026\\u0026 \\\"gitops-e2e\\\" in ticket.tags\",\"max_questions\":0,\"tag\":\"gitops-e2e\"},\"routes\":[],\"sandbox\":\"triagelab-python\"},\"workspace\":\"model-check\"}}\n"
+    },
+    "creationTimestamp": "2026-11-12T19:19:31Z",
+    "generation": 2,
+    "name": "timeout",
+    "namespace": "triagelab-gitops-model",
+    "resourceVersion": "2480",
+    "uid": "21967c29-5b22-4485-8486-9d837cbb75fe"
+  },
+  "spec": {
+    "procedure": {
+      "clarification": "Provide the missing synthetic reproduction inputs.",
+      "default_agent": "triagelab-investigator",
+      "evidence": [
+        {
+          "kind": "field",
+          "match": "Python version",
+          "question": "Python version: Which version runs the script?",
+          "required": true
+        },
+        {
+          "kind": "field",
+          "match": "Expected",
+          "question": "Expected: What behavior did you expect?",
+          "required": true
+        },
+        {
+          "kind": "field",
+          "match": "Actual",
+          "question": "Actual: What happened?",
+          "required": true
+        },
+        {
+          "kind": "attachment",
+          "match": "app.py",
+          "question": "Attach app.py.",
+          "required": true
+        },
+        {
+          "kind": "attachment",
+          "match": "config.json",
+          "question": "Attach config.json.",
+          "required": true
+        }
+      ],
+      "policy": {
+        "auto_questions": false,
+        "auto_run_condition": "ticket.source == \"gitlab\" && \"gitops-e2e\" in ticket.tags",
+        "auto_runs": true,
+        "match_condition": "ticket.source == \"gitlab\" && \"gitops-e2e\" in ticket.tags",
+        "max_questions": 0,
+        "tag": "gitops-e2e"
+      },
+      "routes": [],
+      "sandbox": "triagelab-python"
+    },
+    "workspace": "model-check"
+  }
+}

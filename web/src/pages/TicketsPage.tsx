@@ -8,7 +8,7 @@ import { orderedProcedures, ticketReference } from "../lib/tickets";
 import type { TicketAction, TicketCase, TicketConnectionView, TicketSettings, TicketSource } from "../lib/types/ticket";
 import { TicketProcedureEditor } from "./TicketProcedureEditor";
 
-const providerName = (source?: TicketSource) => source === "github" ? "GitHub" : source === "linear" ? "Linear" : source === "bondren" ? "Bondren" : source === "jira" ? "Jira" : "Zendesk";
+const providerName = (source?: TicketSource) => source === "github" ? "GitHub" : source === "gitlab" ? "GitLab" : source === "linear" ? "Linear" : source === "bondren" ? "Bondren" : source === "jira" ? "Jira" : "Zendesk";
 
 const states: Record<TicketCase["state"], [string, StampHue]> = {
   excluded: ["Outside policy", "gray"],
@@ -60,7 +60,7 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         <div><dt>Agent</dt><dd>{ticket.agent ? <code>{ticket.agent}</code> : "Reviewer selection required"}
           {ticket.matches?.length ? <> · {ticket.matches.map(rule => `${rule.tag} → ${rule.agent}`).join(", ")}</> : " · Procedure default"}
         </dd></div>
-        {ticket.sandbox && <div><dt>Sandbox</dt><dd><code>{ticket.sandbox}</code></dd></div>}
+        {ticket.sandbox && <div><dt>Sandbox</dt><dd><code>{ticket.sandbox}</code>{ticket.namespace && <> in <code>{ticket.namespace}</code></>}</dd></div>}
       </dl>}
       {!stale && mode === "tracked" && !ticket.paused && !ticket.run_id && canAct !== false && (ticket.agent_choices?.length ?? 0) > 1 && <div className="button-row">
         {ticket.agent_choices?.filter(agent => agent !== ticket.agent).map(agent => <Button key={agent} type="button" disabled={busy}
@@ -96,6 +96,7 @@ function TicketDetail({ ticket, settings, mode, procedureRevision, busy, perform
         {issue && !settings.policy.auto_questions && <p>Review and post this clarification in {provider}, then refresh the issue after the author replies.</p>}
         {ticket.state === "ask" && <>
           {source === "github" && <p>This clarification is visible to everyone with access to the repository. In a public repository, it is public.</p>}
+          {source === "gitlab" && <p>This clarification is a note visible to everyone with access to the issue and its project. Internal notes are not sent.</p>}
           {source === "linear" && <p>This clarification is visible to everyone with access to the workspace.</p>}
           {source === "bondren" && <p>This clarification is visible to the requester and everyone with access to the issue.</p>}
           {source === "jira" && <p>This clarification is visible to the requester on Jira Service Management issues and to everyone with access to the issue otherwise.</p>}
@@ -144,12 +145,18 @@ function SourcePanel({ connection, commentsEnabled, oauthResult }: {
   const isAdmin = roleAtLeast(session.data?.role, "admin");
   const source = connection.source;
   const account = connection.account.replace("https://", "");
-  const title = connection.label || (source === "github" ? "GitHub repository" : source === "linear" ? "Linear team"
-    : source === "bondren" ? "Bondren workspace" : source === "jira" ? "Jira site" : "Zendesk connection");
+  const title = connection.label || (source === "github" ? "GitHub repository" : source === "gitlab" ? "GitLab project"
+    : source === "linear" ? "Linear team"
+      : source === "bondren" ? "Bondren workspace" : source === "jira" ? "Jira site" : "Zendesk connection");
   if (source !== "zendesk") {
-    return <Panel title={title} aside={<Stamp hue="blue">{commentsEnabled ? (source === "linear" || source === "github" ? "Comments enabled" : "Notes enabled") : "Read-only"}</Stamp>}>
+    return <Panel title={title} aside={<Stamp hue="blue">{commentsEnabled ? (source === "linear" || source === "github" || source === "gitlab" ? "Comments enabled" : "Notes enabled") : "Read-only"}</Stamp>}>
       <div className="panel-body ticket-detail">
         <p><a className="ticket-source" href={connection.account} target="_blank" rel="noreferrer">{connection.repository || account} ↗</a></p>
+        {source === "gitlab" && <>
+          <p>Import issue descriptions, author comments, and supported text attachments from this project. GitLab always requires an access token configured on the server.</p>
+          {commentsEnabled && <p>Posting requires the configured access token. Clarifications and investigation summaries are notes visible to everyone with access to the issue.</p>}
+          {connection.settings.investigation_comments && <p>Completed investigations offer a comment preview for you to review before posting to the issue.</p>}
+        </>}
         {source === "jira" && <>
           <p>Import issue descriptions, comments, and supported text attachments from this Jira Cloud site. Jira always requires an Atlassian account email and API token configured on the server.</p>
           {commentsEnabled && <p>Posting requires the configured API token. Clarifications are customer-visible replies on Jira Service Management issues; investigation summaries are internal notes.</p>}
@@ -231,25 +238,27 @@ function ConnectionSection({ connection, canAct, isAdmin, oauthResult }: {
 
   return <>
     <SourcePanel connection={connection} commentsEnabled={commentsEnabled} oauthResult={oauthResult} />
-    <Panel title="Ticket procedures" aside={connection.procedure && isAdmin && <Button type="button"
+    <Panel title="Ticket procedures" aside={connection.procedure && isAdmin && !connection.managed_by && <Button type="button"
       onClick={() => setEditProcedure(editing => !editing)} aria-expanded={editProcedure}>
       {editProcedure ? "Close editor" : "Edit procedures"}
     </Button>}>
       <div className="panel-body ticket-detail">
         <p>Open {issue ? "issues" : "tickets"} use the first matching procedure. Review is the default.</p>
+        {connection.managed_by && <p>Managed by GitOps: <code>{connection.managed_by}</code>. Edit procedures in your Git repository.</p>}
         <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}>
           <code>{p.policy.tag}</code>{connection.settings.auto_runs_allowed && p.policy.auto_runs && " · Starts automatically"}
         </li>)}</ol>
         {connection.connected && canAct && <form className="ticket-form" onSubmit={inspect}>
-          <div><label className="field-label" htmlFor={`ticket-id-${connection.id}`}>{source === "jira" ? "Jira issue key, URL, or id" : source === "bondren" ? "Bondren issue ID or number" : source === "linear" ? "Linear issue number" : source === "github" ? "GitHub issue number" : "Zendesk ticket ID"}</label>
-            <input className="field" id={`ticket-id-${connection.id}`} inputMode={source === "bondren" || source === "jira" ? undefined : "numeric"} pattern={source === "bondren" || source === "jira" ? undefined : "[1-9][0-9]{0,18}"} maxLength={source === "bondren" || source === "jira" ? 512 : 19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} />
+          <div><label className="field-label" htmlFor={`ticket-id-${connection.id}`}>{source === "jira" ? "Jira issue key, URL, or id" : source === "gitlab" ? "GitLab issue number or URL" : source === "bondren" ? "Bondren issue ID or number" : source === "linear" ? "Linear issue number" : source === "github" ? "GitHub issue number" : "Zendesk ticket ID"}</label>
+            <input className="field" id={`ticket-id-${connection.id}`} inputMode={source === "bondren" || source === "jira" || source === "gitlab" ? undefined : "numeric"} pattern={source === "bondren" || source === "jira" || source === "gitlab" ? undefined : "[1-9][0-9]{0,18}"} maxLength={source === "bondren" || source === "jira" ? 512 : source === "gitlab" ? 320 : 19} required disabled={mutation.isPending} value={id} onChange={event => setID(event.currentTarget.value)} />
             {source === "jira" && <p className="field-help">Enter an issue key like OPS-42, paste the issue URL, or use the numeric issue id.</p>}
+            {source === "gitlab" && <p className="field-help">Paste the issue URL or use the numeric issue number.</p>}
             {source === "bondren" && <p className="field-help">Paste the issue ID from the Bondren issue URL, the issue URL itself, or the issue number.</p>}</div>
           <Button type="submit" variant="primary" disabled={mutation.isPending}>Preview {kind}</Button>
         </form>}
       </div>
     </Panel>
-    {editProcedure && connection.procedure && <TicketProcedureEditor key={connection.account} connection={connection.id} version={connection.procedure}
+    {editProcedure && connection.procedure && !connection.managed_by && <TicketProcedureEditor key={connection.account} connection={connection.id} version={connection.procedure}
       source={connection.source} connected={connection.connected} template={connection.settings.template} clarificationLimit={connection.settings.clarification_limit}
       autoRunsAllowed={connection.settings.auto_runs_allowed}
       renderPreview={(ticket, draft) => <TicketDetail ticket={ticket} settings={{ ...connection.settings, policy: draft.policy }}
@@ -285,12 +294,12 @@ export function TicketsPage() {
   const current = connections.find(connection => connection.id === activeID) ?? connections[0];
 
   return <>
-    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub, Linear, Bondren, or Jira issues for a useful investigation." />
+    <PageTitle title="Ticket cases" description="Prepare helpdesk tickets and GitHub, GitLab, Linear, Bondren, or Jira issues for a useful investigation." />
     {workspace.isPending && <Loading label="Loading ticket cases" />}
     {workspace.isError && <ErrorPlate title="Could not load ticket cases" error={workspace.error} action={<Button onClick={() => void workspace.refetch()}>Try again</Button>} />}
     {data && !data.enabled && <Panel title="Connect a case source">
       <div className="panel-body ticket-detail">
-        <p>Choose a Zendesk account, GitHub repository, Linear team, Bondren workspace, or Jira site and configure a ticket procedure to prepare cases here.</p>
+        <p>Choose a Zendesk account, GitHub repository, GitLab project, Linear team, Bondren workspace, or Jira site and configure a ticket procedure to prepare cases here.</p>
         <div className="button-row">
           {isAdmin
             ? <ButtonLink to="/connections" variant="primary">Open connections</ButtonLink>

@@ -251,6 +251,89 @@ func TestTranscriptPaginationAndTruncation(t *testing.T) {
 	}
 }
 
+func TestSandboxRetentionProbe(t *testing.T) {
+	schema := func(retained bool) map[string]any {
+		properties := map[string]any{"namespace": map[string]any{"type": "string"}, "template": map[string]any{"type": "string"}}
+		if retained {
+			properties["retain_while_suspended"] = map[string]any{"type": "boolean"}
+		}
+		return map[string]any{"type": "object", "additionalProperties": false, "properties": properties}
+	}
+	for _, tc := range []struct {
+		name    string
+		tools   []any
+		want    bool
+		wantErr bool
+	}{{
+		name: "fork advertises retention input",
+		tools: []any{
+			map[string]any{"name": "list_sandboxes", "inputSchema": schema(false)},
+			map[string]any{"name": "create_sandbox", "inputSchema": schema(true)},
+		},
+		want: true,
+	}, {
+		name: "release controller lacks retention input",
+		tools: []any{
+			map[string]any{"name": "create_sandbox", "inputSchema": schema(false)},
+			map[string]any{"name": "suspend_sandbox", "inputSchema": schema(false)},
+		},
+	}, {
+		name:    "create_sandbox missing",
+		tools:   []any{map[string]any{"name": "list_sandboxes", "inputSchema": schema(false)}},
+		wantErr: true,
+	}, {
+		name:    "schema without properties",
+		tools:   []any{map[string]any{"name": "create_sandbox", "inputSchema": map[string]any{"type": "object"}}},
+		wantErr: true,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				request := testRequest(t, r)
+				if request["method"] != "tools/list" || r.Header.Get("Mcp-Method") != "tools/list" {
+					t.Errorf("wrong probe method: %v %v", request["method"], r.Header.Get("Mcp-Method"))
+				}
+				testResponse(w, request, map[string]any{"tools": tc.tools})
+			})
+			got, err := client.SandboxRetention(context.Background())
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("accepted an invalid tool list")
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("retention=%v err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestSandboxRetentionProbePaginates(t *testing.T) {
+	tools := func(names ...string) []any {
+		list := make([]any, 0, len(names))
+		for _, name := range names {
+			list = append(list, map[string]any{"name": name, "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}})
+		}
+		return list
+	}
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		request := testRequest(t, r)
+		params, _ := request["params"].(map[string]any)
+		if params["cursor"] == nil {
+			testResponse(w, request, map[string]any{"tools": tools("list_sandboxes"), "nextCursor": "page-2"})
+			return
+		}
+		if params["cursor"] != "page-2" {
+			t.Errorf("unexpected cursor %v", params["cursor"])
+		}
+		testResponse(w, request, map[string]any{"tools": tools("create_sandbox")})
+	})
+	got, err := client.SandboxRetention(context.Background())
+	if err != nil || got {
+		t.Fatalf("retention=%v err=%v", got, err)
+	}
+}
+
 func TestCancellationUpstreamReference(t *testing.T) {
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		request := testRequest(t, r)

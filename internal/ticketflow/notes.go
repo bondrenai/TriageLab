@@ -87,7 +87,7 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 	if err := f.save(c); err != nil {
 		return NotePreview{}, err
 	}
-	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github" || f.provider == "linear")
+	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github" || f.provider == "gitlab" || f.provider == "linear")
 	switch {
 	case errors.Is(err, ErrChanged), errors.Is(err, ErrOAuthRequired):
 		// These responses confirm the connector did not apply the write.
@@ -107,7 +107,7 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 
 func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
 	enabled := (f.provider == "zendesk" || f.provider == "bondren" || f.provider == "jira") && f.settings.InternalNotes ||
-		(f.provider == "github" || f.provider == "linear") && f.settings.InvestigationComments
+		(f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && f.settings.InvestigationComments
 	if !enabled || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
 		return Case{}, false
 	}
@@ -134,6 +134,10 @@ func (f *Flow) approvedCase(runID string, saved map[string]any) (Case, bool) {
 	c, found := f.store.get(id)
 	if f.provider == "github" && (c.Source != "github" || c.URL != f.ticketURL(id) ||
 		source["repository"] != strings.TrimPrefix(f.Account(), "https://github.com/") || source["issue_number"] != rawID) {
+		return Case{}, false
+	}
+	if f.provider == "gitlab" && (c.Source != "gitlab" || c.URL != f.ticketURL(id) ||
+		source["gitlab_project"] != gitlabProjectFromAccount(f.Account()) || source["issue_iid"] != rawID) {
 		return Case{}, false
 	}
 	if f.provider == "linear" && (c.Source != "linear" || c.URL != f.ticketURL(id) ||
@@ -165,6 +169,8 @@ func (f *Flow) ticketURL(id int64) string {
 	switch f.provider {
 	case "github":
 		path = "/issues/"
+	case "gitlab":
+		path = "/-/issues/"
 	case "linear":
 		// The identifier is the configured team key plus the issue number.
 		teamKey := strings.TrimPrefix(f.Account(), "https://linear.app/")
@@ -187,6 +193,9 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	if f.provider == "github" {
 		preview.Visibility = "repository"
 	}
+	if f.provider == "gitlab" {
+		preview.Visibility = "project"
+	}
 	if f.provider == "linear" {
 		preview.Visibility = "workspace"
 	}
@@ -196,10 +205,10 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	}
 	preview.Status = "ready"
 	preview.Body = investigationNote(c.RunID, saved, f.currentSecrets())
-	if f.provider == "github" || f.provider == "linear" || f.provider == "bondren" {
-		// Render imported summaries and commands literally. In GitHub, Linear,
-		// or Bondren Markdown, prose could otherwise create mentions, links or
-		// embedded images.
+	if f.provider == "github" || f.provider == "gitlab" || f.provider == "linear" || f.provider == "bondren" {
+		// Render imported summaries and commands literally. In GitHub, GitLab,
+		// Linear, or Bondren Markdown, prose could otherwise create mentions,
+		// links or embedded images.
 		width, run := 3, 0
 		for _, char := range preview.Body {
 			if char == '`' {
@@ -224,7 +233,7 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	preview.Plan = digest(struct {
 		RunID, TicketURL, Body, Source, Visibility string
 	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
-	if f.provider == "github" || f.provider == "linear" {
+	if f.provider == "github" || f.provider == "gitlab" || f.provider == "linear" {
 		preview.CanPost = f.settings.InvestigationComments
 	} else if f.provider == "bondren" || f.provider == "jira" {
 		preview.CanPost = f.settings.InternalNotes

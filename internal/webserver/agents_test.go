@@ -258,7 +258,7 @@ esac
 	if err := s.EnableResourceWrites(); err != nil {
 		t.Fatal(err)
 	}
-	_, tools, err := s.selectInvestigator(context.Background(), "saved")
+	_, tools, err := s.selectInvestigator(context.Background(), "saved", "kagent")
 	if err != nil || len(tools) != 1 || tools[0] != "lookup_status" {
 		t.Fatalf("saved tool allowlist = %v, error = %v", tools, err)
 	}

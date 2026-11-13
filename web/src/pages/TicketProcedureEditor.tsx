@@ -39,13 +39,15 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
   const sandboxNames = [...new Set([
     template, ...(connectedToCluster ? sandboxes.data?.resources.filter(item => item.state !== "deleting").map(item => item.name) ?? [] : []),
   ])];
+  const runNamespaces = settings.data?.run_namespaces ?? [];
   const busy = save.isPending || preview.isPending;
   const stale = version.revision !== revision;
   const zendesk = source === "zendesk";
   const bondren = source === "bondren";
   const jira = source === "jira";
+  const gitlab = source === "gitlab";
   const kind = zendesk ? "ticket" : "issue";
-  const tagLabel = source === "github" ? "GitHub label" : source === "linear" ? "Linear label" : source === "bondren" ? "Bondren tag" : source === "jira" ? "Jira label" : "Zendesk tag";
+  const tagLabel = source === "github" ? "GitHub label" : source === "gitlab" ? "GitLab label" : source === "linear" ? "Linear label" : source === "bondren" ? "Bondren tag" : source === "jira" ? "Jira label" : "Zendesk tag";
 
   function updateProcedures(next: TicketProcedure[], index = selected) {
     setProcedures(next);
@@ -259,6 +261,13 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
                 {sandboxNames.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </Field>
+            {runNamespaces.length > 0 && <Field label="Namespace">
+              <select className="field mono" value={draft.namespace ?? ""} onChange={e => update({ ...draft, namespace: e.target.value || undefined })}>
+                <option value="">{settings.data?.namespace} (workspace default)</option>
+                {!runNamespaces.includes(draft.namespace ?? "") && draft.namespace && <option value={draft.namespace}>{draft.namespace} (unavailable)</option>}
+                {runNamespaces.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </Field>}
           </div>
           <p className="field-help">The default agent handles cases with no matching rule. Edit an agent’s investigation instructions in <Link to="/agents" className="ticket-source">Agents</Link>.</p>
           {connectedToCluster && (agents.isError || sandboxes.isError) && <p className="field-help" role="status">Some deployment choices could not be loaded.</p>}
@@ -293,8 +302,8 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
         </div>
       </form>
       <form className="ticket-form" onSubmit={previewDraft}>
-        <Field label={jira ? "Preview Jira issue key, URL, or id" : bondren ? "Preview Bondren issue ID or number" : `Preview ${kind} number`}>
-          <input className="field" inputMode={bondren || jira ? undefined : "numeric"} pattern={bondren || jira ? undefined : "[1-9][0-9]{0,18}"} maxLength={bondren || jira ? 512 : 19} required value={ticketID}
+        <Field label={jira ? "Preview Jira issue key, URL, or id" : gitlab ? "Preview GitLab issue number or URL" : bondren ? "Preview Bondren issue ID or number" : `Preview ${kind} number`}>
+          <input className="field" inputMode={bondren || jira || gitlab ? undefined : "numeric"} pattern={bondren || jira || gitlab ? undefined : "[1-9][0-9]{0,18}"} maxLength={bondren || jira ? 512 : gitlab ? 320 : 19} required value={ticketID}
             disabled={busy || !connected} onChange={e => { setTicketID(e.target.value); preview.reset(); }} />
         </Field>
         <Button type="submit" disabled={busy || !connected}>{preview.isPending ? "Checking…" : `Preview draft on ${kind}`}</Button>

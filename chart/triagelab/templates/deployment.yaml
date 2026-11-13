@@ -41,6 +41,9 @@ spec:
             # The server refuses non-loopback listeners by design; reach the
             # UI with `kubectl port-forward`, never a Service or Ingress.
             - --listen=127.0.0.1:8080
+            {{- if .Values.gitops.enabled }}
+            - --gitops=/etc/triagelab/gitops.json
+            {{- end }}
             {{- if .Values.tickets.enabled }}
             - --tickets=/etc/triagelab/tickets/tickets.json
             {{- end }}
@@ -92,6 +95,11 @@ spec:
                 - wget -q -O /dev/null -T 5 http://127.0.0.1:8080/healthz
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           volumeMounts:
+            {{- if .Values.gitops.enabled }}
+            - name: gitops-api
+              mountPath: /var/run/triagelab-kubernetes
+              readOnly: true
+            {{- end }}
             - name: config
               mountPath: /etc/triagelab
               readOnly: true
@@ -114,6 +122,20 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
+        {{- if .Values.gitops.enabled }}
+        - name: gitops-api
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+        {{- end }}
         - name: config
           configMap:
             name: {{ include "triagelab.fullname" . }}

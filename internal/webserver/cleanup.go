@@ -45,7 +45,7 @@ func (s *Server) readSavedReport(id string) (*investigation.Report, error) {
 }
 
 // startCleanup retries recorded runtime cleanup for an inactive saved run,
-// with the same checks as `triagelab cleanup --report`. A cleanup of an older
+// without a lifecycle journal. A cleanup of an older
 // run may proceed while a different investigation is active: it reads and
 // writes only its own report directory, and the active run owns its own.
 func (s *Server) startCleanup(w http.ResponseWriter, id string) {
@@ -83,34 +83,60 @@ func (s *Server) startCleanup(w http.ResponseWriter, id string) {
 		s.mu.Unlock()
 	}
 
-	saved, err := s.readSavedReport(id)
-	if errors.Is(err, investigation.ErrUnsupportedSchema) {
-		release()
-		fail(w, http.StatusUnprocessableEntity, "This report's schema version is missing or is not one this TriageLab build rewrites, so cleanup was not attempted. Use the TriageLab build that wrote it.")
-		return
-	}
+	root, err := s.reportRoot(id)
 	if err != nil {
 		release()
 		fail(w, http.StatusNotFound, "Report not found or unreadable")
 		return
 	}
+	root.Close()
+	dir := filepath.Join(s.directory, id)
+	unlock, err := investigation.LockLegacyCleanup(dir)
+	if err != nil {
+		release()
+		switch {
+		case errors.Is(err, investigation.ErrLifecycleExists):
+			fail(w, http.StatusConflict, "Use Close investigation to release resources recorded in the lifecycle journal")
+		case errors.Is(err, investigation.ErrBusy):
+			fail(w, http.StatusConflict, "Another operation is using this investigation")
+		default:
+			fail(w, http.StatusConflict, "Could not open the investigation for cleanup")
+		}
+		return
+	}
+	finish := func() {
+		unlock()
+		release()
+	}
+
+	saved, err := s.readSavedReport(id)
+	if errors.Is(err, investigation.ErrUnsupportedSchema) {
+		finish()
+		fail(w, http.StatusUnprocessableEntity, "This report's schema version is missing or is not one this TriageLab build rewrites, so cleanup was not attempted. Use the TriageLab build that wrote it.")
+		return
+	}
+	if err != nil {
+		finish()
+		fail(w, http.StatusNotFound, "Report not found or unreadable")
+		return
+	}
 	connection := saved.Connection
 	if saved.Cleanup == nil || connection == nil {
-		release()
+		finish()
 		fail(w, http.StatusUnprocessableEntity, "This report has no recorded sandbox or session to clean up. Runs that stopped before creating resources have no cleanup record.")
 		return
 	}
-	if connection.Endpoint != s.config.Endpoint || connection.UserID != s.config.UserID || connection.Namespace != s.config.Namespace {
-		release()
+	if connection.Endpoint != s.config.Endpoint || connection.UserID != s.config.UserID || !s.config.AllowsNamespace(connection.Namespace) {
+		finish()
 		fail(w, http.StatusConflict, "This workspace is configured for a different kagent endpoint, user or namespace than the one that created the report")
 		return
 	}
-	dir := filepath.Join(s.directory, id)
 	go func() {
-		defer release()
-		runner := investigation.Investigator{Client: s.backend, Config: s.config, Secrets: s.secrets}
+		defer finish()
+		secrets := s.secretList()
+		runner := investigation.Investigator{Client: s.backend, Config: s.config, Secrets: secrets}
 		runner.Cleanup(ctx, saved)
-		if err := report.Write(dir, saved, s.secrets...); err != nil {
+		if err := report.Write(dir, saved, secrets...); err != nil {
 			s.mu.Lock()
 			s.cleanupFailure = map[string]string{id: "Cleanup finished but the report could not be saved. Retry, or use the CLI cleanup command."}
 			s.mu.Unlock()

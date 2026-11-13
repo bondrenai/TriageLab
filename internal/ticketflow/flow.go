@@ -75,6 +75,7 @@ type Case struct {
 	Revision          string                `json:"revision"`
 	Agent             string                `json:"agent,omitempty"`
 	Sandbox           string                `json:"sandbox,omitempty"`
+	Namespace         string                `json:"namespace,omitempty"`
 	Matches           []RouteRule           `json:"matches,omitempty"`
 	AgentChoices      []string              `json:"agent_choices,omitempty"`
 	MatchedTag        string                `json:"matched_tag,omitempty"`
@@ -123,8 +124,9 @@ type Flow struct {
 	done           chan struct{}
 	savedProcedure atomic.Pointer[ProcedureVersion]
 	// ResolveTarget is configured before Start and returns the exact run target
-	// to put under approval. It performs no investigation or model call.
-	ResolveTarget func(context.Context, string, string) (RunTarget, error)
+	// to put under approval. It performs no investigation or model call. The
+	// third string is the procedure's namespace choice, empty for the default.
+	ResolveTarget func(context.Context, string, string, string) (RunTarget, error)
 	// AutoLaunch is configured at startup and uses the same workspace slot
 	// and durable ticket reservation as an explicitly approved run.
 	AutoLaunch Launch
@@ -134,7 +136,7 @@ type Flow struct {
 // connection registry when present, otherwise the configured environment
 // variable. An empty result is valid only for anonymous GitHub reads.
 func resolveToken(config Config) (string, error) {
-	name := map[string]string{"github": "GitHub", "linear": "Linear", "bondren": "Bondren", "jira": "Jira"}[config.provider()]
+	name := map[string]string{"github": "GitHub", "gitlab": "GitLab", "linear": "Linear", "bondren": "Bondren", "jira": "Jira"}[config.provider()]
 	if config.storedToken != "" {
 		if !validOAuthToken(config.storedToken) {
 			return "", fmt.Errorf("the stored %s token is invalid", name)
@@ -161,6 +163,21 @@ func Open(config Config, dir string, runtime investigation.Config, secrets ...st
 			return nil, err
 		}
 		g := newGitHub(config.Repository, token)
+		g.writable = config.Policy.AutoQuestions || config.InvestigationComments
+		s, err := openStore(dir, g.account())
+		if err != nil {
+			g.client.CloseIdleConnections()
+			return nil, err
+		}
+		flow := newFlow(config, g, s, runtime, append(slices.Clone(secrets), token))
+		return flow, flow.checkSavedProcedure()
+	}
+	if config.provider() == "gitlab" {
+		token, err := resolveToken(config)
+		if err != nil {
+			return nil, err
+		}
+		g := newGitLab(gitLabOrigin(config), config.Repository, token)
 		g.writable = config.Policy.AutoQuestions || config.InvestigationComments
 		s, err := openStore(dir, g.account())
 		if err != nil {
@@ -395,9 +412,10 @@ func (f *Flow) Preview(ctx context.Context, id int64) (Case, error) {
 
 // ResolveTicket maps a source reference from the workspace to the numeric
 // case key. Bondren accepts the issue ID (UUID) from the issue URL in
-// addition to the issue number; Jira accepts an issue key, the issue URL, or
-// the numeric issue id. The other sources use numeric identifiers only and
-// the webserver never routes references here.
+// addition to the issue number; GitLab accepts the issue URL in addition to
+// the issue number; Jira accepts an issue key, the issue URL, or the numeric
+// issue id. The other sources use numeric identifiers only and the webserver
+// never routes references here.
 func (f *Flow) ResolveTicket(ctx context.Context, reference string) (int64, error) {
 	if err := f.begin(); err != nil {
 		return 0, err
@@ -408,6 +426,8 @@ func (f *Flow) ResolveTicket(ctx context.Context, reference string) (int64, erro
 	switch source := f.source.(type) {
 	case *bondrenSource:
 		return source.resolveReference(ctx, reference)
+	case *gitlabSource:
+		return source.resolveReference(reference)
 	case *jiraSource:
 		return source.resolveReference(ctx, reference)
 	}
@@ -707,20 +727,22 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		if m.Author != t.Requester {
 			continue
 		}
-		// A GitHub, Linear, or Jira issue can be authored by the same account
+		// A GitHub, GitLab, Linear, or Jira issue can be authored by the same account
 		// that posts our clarifications. A confirmed outgoing comment is not a
 		// requester reply.
-		if (f.provider == "github" || f.provider == "linear" || f.provider == "jira") && slices.ContainsFunc(c.Questions, func(q Question) bool {
+		if (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear" || f.provider == "jira") && slices.ContainsFunc(c.Questions, func(q Question) bool {
 			if q.Status != "sent" || q.CommentID <= 0 || m.ID != q.CommentID {
 				return false
 			}
-			// Linear comment IDs derive from UUIDs; the GitHub and Jira checks
-			// also pin the reconstructed comment URL.
+			// Linear comment IDs derive from UUIDs; the GitHub, GitLab, and
+			// Jira checks also pin the reconstructed comment URL.
 			switch f.provider {
 			case "linear":
 				return true
 			case "jira":
 				return m.URL == c.URL+"?focusedCommentId="+strconv.FormatInt(q.CommentID, 10)
+			case "gitlab":
+				return m.URL == c.URL+"#note_"+strconv.FormatInt(q.CommentID, 10)
 			}
 			return m.URL == c.URL+"#issuecomment-"+strconv.FormatInt(q.CommentID, 10)
 		}) {
@@ -838,7 +860,7 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		files = append(files, fsrc.attachment)
 		name := reproductionName(fsrc.Name)
 		fileEvidence = append(fileEvidence, name+" from "+f.commentReference(strconv.FormatInt(fsrc.commentID, 10), fsrc.commentURL))
-		if f.provider == "github" {
+		if f.provider == "github" || f.provider == "gitlab" {
 			fileEvidence = append(fileEvidence, name+" attached at "+fsrc.URL)
 		}
 	}
@@ -852,6 +874,10 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	if f.provider == "github" {
 		input.Source["repository"] = strings.TrimPrefix(c.Account, "https://github.com/")
 		input.Source["issue_number"] = strconv.FormatInt(id, 10)
+	}
+	if f.provider == "gitlab" {
+		input.Source["gitlab_project"] = gitlabProjectFromAccount(c.Account)
+		input.Source["issue_iid"] = strconv.FormatInt(id, 10)
 	}
 	if f.provider == "linear" {
 		input.Source["linear_team"] = strings.TrimPrefix(c.Account, "https://linear.app/")
@@ -885,10 +911,10 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		c.State, c.Reason = "review", "More than one agent matches. Choose which agent should investigate."
 		return c, t, casefile.Case{}, nil
 	}
-	c.target = RunTarget{Agent: c.Agent, Sandbox: c.Sandbox}
+	c.target = RunTarget{Agent: c.Agent, Sandbox: c.Sandbox, Namespace: c.Namespace}
 	if f.ResolveTarget != nil {
-		c.target, err = f.ResolveTarget(ctx, c.Agent, c.Sandbox)
-	} else if c.Agent != f.runtime.Agent || c.Sandbox != "triagelab-python" {
+		c.target, err = f.ResolveTarget(ctx, c.Agent, c.Sandbox, c.Namespace)
+	} else if c.Agent != f.runtime.Agent || c.Sandbox != "triagelab-python" || c.Namespace != "" {
 		err = ErrBlocked
 	}
 	if err != nil {
@@ -906,7 +932,7 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		FileEvidence                    []string
 		EffectiveEvidence               string `json:",omitempty"`
 	}{procedure, c.Account, input.Description, id, t.Requester, p, f.runtime, c.target, c.Matches, c.Files, fileEvidence, conditionalEvidenceDigest(p.Evidence, evidence)})
-	if f.provider == "github" {
+	if f.provider == "github" || f.provider == "gitlab" {
 		// Comment edits/deletions and changed attachment locations invalidate
 		// approval even when the selected file bytes remain identical.
 		c.Plan = digest([]string{c.Plan, c.Revision})
@@ -935,6 +961,8 @@ func (f *Flow) commentReference(id, url string) string {
 	switch f.provider {
 	case "github":
 		return "GitHub issue author at " + url
+	case "gitlab":
+		return "GitLab issue author at " + url
 	case "linear":
 		return "Linear issue author at " + url
 	case "bondren":
@@ -960,8 +988,9 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 		if f.hasSecret([]byte(a.Name)) || f.hasSecret([]byte(a.URL)) {
 			return casefile.Case{}, errors.New("An attachment reference contains a configured credential.")
 		}
-		// GitHub and Linear attachments do not state a size before download.
-		unknownSize := (f.provider == "github" || f.provider == "linear") && a.Size == -1
+		// GitHub, GitLab, and Linear attachments do not state a size before
+		// download.
+		unknownSize := (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && a.Size == -1
 		if !fileName.MatchString(name) || (!unknownSize && a.Size <= 0) || a.Size > casefile.MaxFileBytes || seen[name] {
 			return casefile.Case{}, errors.New("Attachments must be unique .py, .json, .txt or .log files, each at most 1 MiB.")
 		}
@@ -982,6 +1011,9 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 	provider := "Zendesk"
 	if f.provider == "github" {
 		provider = "GitHub"
+	}
+	if f.provider == "gitlab" {
+		provider = "GitLab"
 	}
 	if f.provider == "linear" {
 		provider = "Linear"
@@ -1010,7 +1042,7 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 	if err != nil {
 		return casefile.Case{}, errors.New("The selected evidence failed ingestion checks. Review the ticket for secrets or unsafe files.")
 	}
-	if f.provider == "github" {
+	if f.provider == "github" || f.provider == "gitlab" {
 		for i := range c.Attachments {
 			for _, a := range files {
 				if c.Attachments[i].Path == reproductionName(a.Name) {

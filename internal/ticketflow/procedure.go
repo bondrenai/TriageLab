@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/bondrenai/TriageLab/internal/agent"
+	"github.com/bondrenai/TriageLab/internal/investigation"
 )
 
 const procedureFile = ".procedure"
@@ -34,7 +35,10 @@ type Procedure struct {
 	Clarification string        `json:"clarification"`
 	DefaultAgent  string        `json:"default_agent"`
 	Sandbox       string        `json:"sandbox"`
-	Routes        []RouteRule   `json:"routes"`
+	// Namespace optionally pins runs to one of the workspace's allowed run
+	// namespaces; empty means the workspace default.
+	Namespace string      `json:"namespace,omitempty"`
+	Routes    []RouteRule `json:"routes"`
 }
 
 type ProcedureVersion struct {
@@ -44,9 +48,30 @@ type ProcedureVersion struct {
 }
 
 type RunTarget struct {
-	Agent, Sandbox                 string
+	Agent, Sandbox, Namespace      string
 	AgentRevision, SandboxRevision string
 	Tools                          []string
+}
+
+// OpenManaged opens the same durable case store as an ordinary connection,
+// but takes its entire procedure set from the declarative source. Procedures
+// and credentials are not copied to disk. Validation happens before polling.
+func OpenManaged(config Config, dir string, runtime investigation.Config, version ProcedureVersion, secrets ...string) (*Flow, error) {
+	f, err := Open(config, dir, runtime, secrets...)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.validateProcedureSet(version); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	record := procedureRecord{Account: f.Account(), Procedure: cloneProcedure(version.Procedure), Additional: make([]Procedure, len(version.Additional))}
+	for i, p := range version.Additional {
+		record.Additional[i] = cloneProcedure(p)
+	}
+	saved := record.version()
+	f.savedProcedure.Store(&saved)
+	return f, nil
 }
 
 func (f *Flow) Procedure() ProcedureVersion {
@@ -154,10 +179,11 @@ func (f *Flow) validateProcedure(p Procedure) error {
 		(p.Clarification != "" && (!validText(strings.ReplaceAll(p.Clarification, "\n", " "), 500) || f.hasSecret([]byte(p.Clarification)))) ||
 		!p.Evidence.valid(validText) || !agent.ValidResourceName(p.DefaultAgent) ||
 		!agent.ValidResourceName(p.Sandbox) || f.hasSecret([]byte(p.DefaultAgent)) || f.hasSecret([]byte(p.Sandbox)) ||
+		(p.Namespace != "" && (!f.runtime.AllowsNamespace(p.Namespace) || f.hasSecret([]byte(p.Namespace)))) ||
 		len(p.Routes) > 20 {
 		return ErrInvalidProcedure
 	}
-	if (f.provider == "github" || f.provider == "linear" || f.provider == "bondren") && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
+	if (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear" || f.provider == "bondren") && (len(policy.Priorities) != 0 || policy.FieldID != 0) {
 		return ErrInvalidProcedure
 	}
 	for _, priority := range policy.Priorities {
@@ -309,6 +335,7 @@ func (c *Case) route(p Procedure, tags []string) {
 		c.Agent = c.SelectedAgent
 	}
 	c.Sandbox = p.Sandbox
+	c.Namespace = p.Namespace
 }
 
 func routeKey(p Procedure, matches []RouteRule) string {

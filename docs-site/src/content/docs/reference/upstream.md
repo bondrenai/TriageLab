@@ -32,6 +32,12 @@ project's Helm charts and worker images. Installing the core project's source
 installer alongside kagent's Helm installer would duplicate infrastructure;
 TriageLab uses only the supported kagent installation path.
 
+The controller retention patch is optional. A release kagent controller at the
+same pin runs investigations unchanged; TriageLab probes its `tools/list`
+schema at run start, records the answer in the report's `upstream` section,
+and runs without [pause and resume](/TriageLab/guides/pause-resume/) when the
+fork's `retain_while_suspended` input is absent.
+
 ## Interfaces used
 
 1. Kubernetes configuration uses **`api.kagent.dev/v1alpha3`**: `Harness`,

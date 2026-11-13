@@ -45,6 +45,11 @@ or one OIDC provider) of the same workflow, reached over loopback.
   pass build-time validation. Contributor-facing notes stay in `docs/`.
 - `deploy/` configures kagent and Agent Substrate. kagent owns Sandbox lifecycle;
   Substrate supplies gVisor or microVM isolation. Do not build a replacement.
+  The bondrenai controller fork's durable suspended-sandbox retention is
+  optional: the dev installer defaults to the release controller, the fork is
+  an explicit opt-in, and investigations probe the controller at run start and
+  keep working without pause/resume when only a release controller is
+  installed.
 - `chart/` and the root `Dockerfile` package the single-user workspace for a
   dedicated cluster. Keep the loopback-only UI and port-forward access model;
   never add a Service, Ingress, or multi-replica deployment to the chart.

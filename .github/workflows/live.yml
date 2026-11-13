@@ -4,6 +4,8 @@ name: Live verification
 # exercises the real kagent/Substrate deployment: the sandbox boundary without
 # a model, then a model-backed investigation and pause/resume. The last two
 # call the model provider and incur charges; the schedule is the cost dial.
+# The install opts into the pinned controller fork so the pause check
+# exercises durable retention.
 # Nothing here reaches a shared or production cluster. The kind and kagent CLI
 # pins follow docs/development.md; the Helm pin is carried over from the
 # recorded rc3 runs.
@@ -105,6 +107,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TRIAGELAB_SANDBOX_CLASS: ${{ matrix.sandbox_class }}
+          TRIAGELAB_CONTROLLER: fork
         run: bash scripts/install-dev.sh
       - name: Confirm the WorkerPool backend
         env:

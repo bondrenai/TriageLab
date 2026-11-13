@@ -144,10 +144,13 @@ func (m corpusManifest) validate() error {
 	return nil
 }
 
-// selectCases returns the comma-separated cases in manifest order; empty selects all.
+// selectCases returns the comma-separated cases in manifest order. An empty selection runs the smoke case.
 func (m corpusManifest) selectCases(spec string) ([]corpusCase, error) {
-	if strings.TrimSpace(spec) == "" {
+	switch strings.TrimSpace(spec) {
+	case "all":
 		return m.Cases, nil
+	case "":
+		spec = "config-bug"
 	}
 	names := make([]string, len(m.Cases))
 	for i, c := range m.Cases {

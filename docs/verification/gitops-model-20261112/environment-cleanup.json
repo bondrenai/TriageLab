@@ -1,0 +1,17 @@
+{
+  "verified_at": "2026-11-12T19:24:42.469267+00:00",
+  "disposable_cluster_removed": true,
+  "disposable_gitlab_container_and_volumes_removed": true,
+  "temporary_credential_files_absent": [
+    "openai-key",
+    "gitlab-token",
+    "kubeconfig",
+    "model-e2e/api-token",
+    "model-e2e-2/api-token"
+  ],
+  "temporary_users_files_removed": [
+    "model-e2e/reports/.auth/users.json",
+    "model-e2e-2/reports/.auth/users.json"
+  ],
+  "remaining_running_containers": []
+}

@@ -82,6 +82,8 @@ func SourceAccount(config Config) string {
 	switch config.provider() {
 	case "github":
 		return "https://github.com/" + config.Repository
+	case "gitlab":
+		return gitLabOrigin(config) + "/" + config.Repository
 	case "linear":
 		return "https://linear.app/" + config.Workspace + "/" + config.Team
 	case "bondren":

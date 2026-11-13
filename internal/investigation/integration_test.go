@@ -26,7 +26,8 @@ const (
 // against a real deployment. It never falls back to a mock. Opt-in requires a
 // dedicated real kagent/Substrate deployment and a working model credential in
 // its gateway. Every case costs model tokens: TRIAGELAB_CASES=name,name selects
-// a subset. All selected cases run; the test fails at the end if any missed.
+// a subset. The default is config-bug; use TRIAGELAB_CASES=all for the corpus.
+// The test fails at the end if any selected case missed.
 func TestLiveInvestigation(t *testing.T) {
 	if os.Getenv("TRIAGELAB_INTEGRATION") != "1" {
 		t.Skip("set TRIAGELAB_INTEGRATION=1 for real kagent/Substrate/model integration")

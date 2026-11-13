@@ -1,6 +1,9 @@
 # Investigation pause and resume
 
 Status: upstream retention patch and TriageLab workflow implemented, 2026-11-10.
+Since 2026-11-12 TriageLab treats retention as an optional controller
+capability: it probes the controller at run start and runs the same workflow
+without pause and resume when only a release controller is installed.
 The controller pin is
 [`bondrenai/kagent` commit `048e1016d50b209dba01065d0d10dfd80b78fb41`](https://github.com/bondrenai/kagent/commit/048e1016d50b209dba01065d0d10dfd80b78fb41),
 based on kagent `v1.0.0`, commit
@@ -77,11 +80,13 @@ Sandbox with a later deadline to expire, then restores the retained Sandbox and
 checks its ID, file bytes, fresh active TTL, duplicate resume, and deletion.
 This proves the elapsed-expiry path without claiming weeks of elapsed uptime.
 
-`scripts/install-dev.sh` installs the released 1.0.0 stack, builds the pinned fork
-controller with `scripts/install-fork-controller.sh`, loads it into Kind, and
-waits for its rollout before installing TriageLab resources. No fork image has
-been published. See [development.md](development.md) and [upstream.md](upstream.md)
-for the source and image pins.
+`scripts/install-dev.sh` installs the released 1.0.0 stack with the release
+controller by default; durable pause/resume needs the fork, so install with
+`TRIAGELAB_CONTROLLER=fork` or run `scripts/install-fork-controller.sh` on the
+existing cluster to build the pinned fork controller, load it into Kind, and
+wait for its rollout. No fork image has been published. See
+[development.md](development.md) and [upstream.md](upstream.md) for the source
+and image pins.
 
 ## TriageLab behavior
 

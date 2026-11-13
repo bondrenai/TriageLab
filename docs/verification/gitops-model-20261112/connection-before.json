@@ -1,0 +1,56 @@
+{
+  "apiVersion": "triagelab.bondren.ai/v1alpha1",
+  "kind": "TicketConnection",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"triagelab.bondren.ai/v1alpha1\",\"kind\":\"TicketConnection\",\"metadata\":{\"annotations\":{},\"name\":\"gitlab-model\",\"namespace\":\"triagelab-gitops-model\"},\"spec\":{\"config\":{\"investigation_comments\":false,\"max_auto_runs_per_day\":1,\"origin\":\"http://127.0.0.1:18900\",\"policy\":{\"auto_questions\":false,\"auto_run_condition\":\"ticket.source == \\\"gitlab\\\" \\u0026\\u0026 \\\"gitops-e2e\\\" in ticket.tags\",\"auto_runs\":false,\"match_condition\":\"ticket.source == \\\"gitlab\\\" \\u0026\\u0026 \\\"gitops-e2e\\\" in ticket.tags\",\"max_questions\":0,\"tag\":\"gitops-e2e\"},\"poll_seconds\":0,\"repository\":\"gitops-model-verification-2/timeout-reproduction\",\"source\":\"gitlab\"},\"label\":\"GitOps model verification\",\"procedureRefs\":[\"timeout\"],\"tokenSecretRef\":{\"key\":\"token\",\"name\":\"gitlab-source\"},\"workspace\":\"model-check\"}}\n"
+    },
+    "creationTimestamp": "2026-11-12T19:19:32Z",
+    "generation": 1,
+    "name": "gitlab-model",
+    "namespace": "triagelab-gitops-model",
+    "resourceVersion": "2475",
+    "uid": "a6788f72-001c-4548-9bf2-59f0315c3544"
+  },
+  "spec": {
+    "config": {
+      "investigation_comments": false,
+      "max_auto_runs_per_day": 1,
+      "origin": "http://127.0.0.1:18900",
+      "policy": {
+        "auto_questions": false,
+        "auto_run_condition": "ticket.source == \"gitlab\" && \"gitops-e2e\" in ticket.tags",
+        "auto_runs": false,
+        "match_condition": "ticket.source == \"gitlab\" && \"gitops-e2e\" in ticket.tags",
+        "max_questions": 0,
+        "tag": "gitops-e2e"
+      },
+      "poll_seconds": 0,
+      "repository": "gitops-model-verification-2/timeout-reproduction",
+      "source": "gitlab"
+    },
+    "label": "GitOps model verification",
+    "procedureRefs": [
+      "timeout"
+    ],
+    "tokenSecretRef": {
+      "key": "token",
+      "name": "gitlab-source"
+    },
+    "workspace": "model-check"
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-12T19:19:33Z",
+        "message": "Configuration applied; source connectivity is checked when used.",
+        "observedGeneration": 1,
+        "reason": "Reconciled",
+        "status": "True",
+        "type": "Ready"
+      }
+    ],
+    "connectionID": "42fbb413",
+    "observedGeneration": 1
+  }
+}

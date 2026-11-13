@@ -17,7 +17,7 @@ investigator ran, with its exit status and output, and saves that evidence in
 a JSON and Markdown report, kept apart from the model's conclusions.
 
 Cases can come from the command line, a browser workspace, or a ticket in
-Zendesk, GitHub, Linear, Bondren, or Jira. For a ticket, TriageLab matches it to a
+Zendesk, GitHub, GitLab, Linear, Bondren, or Jira. For a ticket, TriageLab matches it to a
 procedure, drafts a request for any missing evidence, and waits for your
 approval before starting. You can let a procedure start on its own once its
 evidence is ready. When the investigation ends, you can send a reviewed
@@ -25,8 +25,19 @@ summary back to the ticket. Other programs can start investigations through
 the CLI, an HTTP MCP endpoint, or OAuth API clients.
 
 TriageLab is free and Apache 2.0 licensed. It is an early, single-user pilot:
-it runs against a dedicated development cluster, and every ticket source
-currently uses one built-in procedure for a Python 3.12 timeout example.
+it runs against a dedicated development cluster, and the only ticket
+procedure that ships with it is a Python 3.12 timeout example. Admins add
+procedures for other kinds of tickets in the workspace.
+
+[![TriageLab walkthrough: a GitHub issue, reproduced in a sandbox (2:08)](docs-site/src/assets/walkthrough-poster.jpg)](https://www.youtube.com/watch?v=BXYmfvuqTPg)
+
+**[Watch the two-minute walkthrough](https://www.youtube.com/watch?v=BXYmfvuqTPg).**
+A customer's GitHub issue blames lock retries for 11 missing orders. A ticket
+procedure starts the investigation, a replay of the customer's own data loses
+the same orders with zero retries, adding the order ID to the cursor delivers
+all 625, and the reviewed findings go back to the issue. The case is
+[`examples/missing-orders`](examples/missing-orders/README.md), and `make demo`
+runs it.
 
 ## How it works
 
@@ -44,7 +55,8 @@ workspace, or a ticket:
    model's claims must cite those process IDs.
 4. TriageLab writes the report and deletes the sandbox. If the investigator
    needs more information, TriageLab pauses the sandbox instead so the
-   investigation can resume later.
+   investigation can resume later — with the opt-in controller fork; without
+   it, the run completes its round and records what is missing.
 
 The report keeps failed experiments as well as successful ones. It presents
 the model's explanation of the cause as a hypothesis; it does not certify a
@@ -124,14 +136,19 @@ make build
 
 The installer changes only the `kind-triagelab` cluster. It:
 
-- installs Agent Substrate and kagent 1.0.0, and gives the API key to kagent;
-- swaps in TriageLab's pinned kagent controller, built from source, which
-  keeps paused investigations from being deleted;
+- installs Agent Substrate and the released kagent 1.0.0 controller, and
+  gives the API key to kagent;
 - applies TriageLab's agent and sandbox template and waits until both are
   ready.
 
 It stops without changing anything if the cluster already has a kagent
 controller.
+
+Durable [pause and resume](#pause-and-resume) is an opt-in extra. Install with
+`TRIAGELAB_CONTROLLER=fork`, or run `scripts/install-fork-controller.sh`
+afterwards, to build and swap in TriageLab's pinned kagent controller fork,
+which keeps paused investigations from being deleted. Without it, pause is
+refused and a run that needs more information completes its round.
 
 ### 4. Connect to kagent
 
@@ -159,15 +176,20 @@ example:
 
 ```bash
 ./bin/triagelab investigate \
-  --description-file examples/config-bug/issue.md --repo examples/config-bug
+  --description-file examples/missing-orders/ticket.md \
+  --repo examples/missing-orders/repro
 ```
 
-The example is a small Python client whose request timeout is set in the wrong
-unit: the intended five seconds is configured as five milliseconds. A good
-investigation reproduces the failure, finds the unit mismatch, and
-verifies an exact corrected value. The CLI prints where it saved the report;
-[the example investigation](https://bondrenai.github.io/TriageLab/start/example/)
-explains how to read it.
+The example is a support ticket whose own diagnosis is wrong. A customer's
+nightly sync silently drops 11 orders, and they explain in detail why lock
+retries are to blame. A good investigation replays their data, shows the loss
+happens with no lock retry at all, finds the cause, and verifies a corrected
+configuration. A run takes about two minutes. The CLI prints where it saved the
+report; [the example investigation](https://bondrenai.github.io/TriageLab/start/example/)
+walks through a recorded one.
+
+A smaller smoke case, a client timeout configured in the wrong unit, is in
+[`examples/config-bug`](examples/config-bug/). The integration tests use it.
 
 Keep the token out of logs and shell output, and create a new one when it
 expires. Without `--config`, the CLI uses the same settings as
@@ -179,8 +201,9 @@ cover a report that does not reproduce, missing information, an unrelated
 nonzero exit, a deterministic failure that looks intermittent, and
 prompt-injection bait beside a real bug. Expected results live in
 `examples/corpus.json`, outside the uploaded case directories.
-`make test-integration` scores a live run of every case, or the subset named in
-`TRIAGELAB_CASES`. Only the timeout example has run against a model so far;
+`make test-integration` runs the timeout smoke case by default. Set
+`TRIAGELAB_CASES=all` to score the full corpus, or use a comma-separated list
+of case names. Only the timeout example has run against a model so far;
 see [verification](docs/verification.md#evaluation-corpus-authored-not-run-live).
 
 ### 6. Tear down
@@ -271,11 +294,19 @@ even across TriageLab restarts and weeks of waiting:
 - Keep the whole run directory, including `lifecycle.json`.
 - Resume with a fresh token for the same endpoint and identity.
 
-Paused sandboxes never expire on their own. They depend on the pinned
-controller, on `config.sessions.idleTtl: 0s` (the installer sets both), and on
-kagent's database and snapshot storage staying available. Files in durable
-workspace directories survive a pause; process memory, running commands, and
-edits elsewhere do not. See [durable investigations](docs/durable-investigations.md).
+Pause and resume need the controller fork; the installer does not install it
+by default. Set `TRIAGELAB_CONTROLLER=fork` when installing, or run
+`scripts/install-fork-controller.sh` on the running cluster. With the release
+controller, `pause` is refused, a run that needs more information completes
+its round and records the questions in `missing_information`, and the report
+records `"sandbox_retention": false`.
+
+With the fork, paused sandboxes never expire on their own. They depend on the
+forked controller, on `config.sessions.idleTtl: 0s` (the installer sets it),
+and on kagent's database and snapshot storage staying available. Files in
+durable workspace directories survive a pause; process memory, running
+commands, and edits elsewhere do not. See
+[durable investigations](docs/durable-investigations.md).
 
 ## Browser workspace
 
@@ -339,6 +370,9 @@ guide:
   investigation summaries are private notes.
 - [GitHub issues](docs/github-issues.md), for one repository: comments are
   visible to anyone with repository access, and public in a public repository.
+- [GitLab](docs/gitlab-issues.md), for one project on GitLab.com or a
+  self-managed instance: clarifications and summaries are notes visible to
+  everyone with access to the issue and its project.
 - [Linear](docs/linear-issues.md), for one team: comments are visible to
   everyone in the Linear workspace.
 - [Bondren](docs/bondren-issues.md), for one workspace: clarifications are
@@ -364,6 +398,12 @@ Substrate installation, from the public chart
 UI listens on loopback inside the pod, and you reach it with
 `kubectl port-forward`. The chart deliberately creates no Service or Ingress.
 See [Helm deployment](docs/helm.md).
+
+For GitOps, enable the chart's `gitops` settings and manage ticket connections
+and ordered procedures through `TicketConnection` and `TicketProcedure` CRDs.
+Credentials use same-namespace Secret references; the workspace reconciles
+changes and protects Git-managed definitions from UI edits. See the
+[GitOps guide](https://bondrenai.github.io/TriageLab/guides/gitops/).
 
 ## Development
 

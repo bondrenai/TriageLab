@@ -33,13 +33,15 @@ export interface ConnectionConfig {
 }
 
 export interface ConnectionCredential {
-  mode: "stored" | "env" | "none";
+  mode: "stored" | "env" | "none" | "secret";
   env?: string;
 }
 
 // The admin projection of a saved connection. The credential value never
 // leaves the server.
 export interface ConnectionStatus {
+  managed_by?: string;
+  error?: string;
   id: string;
   label?: string;
   source: TicketSource;

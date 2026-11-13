@@ -1,5 +1,27 @@
 # Roadmap
 
+- [x] Add opt-in GitOps reconciliation for namespaced ticket connections and
+      procedures, with Secret references, UI ownership protection, and retained
+      case state on deletion. See the [GitOps guide](docs-site/src/content/docs/guides/gitops.md).
+- [x] Verify a model-backed investigation from GitOps-managed connections and
+      procedures against a real self-managed GitLab instance. Approval gating,
+      CR updates, input hashes, failed/corrected sandbox processes, restart
+      persistence, and independent cleanup passed on the build VM.
+- [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
+      pod-projected API-token rotation. See [verification](docs/verification.md).
+
+- [ ] Start `examples/missing-orders` from the New investigation form and add
+      it to the scheduled live verification. A run started from a labelled
+      GitHub issue has been verified, including the posted comment. Since
+      2026-11-12 it is the main demonstration: the workspace's bundled
+      example, `make demo`, and the quickstart example, after three live runs
+      reproduced the loss, rejected the customer's theory, and verified a
+      correction. See
+      [verification](docs/verification.md) and the
+      [demonstration notes](docs/demo.md). Those runs used a local arm64
+      Docker Desktop cluster reached through a Linux container, a path that is
+      not documented or supported yet.
+
 - [x] Verify CEL automatic launch against live Jira and kagent on the build VM.
       The same synthetic issue exercised a blocking and an allowing rule.
 - [ ] Pilot CEL procedure routing and conditional evidence with more ticket types.
@@ -37,10 +59,12 @@
       caller credentials, and complete cleanup. The fork's separate retention
       test passed beyond the original expiry. Both passed again on kagent 1.0.0
       with the rebased fork. See [verification](docs/verification.md) and
-      [lifecycle design](docs/durable-investigations.md).- [ ] Run the evaluation corpus in `examples/` live and calibrate
+      [lifecycle design](docs/durable-investigations.md).
+- [ ] Run the evaluation corpus in `examples/` live and calibrate
       `examples/corpus.json`. Five of its six cases, including the
       prompt-injection bait, have never met a model; their expectations are
-      design intent until a scorecard exists.- [ ] Review held drafts and blocked notes from the first pilots and tune the
+      design intent until a scorecard exists.
+- [ ] Review held drafts and blocked notes from the first pilots and tune the
       input and output sanitizers: deny-list matching thresholds, per-source
       internal terms, and provenance of applied redactions, before widening
       automated replies.
@@ -62,14 +86,24 @@
       ticket identity and one owner for automated replies. Add a Jira pilot
       for one Cloud site covering the same sends (the connector is
       fixture-verified only, including the observed signed-attachment
-      redirect shape). Use pilot evidence
+      redirect shape). Add a GitLab pilot for one project on GitLab.com or a
+      self-managed instance covering the same sends (the connector is
+      fixture-verified only, including note-body normalization and the
+      project uploads download). Use pilot evidence
       to guide procedure authoring and CEL. (The Jira pilot ran 2026-11-11
       against a real Cloud site: lookups, live signed attachment download,
       clarification with bounded follow-up, a model-backed two-round run
       approved from a Jira case, and internal-note delivery all passed; it
       found and fixed the issue-id/comment-id numeric collision, and a Jira
       Service Management project remains to be exercised for internal-note
-      visibility.)
+      visibility. The GitLab connector passed live checks against a
+      disposable self-managed CE 19.5.5 instance on 2026-11-12 — connection
+      verification, upload download through real evidence preparation,
+      clarification with a bounded follow-up, and investigation-comment
+      delivery — which also found and fixed an undersized response bound in
+      the connection probe. A GitOps-managed model-backed run from a GitLab
+      case also passed; GitLab.com remains to be exercised. See
+      [verification](verification.md).)
 - [x] Exercise the new sign-in surface against real identity providers
       (done 2026-11-09 on the build VM: Keycloak 26 confidential client and
       Zitadel v4.20 public PKCE client, full authorization-code flows with

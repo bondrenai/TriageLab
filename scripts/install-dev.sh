@@ -2,6 +2,8 @@
 # Install only into the explicitly named disposable kind cluster.
 # TRIAGELAB_SANDBOX_CLASS=microvm selects the optional KVM-backed WorkerPool;
 # create the cluster from deploy/kind-microvm.yaml first. See docs/development.md.
+# TRIAGELAB_CONTROLLER=fork additionally installs the pinned controller fork
+# that durable pause/resume needs; the default is the release controller.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ "$(uname -s)" != "Linux" ]]; then
@@ -21,6 +23,14 @@ case "$sandbox_class" in
     ;;
   *)
     echo "TRIAGELAB_SANDBOX_CLASS must be gvisor or microvm." >&2
+    exit 2
+    ;;
+esac
+controller="${TRIAGELAB_CONTROLLER:-release}"
+case "$controller" in
+  release|fork) ;;
+  *)
+    echo "TRIAGELAB_CONTROLLER must be release or fork." >&2
     exit 2
     ;;
 esac
@@ -56,7 +66,10 @@ if [[ "$sandbox_class" == microvm ]]; then
   done
 fi
 kagent --config "$cli_config" install --namespace kagent
-bash scripts/install-fork-controller.sh
+if [[ "$controller" == fork ]]; then
+  # Durable pause/resume needs the fork's retained suspended sandboxes.
+  bash scripts/install-fork-controller.sh
+fi
 if [[ "$sandbox_class" == microvm ]]; then
   # Workers request the ate.dev/kvm device from atelet and stay Pending without it.
   kvm=""

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/bondrenai/TriageLab/internal/agent"
 	"github.com/bondrenai/TriageLab/internal/auth"
+	"github.com/bondrenai/TriageLab/internal/gitops"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/kagent"
 	"github.com/bondrenai/TriageLab/internal/report"
@@ -52,6 +52,7 @@ type runOptions struct {
 	listen              string
 	assets              string
 	tickets             string
+	gitopsPath          string
 	telemetryPath       string
 	statusKubeconfig    string
 	statusContext       string
@@ -62,6 +63,7 @@ type runOptions struct {
 	clientsPath         string
 	allowResourceWrites bool
 	manualAgent         string
+	runNamespace        string
 	files               stringsFlag
 	logs                stringsFlag
 }
@@ -80,13 +82,15 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
 		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
 		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
+		flags.StringVar(&opts.runNamespace, "namespace", "", "namespace configured under run_namespaces (default: the configured namespace)")
 		flags.Var(&opts.files, "file", "attachment (repeatable)")
 		flags.Var(&opts.logs, "log", "log file (repeatable)")
 	case "serve":
 		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
 		flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
 		flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
-		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, Linear, Bondren, or Jira case configuration (serve only)")
+		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only)")
+		flags.StringVar(&opts.gitopsPath, "gitops", "", "optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation")
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
 		flags.BoolVar(&opts.allowResourceWrites, "allow-resource-writes", false, "allow the workspace to save kagent definitions in the configured namespace")
@@ -354,6 +358,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(out, "Using the ticket connections saved in this workspace; manage them in the UI or remove "+
 				filepath.Join(opts.output, ".tickets", "registry.json")+" to bootstrap from --tickets again.")
 		}
+		if opts.gitopsPath != "" {
+			gitopsConfig, loadErr := gitops.LoadConfig(opts.gitopsPath)
+			if loadErr == nil {
+				loadErr = workspace.EnableGitOps(gitopsConfig)
+			}
+			if loadErr != nil {
+				_ = workspace.Close(ctx)
+				fmt.Fprintln(errout, loadErr)
+				return 2
+			}
+		}
 		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
 			fmt.Fprintln(errout, report.Redact(err.Error(), token))
 			return 4
@@ -367,7 +382,16 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 4
 		}
-		fmt.Fprintln(out, "kagent sandbox API reachable. A live investigation is needed to verify runtime and model access.")
+		retention, err := client.SandboxRetention(probe)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 4
+		}
+		capability := "this release controller does not retain suspended sandboxes, so pause and resume are unavailable"
+		if retention {
+			capability = "the controller fork's durable pause retention is available"
+		}
+		fmt.Fprintf(out, "kagent sandbox API reachable; %s. A live investigation is needed to verify runtime and model access.\n", capability)
 		return 0
 	case "investigate":
 		runner.Config, runner.AdditionalTools, err = config.SelectManualAgent(opts.manualAgent)
@@ -375,6 +399,15 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, err)
 			return 2
 		}
+		if opts.runNamespace != "" && !config.AllowsNamespace(opts.runNamespace) {
+			fmt.Fprintln(errout, "Choose a namespace configured under run_namespaces or the workspace default")
+			return 2
+		}
+		if opts.runNamespace != "" {
+			runner.Config.Namespace = opts.runNamespace
+		}
+		// The allowlist is workspace launch policy, not a run setting.
+		runner.Config.RunNamespaces = nil
 		c, err := ingestRunOptions(opts)
 		if err != nil {
 			fmt.Fprintln(errout, err)
@@ -392,23 +425,26 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
 			return 2
 		}
-		if _, stateErr := os.Lstat(filepath.Join(filepath.Dir(opts.reportPath), "lifecycle.json")); stateErr == nil {
+		dir := filepath.Dir(opts.reportPath)
+		unlock, err := investigation.LockLegacyCleanup(dir)
+		if errors.Is(err, investigation.ErrLifecycleExists) {
 			return runSavedInvestigation(ctx, "close", opts, &runner, out, errout)
-		} else if !os.IsNotExist(stateErr) {
-			fmt.Fprintln(errout, "Cannot read the investigation lifecycle record")
+		}
+		if err != nil {
+			fmt.Fprintln(errout, report.Redact(err.Error(), token))
 			return 4
 		}
+		defer unlock()
 		f, err := os.Open(opts.reportPath)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
 		defer f.Close()
-		// Only the first JSON value is read. The typed decoder refuses a schema
-		// version this build does not write and keeps unmodelled members for the rewrite.
-		var raw json.RawMessage
-		if err = json.NewDecoder(io.LimitReader(f, 32<<20)).Decode(&raw); err != nil {
-			fmt.Fprintln(errout, "Invalid report JSON")
+		const maxReportBytes = 64 << 20
+		raw, err := io.ReadAll(io.LimitReader(f, maxReportBytes+1))
+		if err != nil || len(raw) > maxReportBytes {
+			fmt.Fprintln(errout, "Invalid or oversized report JSON")
 			return 2
 		}
 		saved, err := investigation.DecodeReport(raw)
@@ -420,8 +456,8 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, "Invalid report JSON")
 			return 2
 		}
-		if conn := saved.Connection; conn == nil || conn.Endpoint != config.Endpoint || conn.UserID != config.UserID || conn.Namespace != config.Namespace {
-			fmt.Fprintln(errout, "Configuration must match the report endpoint, user and namespace")
+		if conn := saved.Connection; conn == nil || conn.Endpoint != config.Endpoint || conn.UserID != config.UserID || !config.AllowsNamespace(conn.Namespace) {
+			fmt.Fprintln(errout, "Configuration must match the report endpoint, user and an allowed namespace")
 			return 2
 		}
 		if saved.Cleanup == nil {
@@ -431,7 +467,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		cleanupCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		runner.Cleanup(cleanupCtx, saved)
-		if err = report.Write(filepath.Dir(opts.reportPath), saved, token); err != nil {
+		if err = report.Write(dir, saved, token); err != nil {
 			fmt.Fprintln(errout, err)
 			return 4
 		}

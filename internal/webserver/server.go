@@ -66,7 +66,9 @@ type Server struct {
 	secretMu       sync.Mutex
 	ticketMu       sync.RWMutex
 	ticketConns    []*ticketConn
+	gitops         *gitopsSync
 	deployments    *kagent.DeploymentReader
+	runDeployments map[string]*kagent.DeploymentReader
 	resourceWrites bool
 	auth           *gate
 	mcp            *mcpAccess
@@ -82,7 +84,7 @@ type Server struct {
 func (s *Server) secretList() []string {
 	s.secretMu.Lock()
 	defer s.secretMu.Unlock()
-	return s.secrets
+	return append([]string(nil), s.secrets...)
 }
 
 func (s *Server) addSecret(value string) {
@@ -153,6 +155,14 @@ func (s *Server) Close(ctx context.Context) error {
 		chat.cancel()
 	}
 	s.mu.Unlock()
+	if s.gitops != nil {
+		s.gitops.cancel()
+		select {
+		case <-s.gitops.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	if active != nil {
 		select {
 		case <-active.done:
@@ -207,7 +217,9 @@ func Serve(ctx context.Context, listen string, s *Server, out io.Writer) (result
 		return err
 	}
 	for _, conn := range s.ticketConnections() {
-		conn.flow.Start(ctx)
+		if conn.managed == nil {
+			conn.flow.Start(ctx)
+		}
 	}
 	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	result := make(chan error, 1)
@@ -393,7 +405,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/settings" && r.Method == http.MethodGet {
-		jsonResponse(w, http.StatusOK, map[string]any{"agent": s.config.Agent, "sandbox_template": s.config.Template, "namespace": s.config.Namespace, "resource_writes": s.resourceWrites, "manual_agents": s.manualAgentNames(), "max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
+		jsonResponse(w, http.StatusOK, map[string]any{"agent": s.config.Agent, "sandbox_template": s.config.Template, "namespace": s.config.Namespace, "run_namespaces": s.runNamespaceNames(), "resource_writes": s.resourceWrites, "manual_agents": s.manualAgentNames(), "max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
 		return
 	}
 	if r.URL.Path == "/api/runs" {
@@ -778,6 +790,21 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "An investigation is already running")
 		return
 	}
+	var namespace string
+	if values := r.Header.Values("X-TriageLab-Namespace"); len(values) > 0 {
+		if len(values) != 1 || values[0] == "" {
+			fail(w, http.StatusBadRequest, "Choose exactly one run namespace")
+			return
+		}
+		namespace = values[0]
+		if !s.config.AllowsNamespace(namespace) {
+			fail(w, http.StatusBadRequest, "Choose a namespace configured for this workspace")
+			return
+		}
+	}
+	if namespace == "" {
+		namespace = s.config.Namespace
+	}
 	var name string
 	if names := r.Header.Values("X-TriageLab-Agent"); len(names) > 0 {
 		if len(names) != 1 || names[0] == "" {
@@ -786,7 +813,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		}
 		name = names[0]
 	}
-	config, extraTools, err := s.selectInvestigator(r.Context(), name)
+	config, extraTools, err := s.selectInvestigator(r.Context(), name, namespace)
 	if err != nil {
 		switch {
 		case errors.Is(err, kagent.ErrAgentNotReady):
@@ -806,7 +833,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		}
 		sandbox = sandboxes[0]
 	}
-	template, err := s.selectSandbox(r.Context(), sandbox)
+	template, err := s.selectSandbox(r.Context(), sandbox, namespace)
 	if err != nil {
 		switch {
 		case errors.Is(err, errSandboxForbidden):
@@ -819,6 +846,10 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	config.Template = template
+	config.Namespace = namespace
+	// The allowlist is workspace launch policy, not a run setting; keeping it
+	// out of the saved config lets runs resume across allowlist edits.
+	config.RunNamespaces = nil
 	c, err := s.ingestUpload(w, r)
 	if err != nil {
 		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
@@ -859,6 +890,10 @@ func (s *Server) launchTicketAs(actor string) ticketflow.Launch {
 	return func(c casefile.Case, target ticketflow.RunTarget, reserve func() error) error {
 		config := s.config
 		config.Agent, config.Template = target.Agent, target.Sandbox
+		if target.Namespace != "" {
+			config.Namespace = target.Namespace
+		}
+		config.RunNamespaces = nil
 		return s.launchRun(c, reserve, config, target.Tools, actor, "ticket")
 	}
 }

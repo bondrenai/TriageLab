@@ -68,15 +68,20 @@ make check
 The API is a local interface for a small team, not a hosted service. It accepts one
 investigation at a time. Closing a tab leaves the investigation running; use
 Cancel to stop it. Server shutdown also cancels active work and allows bounded
-cleanup. After an abrupt crash, inspect the report. If resources may remain,
-use Retry cleanup on its report page (user role or higher); it runs the same recorded-resource cleanup
-as `triagelab cleanup --report`, in the background (up to 90 seconds), and the
-page shows progress and the result. It needs the server's kagent endpoint, user
-and namespace to match the report, is refused while that run is active, and
-runs one cleanup at a time. A report that never recorded a sandbox or session
-has nothing to clean. The CLI command remains the fallback. A recorded outcome
-does not override cleanup errors, and retrying cleanup does not change the
-report's status.
+cleanup. After an abrupt crash, use **Close investigation** for a run with a
+lifecycle journal. Older runs with a cleanup record offer **Retry cleanup**
+to users and admins. It runs in the background for up to 90 seconds and uses
+the report's saved resource IDs and recovery requests. The endpoint and user
+must match the workspace configuration, and the namespace must be allowed.
+The CLI equivalent is `triagelab cleanup --report`.
+
+Launches choose from operator-configured options: the manual agents (and saved
+agents, when the workspace allows resource writes), sandbox templates, and,
+when `run_namespaces` is configured, the namespace the run executes in. The
+server refuses namespaces outside that list. A chosen namespace must already
+hold the selected agent and sandbox template; the workspace never creates them.
+Ticket procedures can pin a namespace per procedure, and it is bound into the
+approval plan like the agent and template.
 
 ## Reading and continuing an investigation
 
@@ -182,7 +187,7 @@ The public guide is [API clients (OAuth)](https://bondrenai.github.io/TriageLab/
 
 Admins connect helpdesk and issue sources on the **Connections** page. A
 workspace keeps up to eight connections active at once — any mix of Zendesk,
-GitHub, Linear, Bondren, and Jira — and each keeps its own tracked cases,
+GitHub, GitLab, Linear, Bondren, and Jira — and each keeps its own tracked cases,
 procedures, and polling interval. **Ticket cases** shows one connection at a
 time with a picker across them. Zendesk still authorizes through its browser
 OAuth flow (**Connect** on the row or the Zendesk panel); the other sources
@@ -200,7 +205,8 @@ Results chat is configured separately with `serve --chat`; it uses a tool-free
 completion endpoint to discuss saved evidence after a run finishes. Questions,
 answers, and interrupted/error state are stored in private `chat.json`, never
 in the canonical report. Viewers can read; users and admins can ask. The report
-page preserves literal text, saved questions after failures, and citations to
+page renders answers through the safe Markdown subset described below, and keeps
+saved questions after failures and citations to
 the exact evidence round. Questions are not automatically retried.
 
 `serve --mcp` adds a bearer-authenticated Streamable HTTP endpoint on the same
@@ -211,8 +217,13 @@ ticket-policy admission paths. Setup, bounds, and deployment instructions are in
 the [chat and MCP guide](../docs-site/src/content/docs/guides/chat-mcp.md).
 
 The browser uses an API transport module, typed domain functions, and query hooks
-before presentation components. Report text renders as text, including command
-output; it never becomes executable HTML. The Go service normalizes uploads with
+before presentation components. Command output and exact-text previews of
+ticket notes and clarifications render literally. Case descriptions, agent
+analysis and chat answers render through a small Markdown subset
+(`web/src/lib/markdown.ts`) built as React elements: headings, emphasis, code,
+lists and quotes. Raw HTML and image syntax stay literal, and links show their
+URL as text without becoming anchors, so imported text never becomes HTML and
+never makes the browser fetch anything. The Go service normalizes uploads with
 the existing ingestion package and invokes the existing investigator. JSON stays
 the canonical report. No database, queue service, browser model SDK, or alternate
 execution backend is introduced.

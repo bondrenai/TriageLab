@@ -1,0 +1,63 @@
+{
+  "sandbox": {
+    "jsonrpc": "2.0",
+    "id": "133a0a61ac6c4e0e88d66e5406c32cff",
+    "result": {
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "kagent",
+          "version": "1.0.0"
+        }
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"expires_at\":\"2026-11-12T19:34:40.13725Z\",\"id\":\"01a1d133-9166-7c29-9b58-2bd5eeed7586\",\"name\":\"triagelab-341019f5-3ace-498d-80a4-e022a71d9662\",\"operation\":\"RUNTIME_OPERATION_NONE\",\"retain_while_suspended\":true,\"sandbox_template\":{\"name\":\"triagelab-python\",\"namespace\":\"kagent\"},\"state\":\"RUNTIME_STATE_DELETED\"}"
+        }
+      ],
+      "structuredContent": {
+        "expires_at": "2026-11-12T19:34:40.13725Z",
+        "id": "01a1d133-9166-7c29-9b58-2bd5eeed7586",
+        "name": "triagelab-341019f5-3ace-498d-80a4-e022a71d9662",
+        "operation": "RUNTIME_OPERATION_NONE",
+        "retain_while_suspended": true,
+        "sandbox_template": {
+          "name": "triagelab-python",
+          "namespace": "kagent"
+        },
+        "state": "RUNTIME_STATE_DELETED"
+      },
+      "resultType": "complete"
+    }
+  },
+  "session": {
+    "jsonrpc": "2.0",
+    "id": "f8158b7e111a431b8e90152b16a005f7",
+    "result": {
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "kagent",
+          "version": "1.0.0"
+        },
+        "kagent.dev/error-code": "not_found"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Session not found"
+        }
+      ],
+      "structuredContent": {
+        "session": {
+          "agent": "",
+          "id": "",
+          "state": ""
+        },
+        "total_turns": 0,
+        "turns": null
+      },
+      "isError": true,
+      "resultType": "complete"
+    }
+  }
+}

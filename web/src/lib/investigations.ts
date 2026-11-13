@@ -1,6 +1,6 @@
 import { request } from "./api-client";
 import type { Settings, RunSummary, InvestigationReport, TicketNote } from "./types";
-import exampleJSON from "../../../docs/verification/agent-demo.json";
+import exampleJSON from "../../../docs/verification/missing-orders-demo.json";
 
 export const exampleReport: InvestigationReport = exampleJSON;
 export const getSettings = () => request<Settings>("/api/settings");
@@ -35,13 +35,14 @@ export const closeRun = (id: string, input: { round: number; settings: string })
 export const postTicketNote = (id: string, plan: string) =>
   request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });
 
-export function createRun(input: { description: string; files: File[]; agent?: string; sandbox?: string }) {
+export function createRun(input: { description: string; files: File[]; agent?: string; sandbox?: string; namespace?: string }) {
   const body = new FormData();
   body.append("description", input.description);
   for (const file of input.files) body.append("files", file, file.webkitRelativePath || file.name);
   const headers: Record<string, string> = {};
   if (input.agent) headers["X-TriageLab-Agent"] = input.agent;
   if (input.sandbox) headers["X-TriageLab-Sandbox"] = input.sandbox;
+  if (input.namespace) headers["X-TriageLab-Namespace"] = input.namespace;
   return request<{ id: string }>("/api/runs", { method: "POST", body, headers });
 }
 

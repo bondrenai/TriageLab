@@ -1,0 +1,11 @@
+{
+  "run_id": "341019f5-3ace-498d-80a4-e022a71d9662",
+  "status": "completed",
+  "outcome": "reproduced",
+  "errors": [],
+  "cleanup": {
+    "errors": [],
+    "sandbox_deleted": true,
+    "session_deleted": true
+  }
+}

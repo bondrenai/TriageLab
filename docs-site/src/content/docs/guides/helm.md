@@ -3,6 +3,10 @@ title: Helm deployment
 description: Install the single-pod workspace beside an existing kagent/Substrate installation from the public chart.
 ---
 
+To manage ticket connections and procedures declaratively, enable the optional
+[GitOps integration](/TriageLab/guides/gitops/). The chart includes the CRDs;
+their lifecycle is managed separately on upgrades.
+
 The public Helm chart installs the TriageLab workspace — the `serve` process
 with the built web UI — as a single-pod Deployment beside an existing
 kagent/Substrate installation. It does **not** install or replace kagent;
@@ -62,6 +66,7 @@ Reports, private ticket state, and sign-in accounts persist in a
 PersistentVolumeClaim mounted at `/data/reports` (`persistence.*`; disable for
 an ephemeral emptyDir). The optional ticket procedures
 ([Zendesk](/TriageLab/guides/tickets-zendesk/), [GitHub](/TriageLab/guides/tickets-github/),
+[GitLab](/TriageLab/guides/tickets-gitlab/),
 [Linear](/TriageLab/guides/tickets-linear/)) are enabled with `tickets.enabled` and
 `tickets.config`; their JSON is stored in a Secret, and the credential named
 by `token_env` comes from `tickets.token` or your own Secret.

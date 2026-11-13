@@ -5,6 +5,10 @@ metadata:
   labels:
     {{- include "triagelab.labels" . | nindent 4 }}
 data:
+  {{- if .Values.gitops.enabled }}
+  gitops.json: |
+    {{- dict "server" "https://kubernetes.default.svc" "namespace" .Release.Namespace "workspace" (.Values.gitops.workspace | default (include "triagelab.fullname" .)) "ca_file" "/var/run/triagelab-kubernetes/ca.crt" "token_file" "/var/run/triagelab-kubernetes/token" "poll_seconds" .Values.gitops.pollSeconds "secret_names" .Values.gitops.secretNames | toPrettyJson | nindent 4 }}
+  {{- end }}
   config.json: |
     {{- .Values.config | toPrettyJson | nindent 4 }}
   {{- if .Values.telemetry.enabled }}

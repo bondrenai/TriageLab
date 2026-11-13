@@ -30,6 +30,9 @@ func (lifecycleBackend) TaskItems(context.Context, string, string) ([]map[string
 func (lifecycleBackend) CancelTask(context.Context, string, string) error {
 	return errors.New("unexpected task cancellation")
 }
+func (lifecycleBackend) SandboxRetention(context.Context) (bool, error) {
+	return true, nil
+}
 
 func savedCLIState(t *testing.T, state investigation.State) string {
 	t.Helper()
@@ -136,7 +139,7 @@ func TestCLIResumeCannotBypassTicketContinuationApproval(t *testing.T) {
 
 func TestCLIPauseWritesTaskBoundRequestWithoutClaimingSuspension(t *testing.T) {
 	state := cliState()
-	state.Phase, state.TaskID = "running", "current-task"
+	state.Phase, state.TaskID, state.Retention = "running", "current-task", true
 	path := savedCLIState(t, state)
 	runner := investigation.Investigator{Client: noLifecycleCalls(t), Config: state.Config}
 	var out, stderr bytes.Buffer
