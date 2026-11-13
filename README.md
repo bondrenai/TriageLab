@@ -55,7 +55,8 @@ workspace, or a ticket:
    model's claims must cite those process IDs.
 4. TriageLab writes the report and deletes the sandbox. If the investigator
    needs more information, TriageLab pauses the sandbox instead so the
-   investigation can resume later.
+   investigation can resume later — with the opt-in controller fork; without
+   it, the run completes its round and records what is missing.
 
 The report keeps failed experiments as well as successful ones. It presents
 the model's explanation of the cause as a hypothesis; it does not certify a
@@ -135,14 +136,19 @@ make build
 
 The installer changes only the `kind-triagelab` cluster. It:
 
-- installs Agent Substrate and kagent 1.0.0, and gives the API key to kagent;
-- swaps in TriageLab's pinned kagent controller, built from source, which
-  keeps paused investigations from being deleted;
+- installs Agent Substrate and the released kagent 1.0.0 controller, and
+  gives the API key to kagent;
 - applies TriageLab's agent and sandbox template and waits until both are
   ready.
 
 It stops without changing anything if the cluster already has a kagent
 controller.
+
+Durable [pause and resume](#pause-and-resume) is an opt-in extra. Install with
+`TRIAGELAB_CONTROLLER=fork`, or run `scripts/install-fork-controller.sh`
+afterwards, to build and swap in TriageLab's pinned kagent controller fork,
+which keeps paused investigations from being deleted. Without it, pause is
+refused and a run that needs more information completes its round.
 
 ### 4. Connect to kagent
 
@@ -276,11 +282,19 @@ even across TriageLab restarts and weeks of waiting:
 - Keep the whole run directory, including `lifecycle.json`.
 - Resume with a fresh token for the same endpoint and identity.
 
-Paused sandboxes never expire on their own. They depend on the pinned
-controller, on `config.sessions.idleTtl: 0s` (the installer sets both), and on
-kagent's database and snapshot storage staying available. Files in durable
-workspace directories survive a pause; process memory, running commands, and
-edits elsewhere do not. See [durable investigations](docs/durable-investigations.md).
+Pause and resume need the controller fork; the installer does not install it
+by default. Set `TRIAGELAB_CONTROLLER=fork` when installing, or run
+`scripts/install-fork-controller.sh` on the running cluster. With the release
+controller, `pause` is refused, a run that needs more information completes
+its round and records the questions in `missing_information`, and the report
+records `"sandbox_retention": false`.
+
+With the fork, paused sandboxes never expire on their own. They depend on the
+forked controller, on `config.sessions.idleTtl: 0s` (the installer sets it),
+and on kagent's database and snapshot storage staying available. Files in
+durable workspace directories survive a pause; process memory, running
+commands, and edits elsewhere do not. See
+[durable investigations](docs/durable-investigations.md).
 
 ## Browser workspace
 

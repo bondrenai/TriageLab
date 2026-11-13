@@ -25,14 +25,15 @@ unchanged (loopback listener, `kubectl port-forward` only).
 - Go 1.27.3, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
 - kagent CLI **1.0.0**, matching the charts and runtime images. The installation
-  script builds the reviewed controller fork from source on this Linux host.
+  script installs the released controller; the reviewed fork for durable
+  pause/resume is built from source only when selected.
 - A provider account/key for the real agent. The example uses the upstream
   `gpt-6.1-sol` model through the Responses API, with bounded investigation limits. Model calls incur provider charges.
 - Enough free disk for Kubernetes and Substrate images/snapshots (30 GiB free
   is a useful starting allowance).
 
-Install the released kagent CLI binary. The controller fork is built separately
-by the installation script. For Linux amd64:
+Install the released kagent CLI binary. The controller fork, when selected, is
+built separately by the installation script. For Linux amd64:
 
 ```sh
 mkdir -p .tools
@@ -70,16 +71,23 @@ unset OPENAI_API_KEY
 This selects only the explicitly named `triagelab` Kind cluster, without using
 an ambient Kubernetes context. It uses kagent's installer for the pinned Substrate Helm distribution,
 its pod certificate controller, Atelet, the development PostgreSQL database,
-RustFS snapshot store, and kagent. It then builds controller commit
-`048e1016d50b209dba01065d0d10dfd80b78fb41` from
+RustFS snapshot store, and kagent, and then installs TriageLab's Agent and
+SandboxTemplate.
+
+By default the released kagent controller stays in place, and TriageLab runs
+without pause/resume: pause requests are refused and runs that need more
+information complete their round. Set `TRIAGELAB_CONTROLLER=fork` to also
+build controller commit `048e1016d50b209dba01065d0d10dfd80b78fb41` from
 [`bondrenai/kagent`](https://github.com/bondrenai/kagent/tree/048e1016d50b209dba01065d0d10dfd80b78fb41),
-loads the image into Kind, and waits for its rollout before installing TriageLab's
-Agent and SandboxTemplate. The source commit and local image ID are printed for
+load the image into Kind, and wait for its rollout before TriageLab's
+resources are applied. The source commit and local image ID are printed for
 the verification record. There is no published fork image to pull.
 
 The installer refuses an existing kagent controller before making cluster
-changes. It is for fresh clusters only: temporarily running the released
-controller would allow its expiration worker to delete retained investigations.
+changes. It is for fresh clusters only; with the fork installed, temporarily
+running the released controller would allow its expiration worker to delete
+retained investigations, so `scripts/install-fork-controller.sh` is the
+supported way to swap the controller on an existing install.
 
 The installation also configures Substrate's ingress
 identity, controller access grants, and required preview gates. TriageLab adds

@@ -80,11 +80,13 @@ Sandbox with a later deadline to expire, then restores the retained Sandbox and
 checks its ID, file bytes, fresh active TTL, duplicate resume, and deletion.
 This proves the elapsed-expiry path without claiming weeks of elapsed uptime.
 
-`scripts/install-dev.sh` installs the released 1.0.0 stack, builds the pinned fork
-controller with `scripts/install-fork-controller.sh`, loads it into Kind, and
-waits for its rollout before installing TriageLab resources. No fork image has
-been published. See [development.md](development.md) and [upstream.md](upstream.md)
-for the source and image pins.
+`scripts/install-dev.sh` installs the released 1.0.0 stack with the release
+controller by default; durable pause/resume needs the fork, so install with
+`TRIAGELAB_CONTROLLER=fork` or run `scripts/install-fork-controller.sh` on the
+existing cluster to build the pinned fork controller, load it into Kind, and
+wait for its rollout. No fork image has been published. See
+[development.md](development.md) and [upstream.md](upstream.md) for the source
+and image pins.
 
 ## TriageLab behavior
 

@@ -9,7 +9,10 @@ the same sandbox and investigator session until you resume or close the work.
 
 Pausing needs the TriageLab controller fork
 ([bondrenai/kagent#1](https://github.com/bondrenai/kagent/pull/1)), which keeps
-a suspended sandbox past its original lifetime. With a release kagent
+a suspended sandbox past its original lifetime. Install it by running the
+installer with `TRIAGELAB_CONTROLLER=fork`, or by running
+`scripts/install-fork-controller.sh` on the existing development cluster. With
+a release kagent
 controller everything else works the same, but TriageLab detects that at run
 start, hides pause controls, refuses pause requests with an explanation, and
 lets runs that need more information finish their round instead of parking

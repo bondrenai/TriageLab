@@ -63,14 +63,18 @@ make build
 
 The installer changes only the `kind-triagelab` cluster. It:
 
-- installs Agent Substrate and kagent 1.0.0, and gives the API key to kagent;
-- swaps in TriageLab's pinned kagent controller, built from source, which
-  keeps paused investigations from being deleted;
+- installs Agent Substrate and the released kagent 1.0.0 controller, and
+  gives the API key to kagent;
 - applies TriageLab's agent and sandbox template and waits until both are
   ready.
 
 It stops without changing anything if the cluster already has a kagent
-controller. The pinned Kubernetes interfaces are still alpha (`v1alpha3`);
+controller. Durable [pause and resume](/TriageLab/guides/pause-resume/) is an
+opt-in extra: install with `TRIAGELAB_CONTROLLER=fork`, or run
+`scripts/install-fork-controller.sh` afterwards, to swap in the controller
+fork that keeps paused investigations from being deleted. Without it, pause is
+refused and a run that needs more information completes its round. The pinned
+Kubernetes interfaces are still alpha (`v1alpha3`);
 read the [upstream compatibility record](/TriageLab/reference/upstream/)
 before upgrading anything.
 
