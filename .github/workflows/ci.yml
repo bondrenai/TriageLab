@@ -1,5 +1,9 @@
 name: CI
 
+# Documentation-only changes (root Markdown, docs/, docs-site/) skip the code
+# jobs below; the changes job owns that decision and unknown inputs always run
+# the full matrix. Release runs call this workflow and run everything.
+
 on:
   # Also called by release.yml so a release publishes only after these checks pass.
   workflow_call:
@@ -24,8 +28,56 @@ env:
   GOFLAGS: -trimpath
 
 jobs:
+  # Decides whether this event can only have changed documentation. A push or
+  # PR limited to root Markdown files, docs/, or docs-site/ cannot affect the
+  # Go, web, chart, or image builds. The generated reference pages and the
+  # example files count as code: the golden test in cmd/triagelab reads them.
+  # Anything unrecognized, a missing merge base, workflow_call from release,
+  # and manual dispatches all run the full matrix.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff base is not part of a shallow clone
+      - id: detect
+        name: Detect a documentation-only change
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -eu
+          record() { echo "docs_only=$1" >> "$GITHUB_OUTPUT"; }
+          case "$EVENT_NAME" in
+            push) base_ref="$BEFORE" ;;
+            pull_request) base_ref="origin/$BASE_REF" ;;
+            *) record false; exit 0 ;;
+          esac
+          # New branches and rewritten histories share no base: run everything.
+          if ! base="$(git merge-base "$base_ref" "$AFTER" 2>/dev/null)" || [ -z "$base" ]; then
+            record false
+            exit 0
+          fi
+          changed="$(git diff --name-only "$base" "$AFTER")"
+          # Inputs of the generated reference pages are code to the Go tests.
+          if printf '%s\n' "$changed" | grep -qE '^(docs-site/src/content/docs/reference/|examples/)'; then
+            record false
+            exit 0
+          fi
+          if printf '%s\n' "$changed" | grep -qvE '^([^/]+\.md|docs/|docs-site/)'; then
+            record false
+          else
+            record true
+          fi
+
   checks:
     name: checks (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +93,8 @@ jobs:
 
   # Separate from checks: the race detector slows the sign-in tests about tenfold.
   race:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -52,6 +106,8 @@ jobs:
       - run: make race
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +119,8 @@ jobs:
 
   # Separate from lint so a toolchain advisory is not mistaken for a code finding.
   vulncheck:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,6 +131,8 @@ jobs:
       - run: make vulncheck # govulncheck at a pinned version
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,12 +158,16 @@ jobs:
       - run: make build-docs # includes starlight-links-validator; generated-page drift is covered by make check
 
   helm:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: make chart-lint
 
   image:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
