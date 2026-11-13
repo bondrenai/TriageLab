@@ -180,10 +180,17 @@ alongside collected process evidence.
 Set `investigation_comments: true` to enable summaries for completed
 linked investigations. On the report, choose **Review investigation
 comment**. Review the linked issue, the project audience, and the exact
-body before choosing **Post investigation comment**. The preview includes
+body; you can edit the prepared text before choosing **Post investigation
+comment**, and GitLab receives the exact edited body. The preview includes
 the run ID, outcome, a bounded agent summary, and selected process IDs,
 commands, and exit codes. Model analysis remains a hypothesis; the
 process records are the collected evidence.
+
+A procedure policy can also post the comment without a reviewer: set
+`auto_comments: true` on a saved procedure (it requires
+`investigation_comments`). When such a run completes, TriageLab posts the
+prepared comment itself; if automatic posting cannot run, the preview stays
+ready for a human to review, edit, and post.
 
 The summary is posted as a fenced plain-text note visible to everyone
 with access to the issue and its project; internal notes are not offered.

@@ -75,6 +75,8 @@ spec:
                           maxLength: 4096
                         auto_runs:
                           type: "boolean"
+                        auto_comments:
+                          type: "boolean"
                       required:
                         - "tag"
                     evidence:

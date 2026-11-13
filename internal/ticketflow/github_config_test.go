@@ -28,14 +28,19 @@ func TestGitHubConfigRequiresRepositoryScopeAndExplicitWriteCredentials(t *testi
 		"Zendesk callback":                  func(c *Config) { c.RedirectURI = "http://localhost:8080/oauth/zendesk/callback" },
 		"automatic questions without token": func(c *Config) { c.Policy.AutoQuestions = true; c.Policy.MaxQuestions = 2 },
 		"comments without token":            func(c *Config) { c.InvestigationComments = true },
-		"question limit":                    func(c *Config) { c.Policy.MaxQuestions = 4 },
-		"negative question limit":           func(c *Config) { c.Policy.MaxQuestions = -1 },
-		"missing question limit":            func(c *Config) { c.Policy.AutoQuestions = true; c.TokenEnv = "GITHUB_TOKEN" },
-		"internal notes":                    func(c *Config) { c.InternalNotes = true },
-		"priority":                          func(c *Config) { c.Policy.Priorities = []string{"high"} },
-		"custom field":                      func(c *Config) { c.Policy.FieldID = 12; c.Policy.FieldValue = "python" },
-		"polling too frequent":              func(c *Config) { c.PollSeconds = 59 },
-		"polling too slow":                  func(c *Config) { c.PollSeconds = 3601 },
+		"automatic comments without token":  func(c *Config) { c.Policy.AutoComments = true; c.InvestigationComments = true },
+		"automatic comments without comment setting": func(c *Config) {
+			c.Policy.AutoComments = true
+			c.TokenEnv = "GITHUB_TOKEN"
+		},
+		"question limit":          func(c *Config) { c.Policy.MaxQuestions = 4 },
+		"negative question limit": func(c *Config) { c.Policy.MaxQuestions = -1 },
+		"missing question limit":  func(c *Config) { c.Policy.AutoQuestions = true; c.TokenEnv = "GITHUB_TOKEN" },
+		"internal notes":          func(c *Config) { c.InternalNotes = true },
+		"priority":                func(c *Config) { c.Policy.Priorities = []string{"high"} },
+		"custom field":            func(c *Config) { c.Policy.FieldID = 12; c.Policy.FieldValue = "python" },
+		"polling too frequent":    func(c *Config) { c.PollSeconds = 59 },
+		"polling too slow":        func(c *Config) { c.PollSeconds = 3601 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := valid
@@ -50,6 +55,10 @@ func TestGitHubConfigRequiresRepositoryScopeAndExplicitWriteCredentials(t *testi
 	valid.InvestigationComments, valid.PollSeconds = true, 60
 	if err := valid.validate(); err != nil {
 		t.Fatalf("rejected configured GitHub write workflow: %v", err)
+	}
+	valid.Policy.AutoComments = true
+	if err := valid.validate(); err != nil {
+		t.Fatalf("rejected automatic investigation comments with the comment setting: %v", err)
 	}
 	zendesk := oauthConfig(false)
 	zendesk.InvestigationComments = true

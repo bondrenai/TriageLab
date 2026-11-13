@@ -292,7 +292,7 @@ func TestGitHubInvestigationCommentPreviewAndDurableReceipt(t *testing.T) {
 			if !strings.Contains(preview.Body, "Five seconds passed.") || !strings.Contains(preview.Body, "proc-github") || strings.Contains(preview.Body, "private process output") {
 				t.Fatalf("unexpected investigation comment content: %q", preview.Body)
 			}
-			if _, err := flow.PostNote(t.Context(), id, saved, "stale"); !errors.Is(err, ErrChanged) || len(s.posted) != 0 {
+			if _, err := flow.PostNote(t.Context(), id, saved, "stale", ""); !errors.Is(err, ErrChanged) || len(s.posted) != 0 {
 				t.Fatalf("stale note approval sent a comment: %v", err)
 			}
 			s.beforePost = func() {
@@ -300,7 +300,7 @@ func TestGitHubInvestigationCommentPreviewAndDurableReceipt(t *testing.T) {
 					t.Fatal("investigation comment sent before durable reservation")
 				}
 			}
-			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan)
+			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 			if err != nil || note.Status != tc.status || len(s.posted) != 1 || !s.posted[0].public || s.posted[0].body != preview.Body {
 				t.Fatalf("investigation comment differed from approval: %+v, %v", note, err)
 			}
@@ -317,7 +317,7 @@ func TestGitHubInvestigationCommentPreviewAndDurableReceipt(t *testing.T) {
 			if restored == nil || restored.Status != tc.status || restored.CanPost || restored.CommentID != note.CommentID {
 				t.Fatalf("comment receipt did not survive restart: %+v", restored)
 			}
-			_, err = flow.PostNote(t.Context(), id, saved, preview.Plan)
+			_, err = flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 			if len(s.posted) != 1 || (tc.err == nil && err != nil) || (tc.err != nil && !errors.Is(err, ErrBlocked)) {
 				t.Fatalf("repeated approval retried a comment: posts=%d, %v", len(s.posted), err)
 			}
@@ -353,7 +353,7 @@ func TestGitHubInvestigationCommentBindsExactReportAndConfiguration(t *testing.T
 			if flow.NotePreview(id, saved) != nil {
 				t.Fatal("mismatched report or disabled configuration offered a comment")
 			}
-			if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan); !errors.Is(err, ErrBlocked) || len(s.posted) != 0 {
+			if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrBlocked) || len(s.posted) != 0 {
 				t.Fatalf("mismatched report admitted a comment: %v", err)
 			}
 		})
@@ -385,16 +385,16 @@ func TestGitHubInvestigationCommentRejectsChangedPreviewAndSafeConflict(t *testi
 		t.Fatal("missing comment preview")
 	}
 	saved["analysis"].(map[string]any)["summary"] = "The verified summary changed."
-	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan); !errors.Is(err, ErrChanged) || len(s.posted) != 0 {
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrChanged) || len(s.posted) != 0 {
 		t.Fatalf("approval did not bind exact comment body: %v", err)
 	}
 	preview = flow.NotePreview(id, saved)
 	s.postErr = ErrChanged
-	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan); !errors.Is(err, ErrChanged) || len(s.posted) != 1 || flow.Cases()[0].Note != nil {
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrChanged) || len(s.posted) != 1 || flow.Cases()[0].Note != nil {
 		t.Fatalf("safe conflict retained an uncertain delivery reservation: %v", err)
 	}
 	s.postErr = nil
-	note, err := flow.PostNote(t.Context(), id, saved, preview.Plan)
+	note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 	if err != nil || note.Status != "posted" || len(s.posted) != 2 || s.posted[1].body != preview.Body {
 		t.Fatalf("safe conflict could not be reviewed and retried: %+v, %v", note, err)
 	}

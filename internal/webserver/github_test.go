@@ -104,7 +104,7 @@ func TestCompletedGitHubReportOffersReviewedRepositoryComment(t *testing.T) {
 		t.Fatal("mutable comment preview leaked into canonical report")
 	}
 	path += "/ticket-note"
-	for _, input := range []string{`{"plan":"stale"}`, `{"plan":"` + note.Plan + `","body":"injected"}`, `{"plan":"` + note.Plan + `","visibility":"internal"}`} {
+	for _, input := range []string{`{"plan":"stale"}`, `{"plan":"stale","body":"injected"}`, `{"plan":"` + note.Plan + `","visibility":"internal"}`} {
 		w := request(s, http.MethodPost, path, strings.NewReader(input))
 		if w.Code != 400 && w.Code != 409 {
 			t.Fatalf("invalid approval accepted: HTTP %d %s", w.Code, w.Body)

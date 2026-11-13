@@ -283,7 +283,7 @@ func TestLiveGitLabConnectorAndFlow(t *testing.T) {
 	if notePreview == nil || !notePreview.CanPost || notePreview.Plan == "" {
 		t.Fatalf("live investigation comment preview was not ready: %+v", notePreview)
 	}
-	note, err := flow.PostNote(t.Context(), launched.RunID, saved, notePreview.Plan)
+	note, err := flow.PostNote(t.Context(), launched.RunID, saved, notePreview.Plan, "")
 	if err != nil || note.Status != "posted" || note.CommentID <= 0 {
 		t.Fatalf("live investigation comment was not delivered: %+v, %v", note, err)
 	}

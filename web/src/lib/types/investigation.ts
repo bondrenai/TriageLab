@@ -1,3 +1,5 @@
+import type { TicketSource } from "./ticket";
+
 export interface Settings {
   agent: string;
   sandbox_template?: string;
@@ -67,8 +69,8 @@ export interface ExperimentAssessment {
 }
 
 export interface TicketNote {
-  source: "zendesk" | "github" | "linear" | "bondren";
-  visibility: "internal" | "repository" | "workspace";
+  source: TicketSource;
+  visibility: "internal" | "repository" | "project" | "workspace";
   ticket_id: string;
   ticket_url: string;
   status: "ready" | "posted" | "unconfirmed" | "blocked";
@@ -76,6 +78,7 @@ export interface TicketNote {
   plan?: string;
   comment_id?: string;
   can_post: boolean;
+  automatic?: boolean;
   findings?: string[];
 }
 

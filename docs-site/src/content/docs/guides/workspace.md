@@ -47,6 +47,20 @@ default procedure uses that setting when no procedure has been saved. For
 saved procedures, an admin can enable **Start automatically when evidence is
 ready** under **Ticket cases → Edit procedures**.
 
+### Automatic investigation comments
+
+When the connection allows posting — `investigation_comments` for GitHub,
+GitLab, and Linear, `internal_notes` for Zendesk, Bondren, and Jira — a
+procedure can also share the outcome on its own: set `policy.auto_comments`
+to `true` (or enable **Post the investigation comment automatically when the
+run completes** in a saved procedure). When such a run completes, TriageLab
+posts the prepared investigation comment or internal note itself and records
+the delivery receipt. Automatic posting needs the connection's credential or
+OAuth session; if it cannot run — the note is held by the output sanitizer or
+the ticket closed — the preview stays on the report for a human to review,
+edit, and post. Without this policy, completed runs always hold the comment
+for review, and reviewers can edit the exact text before it is posted.
+
 ### Conditions based on ticket properties
 
 Set the optional `policy.auto_run_condition` expression in the source JSON,

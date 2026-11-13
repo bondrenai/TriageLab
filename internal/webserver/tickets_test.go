@@ -123,8 +123,10 @@ func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 		t.Fatalf("note state leaked into the report download: HTTP %d", down.Code)
 	}
 	path += "/ticket-note"
-	if w := request(s, http.MethodPost, path, strings.NewReader(`{"plan":"`+result.Note.Plan+`","body":"injected"}`)); w.Code != 400 {
-		t.Fatalf("caller-supplied body accepted: HTTP %d", w.Code)
+	// An operator edit travels with the plan of the reviewed preview; it can
+	// never ride a stale or absent plan.
+	if w := request(s, http.MethodPost, path, strings.NewReader(`{"plan":"stale","body":"injected"}`)); w.Code != 409 {
+		t.Fatalf("edited body on a stale plan accepted: HTTP %d", w.Code)
 	}
 	approval := `{"plan":"` + result.Note.Plan + `"}`
 	unmarked := httptest.NewRequest(http.MethodPost, "http://localhost:8080"+path, strings.NewReader(approval))
@@ -135,5 +137,45 @@ func TestCompletedTicketReportOffersInternalNotePreview(t *testing.T) {
 	}
 	if w := request(s, http.MethodPost, path, strings.NewReader(approval)); w.Code != 401 {
 		t.Fatalf("disconnected note post: HTTP %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAutomaticInternalNoteKeepsHumanInLoopWithoutConnection(t *testing.T) {
+	s := newTestServer(t, nil)
+	const id = "18b1c7aa-9be4-4d34-97a6-6c4f0fbb1a70"
+	const origin = "https://example.zendesk.com"
+	store := filepath.Join(s.directory, ".tickets", zendeskConnection)
+	if err := os.MkdirAll(store, 0700); err != nil {
+		t.Fatal(err)
+	}
+	tracked, err := json.Marshal(ticketflow.Case{TicketID: 42, Account: origin, State: "launched", RunID: id, Plan: "run-approval", AutoComment: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "42.json"), tracked, 0600); err != nil {
+		t.Fatal(err)
+	}
+	seedTickets(t, s, zendeskConnection, ticketflow.Config{
+		Subdomain: "example", ClientID: "test-local", RedirectURI: "http://localhost:8080/oauth/zendesk/callback",
+		InternalNotes: true, Policy: ticketflow.Policy{Tag: "reproduce"},
+	})
+	saved := map[string]any{
+		"run_id": id, "status": "completed", "finished_at": "2026-11-13T09:00:00Z", "outcome": "reproduced",
+		"case": map[string]any{"source": map[string]any{"kind": "zendesk", "ticket_id": "42", "url": origin + "/agent/tickets/42", "approval_plan": "run-approval"}},
+	}
+	if err := report.Write(filepath.Join(s.directory, id), saved); err != nil {
+		t.Fatal(err)
+	}
+	// The policy flagged the case, but Zendesk OAuth is not connected, so the
+	// automatic attempt must skip and leave the note ready for a human.
+	s.postAutomaticTicketNote(id)
+	path := "/api/runs/" + id
+	w := request(s, http.MethodGet, path, nil)
+	var result struct {
+		Note *ticketflow.NotePreview `json:"ticket_note"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || result.Note == nil ||
+		result.Note.Status != "ready" || !result.Note.Automatic || !strings.Contains(result.Note.Body, "Reproduced") {
+		t.Fatalf("automatic skip did not leave a ready review preview: HTTP %d %s", w.Code, w.Body)
 	}
 }

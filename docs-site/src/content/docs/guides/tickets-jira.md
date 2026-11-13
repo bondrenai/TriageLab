@@ -120,9 +120,15 @@ attempt and shares the workspace's single run slot.
 With `internal_notes: true`, choose **Review internal note** on a completed
 report. The preview shows the run ID, outcome, a bounded agent summary, and
 selected process IDs, commands, and exit codes; the note posts as an internal
-comment — customer-invisible on Jira Service Management issues. A confirmed
-send stores its comment ID; an uncertain delivery keeps its reservation and
-blocks another send for the same investigation.
+comment — customer-invisible on Jira Service Management issues. Reviewers can
+edit the prepared text before posting — Jira receives the exact edited body.
+A confirmed send stores its comment ID; an uncertain delivery keeps its
+reservation and blocks another send for the same investigation.
+
+A procedure policy with `auto_comments: true` (requires `internal_notes`)
+posts the note without a reviewer once the run completes; if automatic
+posting cannot run, the preview stays ready for a human to review, edit, and
+post.
 
 ## Limits
 

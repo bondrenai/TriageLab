@@ -306,40 +306,86 @@ function CleanupControl({ report, done, canRetry }: { report: InvestigationRepor
 
 function TicketNotePanel({ runID, note, canPost }: { runID: string; note: TicketNote; canPost: boolean }) {
   const [reviewedPlan, setReviewedPlan] = useState<string>();
+  const [draft, setDraft] = useState("");
+  const [draftError, setDraftError] = useState("");
   const review = !!reviewedPlan && reviewedPlan === note.plan;
   const post = usePostTicketNote(runID);
   const github = note.source === "github";
+  const gitlab = note.source === "gitlab";
   const linear = note.source === "linear";
   const bondren = note.source === "bondren";
-  const issue = github || linear;
-  const provider = github ? "GitHub" : linear ? "Linear" : bondren ? "Bondren" : "Zendesk";
-  return <Panel title={issue ? `${provider} investigation comment` : bondren ? "Bondren internal note" : "Zendesk internal note"}>
+  const jira = note.source === "jira";
+  const issue = github || gitlab || linear;
+  const provider = github ? "GitHub" : gitlab ? "GitLab" : linear ? "Linear" : bondren ? "Bondren" : jira ? "Jira" : "Zendesk";
+  const noun = issue ? "comment" : "internal note";
+  const held = note.status === "blocked";
+
+  function beginReview() {
+    setDraft(note.body ?? "");
+    setDraftError("");
+    setReviewedPlan(note.plan);
+  }
+
+  function submit() {
+    if (!note.plan) return;
+    const body = draft === note.body ? undefined : draft;
+    if (body !== undefined && body.trim() === "") {
+      setDraftError("Write the comment text before posting.");
+      return;
+    }
+    if (body !== undefined && new TextEncoder().encode(body).length > 16384) {
+      setDraftError("Keep the edited text under 16 KiB.");
+      return;
+    }
+    setDraftError("");
+    post.mutate({ plan: note.plan, body });
+  }
+
+  const editor = review && <>
+    <div className="handoff-preview">
+      <h3>Exact text to be posted</h3>
+      <label className="field-label" htmlFor="ticket-note-body">Edit before posting</label>
+      <Textarea id="ticket-note-body" value={draft} rows={10} disabled={post.isPending}
+        onChange={event => setDraft(event.target.value)} />
+      <p className="field-help">The exact text above is posted to {provider}. Edits are held for review by the output sanitizer, never rewritten.</p>
+    </div>
+    {held && note.findings && <ul className="prose-list">{note.findings.map((finding, index) => <li key={index}>{finding}</li>)}</ul>}
+    {held && draft === note.body && <p className="field-help">Resolve the finding above before posting: the held text cannot be posted unchanged.</p>}
+    {draftError && <p className="field-error" role="alert">{draftError}</p>}
+    <div className="button-row">
+      <Button disabled={!note.can_post || post.isPending || (held && draft === note.body)} onClick={submit}>
+        {post.isPending ? "Posting…" : issue ? "Post comment" : "Post internal note"}
+      </Button>
+      <Button variant="ghost" disabled={post.isPending} onClick={() => { post.reset(); setReviewedPlan(undefined); }}>Cancel</Button>
+    </div>
+    {!note.can_post && <p>{github ? "GitHub posting is unavailable. Review the repository connection in " : gitlab ? "GitLab posting is unavailable. Review the connection in " : linear ? "Linear posting is unavailable. Review the connection in " : bondren || jira ? `${provider} posting is unavailable. Review the token in ` : "Connect Zendesk from "}<Link className="ticket-source" to="/tickets">Ticket cases</Link>{issue || bondren || jira ? "." : " to post."}</p>}
+  </>;
+
+  return <Panel title={issue ? `${provider} investigation comment` : bondren || jira ? `${provider} internal note` : "Zendesk internal note"}>
     <div className="panel-body ticket-detail">
       <dl className="handoff-details">
         <div><dt>Destination</dt><dd><a className="ticket-source" href={note.ticket_url} target="_blank" rel="noreferrer">{provider} #{note.ticket_id} ↗</a></dd></div>
-        <div><dt>Audience</dt><dd>{github ? "Everyone with repository access; public in a public repository." : linear ? "People with access to this Linear workspace." : bondren ? "The internal team on this Bondren issue." : "Agents with access to this Zendesk ticket; an internal note."}</dd></div>
-        <div><dt>Content</dt><dd>Run outcome and the experiment evidence included in the prepared note. Review the exact text before posting.</dd></div>
+        <div><dt>Audience</dt><dd>{github ? "Everyone with repository access; public in a public repository." : gitlab ? "Everyone with access to the issue and its project." : linear ? "People with access to this Linear workspace." : bondren ? "The internal team on this Bondren issue." : jira ? "The internal team on this Jira issue." : "Agents with access to this Zendesk ticket; an internal note."}</dd></div>
+        <div><dt>Content</dt><dd>Run outcome and the experiment evidence included in the prepared note. Review and edit the exact text before posting.</dd></div>
       </dl>
-      {note.status === "posted" && <p role="status">Delivery confirmed · posted as {issue ? `${provider} comment` : "internal note"} {note.comment_id}.</p>}
+      {note.status === "posted" && <p role="status">Delivery confirmed · posted as {provider} {noun} {note.comment_id}{note.automatic ? " automatically by the procedure policy." : "."}</p>}
       {note.status === "unconfirmed" && <p role="status">Delivery is unconfirmed. Check the {provider} conversation for run <code>{runID}</code> before attempting another post.</p>}
-      {note.status === "blocked" && <>
-        <p role="status">The output sanitizer held this {issue ? "comment" : "note"} for review.</p>
-        {note.findings && <ul className="prose-list">{note.findings.map((finding, index) => <li key={index}>{finding}</li>)}</ul>}
-        <p className="ticket-draft">{note.body}</p>
-        <p>Posting stays disabled while a finding stands. Review the held text above before sharing anything with the {github ? "repository" : linear ? "workspace" : bondren ? "team on this issue" : "agents on this ticket"}.</p>
+      {held && <>
+        <p role="status">The output sanitizer held this {noun} for review.</p>
+        {!review && note.findings && <ul className="prose-list">{note.findings.map((finding, index) => <li key={index}>{finding}</li>)}</ul>}
+        {!review && <p className="ticket-draft">{note.body}</p>}
+        {!review
+          ? <div className="button-row">{canPost && <Button disabled={!note.plan} onClick={beginReview}>Edit before posting</Button>}</div>
+          : editor}
       </>}
       {note.status === "ready" && <>
         <p>{issue ? "Share the outcome and selected experiment evidence on this issue." : "Share the outcome and selected experiment evidence with agents on this ticket."}</p>
-        {!review ? <div className="button-row">{canPost && <Button disabled={!note.plan} onClick={() => setReviewedPlan(note.plan)}>{issue ? "Review comment" : "Review internal note"}</Button>}</div> : <>
-          <div className="handoff-preview"><h3>Exact text to be posted</h3><p className="ticket-draft">{note.body}</p></div>
-          <div className="button-row">
-            <Button disabled={!note.can_post || !note.plan || post.isPending} onClick={() => note.plan && post.mutate(note.plan)}>{post.isPending ? "Posting…" : issue ? "Post comment" : "Post internal note"}</Button>
-            <Button variant="ghost" disabled={post.isPending} onClick={() => { post.reset(); setReviewedPlan(undefined); }}>Cancel</Button>
-          </div>
-          {!note.can_post && <p>{github ? "GitHub posting is unavailable. Review the repository connection in " : linear ? "Linear posting is unavailable. Review the connection in " : bondren ? "Bondren posting is unavailable. Review the agent token in " : "Connect Zendesk from "}<Link className="ticket-source" to="/tickets">Ticket cases</Link>{issue || bondren ? "." : " to post."}</p>}
-        </>}
+        {note.automatic && <p role="status">The procedure policy posts this {noun} automatically when the run completes. Automatic posting has not completed, so review, edit, and post it below.</p>}
+        {!review
+          ? <div className="button-row">{canPost && <Button disabled={!note.plan} onClick={beginReview}>{issue ? "Review comment" : "Review internal note"}</Button>}</div>
+          : editor}
       </>}
-      {post.isError && <ErrorPlate title={github ? "Comment could not be posted" : "Internal note could not be posted"} error={post.error} />}
+      {post.isError && <ErrorPlate title={issue ? "Comment could not be posted" : "Internal note could not be posted"} error={post.error} />}
     </div>
   </Panel>;
 }

@@ -39,8 +39,11 @@ export function steerRun(id: string, input: ResumeInput) {
 export const closeRun = (id: string, input: { round: number; settings: string }) =>
   request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/close`, { method: "POST", headers: lifecycleHeaders(input.round, input.settings) });
 
-export const postTicketNote = (id: string, plan: string) =>
-  request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, { method: "POST", body: JSON.stringify({ plan }) });
+export const postTicketNote = (id: string, plan: string, body?: string) =>
+  request<TicketNote>(`/api/runs/${encodeURIComponent(id)}/ticket-note`, {
+    method: "POST",
+    body: JSON.stringify(body === undefined ? { plan } : { plan, body }),
+  });
 
 export function createRun(input: { description: string; files: File[]; agent?: string; sandbox?: string; namespace?: string }) {
   const body = new FormData();

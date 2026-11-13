@@ -268,8 +268,11 @@ func (s *Server) ticketOwner(runID string) *ticketConn {
 func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id string) {
 	var input struct {
 		Plan string `json:"plan"`
+		Body string `json:"body"`
 	}
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	// The body carries an operator edit of the prepared note; it is optional
+	// and bounded like the server-side edit checks.
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, ticketflow.MaxNoteBodyBytes+1024))
 	d.DisallowUnknownFields()
 	if d.Decode(&input) != nil || d.Decode(new(any)) != io.EOF || input.Plan == "" {
 		fail(w, 400, "Invalid investigation comment approval")
@@ -298,6 +301,22 @@ func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id strin
 		writeTicketResult(w, nil, ticketflow.ErrBlocked)
 		return
 	}
-	note, err := owner.flow.PostNote(r.Context(), id, saved, input.Plan)
+	note, err := owner.flow.PostNote(r.Context(), id, saved, input.Plan, input.Body)
 	writeTicketResult(w, note, err)
+}
+
+// postAutomaticTicketNote applies the case's comment policy when a
+// ticket-launched run settles. The flow skips cases whose procedure does not
+// post automatically; the ready preview keeps a human in the loop.
+func (s *Server) postAutomaticTicketNote(id string) {
+	saved, err := s.readReport(id)
+	if err != nil {
+		return
+	}
+	for _, conn := range s.ticketConnections() {
+		if conn.flow.OwnsRun(id) {
+			conn.flow.PostAutomaticNote(s.ctx, id, saved)
+			return
+		}
+	}
 }

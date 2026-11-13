@@ -180,7 +180,11 @@ public clarifications to explicitly tracked tickets after the operator approves
 the first draft and requester. Public replies use fixed templates, and every
 outbound clarification passes the output sanitizer before it can be sent.
 Optional internal notes contain a reviewed, bounded summary and selected
-evidence from a completed linked run. The ticket record journals comment attempts before
+evidence from a completed linked run. The reviewer can edit the prepared
+text; the exact edited body is what Zendesk receives, and it passes the same
+output sanitizer before posting. A procedure policy (`auto_comments`) may
+post the prepared note without that review once the run completes; if
+automatic posting cannot run, the note stays with a human. The ticket record journals comment attempts before
 sending and holds uncertain writes for manual inspection. OAuth uses PKCE and
 a one-time loopback callback bound to the initiating browser. Credentials stay
 on the server and are sent only to the configured Zendesk account. Temporary
@@ -194,8 +198,10 @@ environment token is sent only to `api.github.com`; API redirects are refused.
 Posting requires explicitly enabled clarification or investigation comments
 and a token with Issues write permission. The operator reviews the first
 clarification and author before approving bounded follow-ups. Investigation
-summaries require separate review of the exact body and repository audience.
-All GitHub comments are visible to everyone with repository access and public
+summaries are held for review of the exact body and repository audience by
+default; the reviewer may edit the text, and a procedure policy
+(`auto_comments`) can instead post the prepared summary automatically when
+the run completes. All GitHub comments are visible to everyone with repository access and public
 in public repositories; GitHub has no private internal notes. Summaries render
 imported content in literal Markdown code blocks to avoid accidental mentions,
 links, or images, and pass the same output sanitizer before posting; a summary

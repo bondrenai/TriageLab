@@ -108,7 +108,7 @@ func TestCompletedBondrenReportOffersReviewedInternalNote(t *testing.T) {
 		t.Fatal("mutable note preview leaked into canonical report")
 	}
 	path += "/ticket-note"
-	for _, input := range []string{`{"plan":"stale"}`, `{"plan":"` + note.Plan + `","body":"injected"}`} {
+	for _, input := range []string{`{"plan":"stale"}`, `{"plan":"stale","body":"injected"}`} {
 		w := request(s, http.MethodPost, path, strings.NewReader(input))
 		if w.Code != 400 && w.Code != 409 {
 			t.Fatalf("invalid approval accepted: HTTP %d %s", w.Code, w.Body)

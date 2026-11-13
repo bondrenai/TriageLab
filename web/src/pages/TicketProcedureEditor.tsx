@@ -11,7 +11,7 @@ import type { EvidenceRule, ProcedureVersion, TicketCase, TicketProcedure, Ticke
 
 const priorities = ["low", "normal", "high", "urgent"];
 
-export function TicketProcedureEditor({ connection, version, source, connected, template, clarificationLimit, autoRunsAllowed, renderPreview }: {
+export function TicketProcedureEditor({ connection, version, source, connected, template, clarificationLimit, autoRunsAllowed, commentsAllowed, renderPreview }: {
   connection: string;
   version: ProcedureVersion;
   source: TicketSource;
@@ -19,6 +19,7 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
   template: string;
   clarificationLimit: number;
   autoRunsAllowed: boolean;
+  commentsAllowed: boolean;
   renderPreview: (ticket: TicketCase, procedure: TicketProcedure) => ReactNode;
 }) {
   const [procedures, setProcedures] = useState(() => orderedProcedures(version));
@@ -249,6 +250,12 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
             connection={connection} source={source} label="Automatic start condition" value={draft.policy.auto_run_condition ?? ""}
             emptyHint="An empty condition allows automatic starts when evidence is ready."
             onChange={value => updatePolicy({ auto_run_condition: value || undefined })} />}
+          {commentsAllowed && <label className="agent-tool-option">
+            <input type="checkbox" checked={Boolean(draft.policy.auto_comments)}
+              onChange={e => updatePolicy({ auto_comments: e.target.checked })} />
+            Post the investigation comment automatically when the run completes
+          </label>}
+          {commentsAllowed && <p className="field-help">Without this, a completed run holds its {zendesk || bondren || jira ? "internal note" : "investigation comment"} for review; reviewers can edit the text before it is posted.</p>}
           <div className="agent-field-grid">
             <Field label="Default agent">
               <select className="field" value={draft.default_agent} onChange={e => update({ ...draft, default_agent: e.target.value })}>

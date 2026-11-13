@@ -112,9 +112,15 @@ With `internal_notes: true`, choose **Review internal note** on a completed
 report. The preview shows the run ID, outcome, a bounded agent summary, and
 selected process IDs, commands, and exit codes, wrapped so imported text
 cannot create mentions or links. The note is an internal Bondren message —
-visible to the team, not the requester. A confirmed send stores its message
-ID; an uncertain delivery keeps its reservation and blocks another send for
-the same investigation.
+visible to the team, not the requester. Reviewers can edit the prepared text
+before posting — Bondren receives the exact edited body. A confirmed send
+stores its message ID; an uncertain delivery keeps its reservation and blocks
+another send for the same investigation.
+
+A procedure policy with `auto_comments: true` (requires `internal_notes`)
+posts the note without a reviewer once the run completes; if automatic
+posting cannot run, the preview stays ready for a human to review, edit, and
+post.
 
 ## Limits
 

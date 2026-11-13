@@ -6,6 +6,7 @@
   "internal_notes": false,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "priorities": [],
     "auto_questions": false,
     "max_questions": 2

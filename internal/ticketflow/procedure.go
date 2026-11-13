@@ -176,6 +176,7 @@ func (f *Flow) validateProcedure(p Procedure) error {
 		(policy.FieldValue != "" && !validText(policy.FieldValue, 200)) ||
 		policy.MaxQuestions < 0 || policy.MaxQuestions > 3 ||
 		(policy.AutoQuestions && (!f.settings.Policy.AutoQuestions || policy.MaxQuestions == 0 || policy.MaxQuestions > f.settings.Policy.MaxQuestions)) ||
+		(policy.AutoComments && !f.notesEnabled()) ||
 		(p.Clarification != "" && (!validText(strings.ReplaceAll(p.Clarification, "\n", " "), 500) || f.hasSecret([]byte(p.Clarification)))) ||
 		!p.Evidence.valid(validText) || !agent.ValidResourceName(p.DefaultAgent) ||
 		!agent.ValidResourceName(p.Sandbox) || f.hasSecret([]byte(p.DefaultAgent)) || f.hasSecret([]byte(p.Sandbox)) ||

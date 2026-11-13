@@ -6,6 +6,7 @@
   "investigation_comments": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }

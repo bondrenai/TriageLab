@@ -84,6 +84,7 @@ type Case struct {
 	SelectedFor       string                `json:"selected_for,omitempty"`
 	ProcedureRevision string                `json:"procedure_revision,omitempty"`
 	AutoRun           bool                  `json:"auto_run,omitempty"`
+	AutoComment       bool                  `json:"auto_comment,omitempty"`
 	Unattended        bool                  `json:"unattended,omitempty"`
 
 	Requester             *Requester                `json:"requester,omitempty"`
@@ -563,7 +564,7 @@ func (f *Flow) Pause(id int64, paused bool) (Case, error) {
 	if c.RunID != "" {
 		return Case{}, ErrBlocked
 	}
-	c.Paused, c.Plan, c.AutoRun = paused, "", false
+	c.Paused, c.Plan, c.AutoRun, c.AutoComment = paused, "", false, false
 	c.State, c.Reason = "review", "Refresh the ticket to reassess the next action."
 	return c, f.save(c)
 }
@@ -677,6 +678,7 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	}
 	c.State, c.Reason, c.Draft, c.Plan = "excluded", exclusion, "", ""
 	c.AutoRun = false
+	c.AutoComment = false
 	c.PlanExpires = time.Time{}
 	c.Facts, c.Files = nil, nil
 	c.Matches, c.AgentChoices, c.Missing = nil, nil, nil
@@ -939,6 +941,9 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	}
 	c.PlanExpires = c.CheckedAt.Add(approvalLifetime)
 	c.State, c.Reason = "approval", "Evidence is ready. Approve the proposed sandbox run."
+	// The approved procedure policy decides whether the completed run's
+	// investigation comment is posted without further operator review.
+	c.AutoComment = p.Policy.AutoComments && f.notesEnabled()
 	if f.unattended(p) {
 		allowed, conditionErr := evaluateTicketCondition(ctx, p.Policy.AutoRunCondition, f.provider, t)
 		switch {

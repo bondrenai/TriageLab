@@ -117,9 +117,15 @@ With `investigation_comments: true`, choose **Review investigation
 comment** on a completed report. The preview shows the run ID, outcome, a
 bounded agent summary, and selected process IDs, commands, and exit
 codes; the comment posts as a fenced plain-text note visible to everyone
-with access to the issue. A confirmed send stores its note ID; an
-uncertain delivery keeps its reservation and blocks another send for the
-same investigation.
+with access to the issue. Reviewers can edit the prepared text before
+posting — GitLab receives the exact edited body. A confirmed send stores
+its note ID; an uncertain delivery keeps its reservation and blocks
+another send for the same investigation.
+
+A procedure policy with `auto_comments: true` (requires
+`investigation_comments`) posts the comment without a reviewer once the run
+completes; if automatic posting cannot run, the preview stays ready for a
+human to review, edit, and post.
 
 ## Limits
 

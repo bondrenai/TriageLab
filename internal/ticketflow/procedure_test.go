@@ -262,3 +262,23 @@ func TestProcedureDraftRoutingAndApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProcedureCommentPolicyRequiresConnectionSetting(t *testing.T) {
+	f := newFixture(t)
+	flow := openTestFlow(t, filepath.Join(t.TempDir(), "state"), f, false)
+	version := flow.Procedure()
+	version.Procedure.Policy.AutoComments = true
+	if _, err := flow.SaveProcedures(version); !errors.Is(err, ErrInvalidProcedure) {
+		t.Fatalf("automatic comments were allowed without the connection comment setting: %v", err)
+	}
+	flow.settings.InternalNotes = true
+	saved, err := flow.SaveProcedures(version)
+	if err != nil || saved.Procedure.Policy.AutoComments != true {
+		t.Fatalf("automatic comments were rejected with the connection comment setting: %+v %v", saved.Procedure.Policy, err)
+	}
+	f.reply()
+	c, err := flow.Preview(t.Context(), 42)
+	if err != nil || c.State != "approval" || !c.AutoComment {
+		t.Fatalf("approval did not record the automatic comment policy: %+v %v", c, err)
+	}
+}

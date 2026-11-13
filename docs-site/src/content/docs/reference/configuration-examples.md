@@ -96,6 +96,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "internal_notes": false,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "priorities": [],
     "auto_questions": false,
     "max_questions": 2
@@ -116,6 +117,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "investigation_comments": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }
@@ -136,6 +138,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "investigation_comments": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }
@@ -156,6 +159,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "investigation_comments": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }
@@ -175,6 +179,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "internal_notes": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }
@@ -195,6 +200,7 @@ Copy an example to a private file, fill in your values, and pass it to the match
   "internal_notes": true,
   "policy": {
     "tag": "triagelab_python_timeout",
+    "auto_comments": false,
     "auto_questions": true,
     "max_questions": 2
   }

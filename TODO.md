@@ -104,6 +104,11 @@
       the connection probe. A GitOps-managed model-backed run from a GitLab
       case also passed; GitLab.com remains to be exercised. See
       [verification](verification.md).)
+- [ ] Verify policy-driven investigation comments live: a procedure with
+      `auto_comments` posting when its run completes, the automatic skip when
+      the credential or connection is missing, and an operator-edited comment
+      delivered exactly as reviewed. Fixture-verified 2026-11-13, including
+      held edits that must not bypass the output sanitizer.
 - [x] Exercise the new sign-in surface against real identity providers
       (done 2026-11-09 on the build VM: Keycloak 26 confidential client and
       Zitadel v4.20 public PKCE client, full authorization-code flows with

@@ -13,6 +13,7 @@ spec:
       auto_questions: false
       max_questions: 0
       auto_runs: false
+      auto_comments: false
     evidence:
       - kind: field
         match: Expected
@@ -49,6 +50,7 @@ spec:
       auto_questions: false
       max_questions: 0
       auto_runs: false
+      auto_comments: false
   # Omit for anonymous reads of public GitHub issues. The chart's
   # gitops.secretNames must explicitly include github-support-token.
   tokenSecretRef:

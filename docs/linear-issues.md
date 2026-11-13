@@ -148,12 +148,19 @@ Linear team and issue references alongside collected process evidence.
 
 Set `investigation_comments: true` to enable summaries for completed linked
 investigations. On the report, choose **Review comment**. Review the linked
-issue, workspace audience, and exact body before choosing **Post comment**.
+issue, workspace audience, and exact body; you can edit the prepared text
+before choosing **Post comment**, and Linear receives the exact edited body.
 The preview includes the run ID, outcome, a bounded agent summary, and
 selected process IDs, commands, and exit codes. Its imported text is wrapped
 in a literal Markdown code block to prevent accidental mentions, links, or
 images. Model analysis remains a hypothesis; the process records are the
 collected evidence.
+
+A procedure policy can also post the comment without a reviewer: set
+`auto_comments: true` on a saved procedure (it requires
+`investigation_comments`). When such a run completes, TriageLab posts the
+prepared comment itself; if automatic posting cannot run, the preview stays
+ready for a human to review, edit, and post.
 
 The summary is an ordinary issue comment, visible to everyone with workspace
 access. It is not a private internal note. A confirmed send stores its

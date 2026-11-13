@@ -158,11 +158,20 @@ Set `internal_notes: true` in the ticket configuration. If the workspace had
 read-only access, reconnect Zendesk to grant `tickets:write`. From a completed
 ticket investigation, choose **Review internal note**. The preview contains
 the run ID, outcome, a bounded agent summary, and selected process IDs,
-commands, and exit codes. The same output sanitizer checks the previewed body:
-a note that may disclose a configured credential or another tracked requester's
-identity is shown as blocked with its findings and cannot be posted from
-TriageLab. Check the preview before choosing **Post internal
+commands, and exit codes. You can edit the prepared text before posting; the
+exact edited body is what Zendesk receives. The same output sanitizer checks
+the previewed and edited body: a note that may disclose a configured
+credential or another tracked requester's identity is shown as blocked with
+its findings and cannot be posted from TriageLab until the edit resolves the
+finding. Check the preview before choosing **Post internal
 note**. Zendesk receives a private comment on the linked ticket.
+
+A procedure policy can also post the note without a reviewer: set
+`auto_comments: true` on a saved procedure (it requires `internal_notes`).
+When such a run completes, TriageLab posts the prepared note itself and
+records the same delivery receipt; if automatic posting cannot run — the
+OAuth connection is missing, the sanitizer holds the note, or the ticket
+closed — the preview stays ready for a human to review, edit, and post.
 
 TriageLab records the Zendesk comment ID on confirmation. A repeated approval
 returns the existing receipt. If delivery is uncertain, use the run ID to

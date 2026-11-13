@@ -290,7 +290,7 @@ func TestBondrenInvestigationNoteBindsExactReportAndConfiguration(t *testing.T) 
 			if flow.NotePreview(id, saved) != nil {
 				t.Fatal("mismatched report or disabled configuration offered a note")
 			}
-			if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan); !errors.Is(err, ErrBlocked) || s.posted != 0 {
+			if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrBlocked) || s.posted != 0 {
 				t.Fatalf("mismatched report admitted a note: %v", err)
 			}
 		})
@@ -325,7 +325,7 @@ func TestBondrenInvestigationNotePreviewAndDurableReceipt(t *testing.T) {
 					t.Fatal("investigation note sent before durable reservation")
 				}
 			}
-			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan)
+			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 			if err != nil || note.Status != tc.status || s.posted != 1 {
 				t.Fatalf("investigation note differed from approval: %+v, posts=%d, %v", note, s.posted, err)
 			}
@@ -339,7 +339,7 @@ func TestBondrenInvestigationNotePreviewAndDurableReceipt(t *testing.T) {
 			if restored == nil || restored.Status != tc.status || restored.CanPost || restored.CommentID != note.CommentID {
 				t.Fatalf("note receipt did not survive restart: %+v", restored)
 			}
-			_, err = flow.PostNote(t.Context(), id, saved, preview.Plan)
+			_, err = flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 			if s.posted != 1 || (tc.err == nil && err != nil) || (tc.err != nil && !errors.Is(err, ErrBlocked)) {
 				t.Fatalf("repeated approval retried a note: posts=%d, %v", s.posted, err)
 			}
@@ -359,7 +359,7 @@ func TestBondrenClosedIssueBlocksInvestigationNote(t *testing.T) {
 	if preview == nil || preview.Status != "ready" {
 		t.Fatalf("closed issue still offers a fresh preview: %+v", preview)
 	}
-	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan); !errors.Is(err, ErrBlocked) || s.posted != 0 {
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrBlocked) || s.posted != 0 {
 		t.Fatalf("closed issue admitted a note: %v", err)
 	}
 }

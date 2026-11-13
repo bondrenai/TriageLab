@@ -23,6 +23,11 @@ type Policy struct {
 	MatchCondition   string   `json:"match_condition,omitempty"`
 	AutoRunCondition string   `json:"auto_run_condition,omitempty"`
 	AutoRuns         bool     `json:"auto_runs,omitempty"`
+	// AutoComments posts a completed run's investigation comment (or internal
+	// note) without further operator review. It requires the connection-level
+	// comment setting; without it the note stays with a human, who may edit
+	// the prepared text before posting.
+	AutoComments bool `json:"auto_comments,omitempty"`
 }
 
 type Config struct {
@@ -245,8 +250,11 @@ func (config Config) validate() error {
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
 			return errors.New("GitHub requires an owner/repository and label policy; Zendesk connection, priority, field, and internal-note settings do not apply")
 		}
-		if (p.AutoQuestions || config.InvestigationComments) && !config.hasCredential() {
+		if (p.AutoQuestions || p.AutoComments || config.InvestigationComments) && !config.hasCredential() {
 			return errors.New("GitHub clarification and investigation comments require a token with Issues write permission")
+		}
+		if p.AutoComments && !config.InvestigationComments {
+			return errors.New("GitHub automatic investigation comments require investigation_comments")
 		}
 		return nil
 	}
@@ -259,6 +267,9 @@ func (config Config) validate() error {
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
 			return errors.New("Linear requires a workspace key, an uppercase team key, and a token from token_env or the connection registry with a label policy; Zendesk connection, priority, field, and internal-note settings do not apply")
 		}
+		if p.AutoComments && !config.InvestigationComments {
+			return errors.New("Linear automatic investigation comments require investigation_comments")
+		}
 		return nil
 	}
 	if config.provider() == "bondren" {
@@ -268,6 +279,9 @@ func (config Config) validate() error {
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
 			return errors.New("Bondren requires an HTTPS origin and a token from token_env or the connection registry with a tag policy; Zendesk, GitHub, GitLab, Linear, priority, field, and public-comment settings do not apply")
+		}
+		if p.AutoComments && !config.InternalNotes {
+			return errors.New("Bondren automatic internal notes require internal_notes")
 		}
 		return nil
 	}
@@ -279,6 +293,9 @@ func (config Config) validate() error {
 			config.InvestigationComments || len(p.Priorities) != 0 || p.FieldID != 0 || p.FieldValue != "" ||
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
 			return errors.New("Jira requires an atlassian.net site origin, the Atlassian account email, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, GitLab, Linear, and Bondren connection, priority, field, and public-comment settings do not apply")
+		}
+		if p.AutoComments && !config.InternalNotes {
+			return errors.New("Jira automatic internal notes require internal_notes")
 		}
 		return nil
 	}
@@ -292,11 +309,17 @@ func (config Config) validate() error {
 			strings.TrimSpace(p.Tag) == "" || len(p.Tag) > 100 {
 			return errors.New("GitLab requires a group/project path, an optional HTTPS origin, and a token from token_env or the connection registry with a label policy; Zendesk, GitHub, Linear, Bondren, and Jira connection, priority, field, and internal-note settings do not apply")
 		}
+		if p.AutoComments && !config.InvestigationComments {
+			return errors.New("GitLab automatic investigation comments require investigation_comments")
+		}
 		return nil
 	}
 	if config.provider() != "zendesk" || config.Repository != "" || config.TokenEnv != "" || config.Origin != "" ||
 		config.Email != "" || config.InvestigationComments {
 		return errors.New("ticket source must be zendesk, github, gitlab, linear, bondren, or jira with its own connection settings")
+	}
+	if p.AutoComments && !config.InternalNotes {
+		return errors.New("Zendesk automatic internal notes require internal_notes")
 	}
 	if !subdomain.MatchString(config.Subdomain) || !oauthIdentifier.MatchString(config.ClientID) ||
 		p.Tag == "" || len(p.Tag) > 100 ||

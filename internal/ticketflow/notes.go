@@ -12,23 +12,42 @@ import (
 	"github.com/bondrenai/TriageLab/internal/report"
 )
 
+// MaxNoteBodyBytes bounds an operator-edited investigation comment body.
+const MaxNoteBodyBytes = 16 << 10
+
 type NoteDelivery struct {
-	Status    string    `json:"status"`
-	CommentID int64     `json:"comment_id,string,omitempty"`
-	At        time.Time `json:"at"`
+	Status    string `json:"status"`
+	CommentID int64  `json:"comment_id,string,omitempty"`
+	// Body is the exact text this delivery committed to send. It is recorded
+	// with the durable reservation before any write, so an uncertain delivery
+	// can be compared with the conversation at the source.
+	Body string    `json:"body,omitempty"`
+	At   time.Time `json:"at"`
 }
 
 type NotePreview struct {
-	Source     string   `json:"source"`
-	Visibility string   `json:"visibility"`
-	TicketID   int64    `json:"ticket_id,string"`
-	TicketURL  string   `json:"ticket_url"`
-	Body       string   `json:"body,omitempty"`
-	Plan       string   `json:"plan,omitempty"`
-	Status     string   `json:"status"`
-	CommentID  int64    `json:"comment_id,string,omitempty"`
-	CanPost    bool     `json:"can_post"`
-	Findings   []string `json:"findings,omitempty"`
+	Source     string `json:"source"`
+	Visibility string `json:"visibility"`
+	TicketID   int64  `json:"ticket_id,string"`
+	TicketURL  string `json:"ticket_url"`
+	Body       string `json:"body,omitempty"`
+	Plan       string `json:"plan,omitempty"`
+	Status     string `json:"status"`
+	CommentID  int64  `json:"comment_id,string,omitempty"`
+	CanPost    bool   `json:"can_post"`
+	// Automatic reports that the procedure policy for this case posts the
+	// note without operator review once the run completes. A preview that is
+	// still ready or blocked was left for a human to review, edit, and post.
+	Automatic bool     `json:"automatic,omitempty"`
+	Findings  []string `json:"findings,omitempty"`
+}
+
+// notesEnabled reports whether this connection may post investigation notes:
+// investigation comments on GitHub, GitLab, and Linear issues, and internal
+// notes on Zendesk tickets and Bondren and Jira issues.
+func (f *Flow) notesEnabled() bool {
+	return (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && f.settings.InvestigationComments ||
+		(f.provider == "zendesk" || f.provider == "bondren" || f.provider == "jira") && f.settings.InternalNotes
 }
 
 func (f *Flow) NotePreview(runID string, saved map[string]any) *NotePreview {
@@ -40,14 +59,14 @@ func (f *Flow) NotePreview(runID string, saved map[string]any) *NotePreview {
 	return &preview
 }
 
-func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any, plan string) (NotePreview, error) {
+func (f *Flow) PostNote(ctx context.Context, runID string, saved map[string]any, plan, body string) (NotePreview, error) {
 	ctx, finish := traced(ctx, "post_note")
-	preview, err := f.postNote(ctx, runID, saved, plan)
+	preview, err := f.postNote(ctx, runID, saved, plan, body)
 	finish(err)
 	return preview, err
 }
 
-func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any, plan string) (NotePreview, error) {
+func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any, plan, body string) (NotePreview, error) {
 	if err := f.begin(); err != nil {
 		return NotePreview{}, err
 	}
@@ -60,7 +79,9 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 	if preview.Status == "posted" {
 		return preview, nil
 	}
-	if preview.Status != "ready" {
+	// A blocked preview keeps its plan: the operator may edit the held text
+	// so it no longer discloses and post the corrected body.
+	if preview.Status != "ready" && preview.Status != "blocked" {
 		return NotePreview{}, ErrBlocked
 	}
 	if plan == "" || plan != preview.Plan {
@@ -68,6 +89,58 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 	}
 	if !preview.CanPost {
 		return NotePreview{}, ErrOAuthRequired
+	}
+	return f.deliverNote(ctx, c, preview, body, saved)
+}
+
+// PostAutomaticNote delivers the investigation note for a completed run when
+// the case's approved procedure policy allows posting without operator
+// review. The workspace calls it once a ticket-launched run settles. Skips
+// are not errors: the ready or blocked preview keeps a human in the loop.
+func (f *Flow) PostAutomaticNote(ctx context.Context, runID string, saved map[string]any) {
+	ctx, finish := traced(ctx, "automatic_note")
+	_, err := f.postAutomaticNote(ctx, runID, saved)
+	finish(err)
+}
+
+func (f *Flow) postAutomaticNote(ctx context.Context, runID string, saved map[string]any) (NotePreview, error) {
+	if err := f.begin(); err != nil {
+		// Busy or broken state leaves the note for manual review.
+		return NotePreview{}, nil
+	}
+	defer f.op.Unlock()
+	c, ok := f.noteCase(runID, saved)
+	if !ok || !c.AutoComment {
+		return NotePreview{}, nil
+	}
+	preview := f.notePreview(c, saved)
+	if preview.Status != "ready" || !preview.CanPost {
+		return NotePreview{}, nil
+	}
+	return f.deliverNote(ctx, c, preview, "", saved)
+}
+
+// deliverNote runs under op. The plan already binds the generated note to the
+// completed report; body carries an operator edit, empty for the generated
+// text. The sanitizer holds an edit for review instead of rewriting it.
+func (f *Flow) deliverNote(ctx context.Context, c Case, preview NotePreview, body string, saved map[string]any) (NotePreview, error) {
+	text := preview.Body
+	if body != "" && body != preview.Body {
+		if strings.TrimSpace(body) == "" || len(body) > MaxNoteBodyBytes {
+			return NotePreview{}, ErrBlocked
+		}
+		// An edit is posted exactly as reviewed. It must clear the same
+		// output checks as the generated note.
+		if findings := sanitizeOutput(body, f.currentSecrets(), outboundTerms(f.store.list(), c.TicketID, nil)); len(findings) > 0 {
+			held := preview
+			held.Body, held.Status, held.Findings = body, "blocked", findings
+			return held, nil
+		}
+		text = body
+	}
+	if preview.Status == "blocked" && text == preview.Body {
+		// The generated note is held; only a changed operator edit may post.
+		return NotePreview{}, ErrBlocked
 	}
 	ctx, cancel := context.WithTimeout(ctx, 24*time.Second)
 	defer cancel()
@@ -83,11 +156,11 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 	}
 	// Journal before writing. A crash, timeout, or missing receipt leaves a
 	// reservation that blocks another send. The operator can inspect the source.
-	c.Note = &NoteDelivery{Status: "unconfirmed", At: time.Now().UTC()}
+	c.Note = &NoteDelivery{Status: "unconfirmed", Body: text, At: time.Now().UTC()}
 	if err := f.save(c); err != nil {
 		return NotePreview{}, err
 	}
-	commentID, err := f.source.postComment(ctx, t, preview.Body, f.provider == "github" || f.provider == "gitlab" || f.provider == "linear")
+	commentID, err := f.source.postComment(ctx, t, text, f.provider == "github" || f.provider == "gitlab" || f.provider == "linear")
 	switch {
 	case errors.Is(err, ErrChanged), errors.Is(err, ErrOAuthRequired):
 		// These responses confirm the connector did not apply the write.
@@ -97,7 +170,7 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 		}
 		return NotePreview{}, err
 	case err == nil:
-		c.Note = &NoteDelivery{Status: "posted", CommentID: commentID, At: c.Note.At}
+		c.Note = &NoteDelivery{Status: "posted", CommentID: commentID, Body: text, At: c.Note.At}
 		if err := f.save(c); err != nil {
 			return NotePreview{}, err
 		}
@@ -106,9 +179,7 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 }
 
 func (f *Flow) noteCase(runID string, saved map[string]any) (Case, bool) {
-	enabled := (f.provider == "zendesk" || f.provider == "bondren" || f.provider == "jira") && f.settings.InternalNotes ||
-		(f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && f.settings.InvestigationComments
-	if !enabled || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
+	if !f.notesEnabled() || runID == "" || saved["run_id"] != runID || saved["status"] != "completed" {
 		return Case{}, false
 	}
 	finished, _ := saved["finished_at"].(string)
@@ -189,7 +260,7 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 	if f.provider == "bondren" || f.provider == "jira" {
 		url = c.URL
 	}
-	preview := NotePreview{Source: f.provider, Visibility: "internal", TicketID: c.TicketID, TicketURL: url}
+	preview := NotePreview{Source: f.provider, Visibility: "internal", TicketID: c.TicketID, TicketURL: url, Automatic: c.AutoComment}
 	if f.provider == "github" {
 		preview.Visibility = "repository"
 	}
@@ -200,7 +271,7 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 		preview.Visibility = "workspace"
 	}
 	if c.Note != nil {
-		preview.Status, preview.CommentID = c.Note.Status, c.Note.CommentID
+		preview.Status, preview.CommentID, preview.Body = c.Note.Status, c.Note.CommentID, c.Note.Body
 		return preview
 	}
 	preview.Status = "ready"
@@ -223,22 +294,23 @@ func (f *Flow) notePreview(c Case, saved map[string]any) NotePreview {
 		fence := strings.Repeat("`", width)
 		preview.Body = fence + "text\n" + preview.Body + "\n" + fence
 	}
-	// The output sanitizer holds the note instead of rewriting it; the
-	// operator reviews the findings with the exact blocked body.
-	if findings := sanitizeOutput(preview.Body, f.currentSecrets(), outboundTerms(f.store.list(), c.TicketID, nil)); len(findings) > 0 {
-		preview.Status = "blocked"
-		preview.Findings = findings
-		return preview
-	}
-	preview.Plan = digest(struct {
-		RunID, TicketURL, Body, Source, Visibility string
-	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
 	if f.provider == "github" || f.provider == "gitlab" || f.provider == "linear" {
 		preview.CanPost = f.settings.InvestigationComments
 	} else if f.provider == "bondren" || f.provider == "jira" {
 		preview.CanPost = f.settings.InternalNotes
 	} else {
 		preview.CanPost = f.oauth != nil && f.oauth.status().Connected
+	}
+	preview.Plan = digest(struct {
+		RunID, TicketURL, Body, Source, Visibility string
+	}{c.RunID, preview.TicketURL, preview.Body, preview.Source, preview.Visibility})
+	// The output sanitizer holds the note instead of rewriting it; the
+	// operator reviews the findings with the exact blocked body and may post
+	// a corrected edit under the same plan.
+	if findings := sanitizeOutput(preview.Body, f.currentSecrets(), outboundTerms(f.store.list(), c.TicketID, nil)); len(findings) > 0 {
+		preview.Status = "blocked"
+		preview.Findings = findings
+		return preview
 	}
 	return preview
 }

@@ -69,7 +69,9 @@ export function usePostTicketNote(id: string) {
   const client = useQueryClient();
   const queryKey = queryKeys.run(id);
   return useMutation({
-    mutationFn: (plan: string) => postTicketNote(id, plan),
+    // An absent body posts the generated note; a present body is the
+    // operator's edit of the reviewed preview.
+    mutationFn: (input: { plan: string; body?: string }) => postTicketNote(id, input.plan, input.body),
     onSuccess: note => client.setQueryData<InvestigationReport>(queryKey, report => report && { ...report, ticket_note: note }),
     onError: () => client.invalidateQueries({ queryKey }),
   });

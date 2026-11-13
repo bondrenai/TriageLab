@@ -77,10 +77,10 @@ func TestInternalNotePreviewAndDurableDelivery(t *testing.T) {
 				strings.Contains(preview.Body, "private output") || strings.Contains(preview.Body, "{{") {
 				t.Fatalf("unexpected note content: %q", preview.Body)
 			}
-			if _, err := flow.PostNote(t.Context(), id, saved, "stale"); !errors.Is(err, ErrChanged) || f.count() != 0 {
+			if _, err := flow.PostNote(t.Context(), id, saved, "stale", ""); !errors.Is(err, ErrChanged) || f.count() != 0 {
 				t.Fatalf("stale preview posted a note: %v", err)
 			}
-			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan)
+			note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, "")
 			if err != nil || note.Status != tc.status || note.CommentID != tc.commentID || f.count() != 1 || f.noteBody != preview.Body {
 				t.Fatalf("note delivery differed from preview: %+v %v", note, err)
 			}
@@ -92,7 +92,7 @@ func TestInternalNotePreviewAndDurableDelivery(t *testing.T) {
 			if restored == nil || restored.Status != tc.status || restored.CommentID != tc.commentID || restored.CanPost {
 				t.Fatalf("delivery outcome did not survive restart: %+v", restored)
 			}
-			_, _ = flow.PostNote(context.Background(), id, saved, preview.Plan)
+			_, _ = flow.PostNote(context.Background(), id, saved, preview.Plan, "")
 			if f.count() != 1 {
 				t.Fatal("repeated approval posted another note")
 			}
@@ -110,12 +110,93 @@ func TestInternalNoteHeldWhenSummaryMayDisclose(t *testing.T) {
 	}
 	saved["analysis"].(map[string]any)["summary"] = "The 5 ms timeout was reproduced. Rival Customer reported the same."
 	preview := flow.NotePreview(id, saved)
-	if preview == nil || preview.Status != "blocked" || preview.Plan != "" || preview.CanPost ||
+	if preview == nil || preview.Status != "blocked" || preview.Plan == "" || !preview.CanPost ||
 		len(preview.Findings) != 1 || !strings.Contains(preview.Findings[0], "another tracked requester's identity") {
-		t.Fatalf("disclosing note was not held: %+v", preview)
+		t.Fatalf("disclosing note was not held with an editable plan: %+v", preview)
 	}
-	if _, err := flow.PostNote(t.Context(), id, saved, ""); !errors.Is(err, ErrBlocked) || f.count() != 0 {
-		t.Fatalf("held note was posted: %v %d", err, f.count())
+	if _, err := flow.PostNote(t.Context(), id, saved, "", ""); !errors.Is(err, ErrChanged) || f.count() != 0 {
+		t.Fatalf("held note was posted without a plan: %v %d", err, f.count())
+	}
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, ""); !errors.Is(err, ErrBlocked) || f.count() != 0 {
+		t.Fatalf("held note was posted unedited: %v %d", err, f.count())
+	}
+	stillDisclosing := strings.Replace(preview.Body, "Rival Customer reported the same.", "Rival  Customer reported the same.", 1)
+	held, err := flow.PostNote(t.Context(), id, saved, preview.Plan, stillDisclosing)
+	if err != nil || held.Status != "blocked" || held.Plan != preview.Plan || len(held.Findings) != 1 ||
+		held.Body != stillDisclosing || f.count() != 0 {
+		t.Fatalf("disclosing edit was posted or rewritten: %+v %v %d", held, err, f.count())
+	}
+	corrected := strings.Replace(preview.Body, "Rival Customer reported the same.", "another customer reported the same.", 1)
+	note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, corrected)
+	if err != nil || note.Status != "posted" || note.CommentID == 0 || f.count() != 1 || f.noteBody != corrected {
+		t.Fatalf("corrected edit was not delivered exactly as reviewed: %+v %v %d", note, err, f.count())
+	}
+	if delivered := flow.Cases()[0].Note; delivered == nil || delivered.Body != corrected {
+		t.Fatalf("delivery record lost the posted body: %+v", delivered)
+	}
+}
+
+func TestInvestigationNoteEditBeforePosting(t *testing.T) {
+	f := newFixture(t)
+	flow := noteTestFlow(t, filepath.Join(t.TempDir(), "cases"), f)
+	id, saved := completedTicketReport(t, flow, f)
+	preview := flow.NotePreview(id, saved)
+	if preview == nil || preview.Status != "ready" || preview.Automatic {
+		t.Fatalf("expected a ready human-reviewed note: %+v", preview)
+	}
+	edited := strings.Replace(preview.Body, "The 5 ms timeout was reproduced.", "The reported timeout was reproduced after review.", 1)
+	if edited == preview.Body {
+		t.Fatal("test edit did not change the generated note")
+	}
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, "   "); !errors.Is(err, ErrBlocked) || f.count() != 0 {
+		t.Fatalf("blank edit was posted: %v %d", err, f.count())
+	}
+	if _, err := flow.PostNote(t.Context(), id, saved, preview.Plan, strings.Repeat("a", MaxNoteBodyBytes+1)); !errors.Is(err, ErrBlocked) || f.count() != 0 {
+		t.Fatalf("oversized edit was posted: %v %d", err, f.count())
+	}
+	note, err := flow.PostNote(t.Context(), id, saved, preview.Plan, edited)
+	if err != nil || note.Status != "posted" || f.count() != 1 || f.noteBody != edited || note.Body != edited {
+		t.Fatalf("edited note was not delivered exactly as reviewed: %+v %v %d", note, err, f.count())
+	}
+}
+
+func TestAutomaticInvestigationNotePolicy(t *testing.T) {
+	f := newFixture(t)
+	dir := filepath.Join(t.TempDir(), "cases")
+	flow := noteTestFlow(t, dir, f)
+	id, saved := completedTicketReport(t, flow, f)
+	// Without the procedure policy flag the completed run keeps a human in
+	// the loop and nothing is posted automatically.
+	flow.PostAutomaticNote(t.Context(), id, saved)
+	if f.count() != 0 {
+		t.Fatalf("note was posted without the automatic policy: %d", f.count())
+	}
+	if preview := flow.NotePreview(id, saved); preview == nil || preview.Status != "ready" || preview.Automatic {
+		t.Fatalf("manual review preview was not preserved: %+v", preview)
+	}
+	c, ok := flow.store.get(42)
+	if !ok {
+		t.Fatal("tracked case disappeared")
+	}
+	c.AutoComment = true
+	if err := flow.store.save(c); err != nil {
+		t.Fatal(err)
+	}
+	if preview := flow.NotePreview(id, saved); preview == nil || !preview.Automatic {
+		t.Fatalf("policy decision was not reflected in the preview: %+v", preview)
+	}
+	flow.PostAutomaticNote(t.Context(), id, saved)
+	if f.count() != 1 {
+		t.Fatalf("policy-approved note was not posted automatically: %d", f.count())
+	}
+	if note := flow.Cases()[0].Note; note == nil || note.Status != "posted" || note.CommentID == 0 || note.Body == "" {
+		t.Fatalf("automatic delivery was not recorded: %+v", note)
+	}
+	// Repeated completions, for example a later close operation, never post
+	// a second note for the same investigation.
+	flow.PostAutomaticNote(t.Context(), id, saved)
+	if f.count() != 1 {
+		t.Fatalf("automatic policy posted a second note: %d", f.count())
 	}
 }
 

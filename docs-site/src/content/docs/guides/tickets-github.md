@@ -97,10 +97,16 @@ investigation attempt and shares the workspace's single run slot.
 With `investigation_comments: true`, choose **Review comment** on a completed
 report. The preview shows the run ID, outcome, a bounded agent summary, and
 selected process IDs, commands, and exit codes; imported text is wrapped in a
-literal code block so it cannot create mentions or links. The summary is an
-ordinary issue comment — not a private note. A confirmed send stores its
-comment ID; an uncertain delivery keeps its reservation and blocks another
-send for the same investigation.
+literal code block so it cannot create mentions or links. Reviewers can edit
+the prepared text before posting — GitHub receives the exact edited body. The
+summary is an ordinary issue comment — not a private note. A confirmed send
+stores its comment ID; an uncertain delivery keeps its reservation and blocks
+another send for the same investigation.
+
+A procedure policy with `auto_comments: true` (requires
+`investigation_comments` and a token with Issues write permission) posts the
+comment without a reviewer once the run completes; if automatic posting cannot
+run, the preview stays ready for a human to review, edit, and post.
 
 ## Limits
 

@@ -18,6 +18,7 @@ export interface TicketCase {
   checked_at: string;
   run_id?: string;
   auto_run?: boolean;
+  auto_comment?: boolean;
   unattended?: boolean;
   paused: boolean;
   revision: string;
@@ -71,6 +72,7 @@ export interface TicketSettings {
     max_questions: number;
     auto_runs?: boolean;
     auto_run_condition?: string;
+    auto_comments?: boolean;
     match_condition?: string;
   };
   internal_notes: boolean;

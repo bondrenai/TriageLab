@@ -247,6 +247,7 @@ function ConnectionSection({ connection, canAct, isAdmin, oauthResult }: {
         {connection.managed_by && <p>Managed by GitOps: <code>{connection.managed_by}</code>. Edit procedures in your Git repository.</p>}
         <ol className="prose-list">{procedures.map(p => <li key={p.policy.tag}>
           <code>{p.policy.tag}</code>{connection.settings.auto_runs_allowed && p.policy.auto_runs && " · Starts automatically"}
+          {(connection.settings.investigation_comments || connection.settings.internal_notes) && p.policy.auto_comments && " · Posts comment automatically"}
         </li>)}</ol>
         {connection.connected && canAct && <form className="ticket-form" onSubmit={inspect}>
           <div><label className="field-label" htmlFor={`ticket-id-${connection.id}`}>{source === "jira" ? "Jira issue key, URL, or id" : source === "gitlab" ? "GitLab issue number or URL" : source === "bondren" ? "Bondren issue ID or number" : source === "linear" ? "Linear issue number" : source === "github" ? "GitHub issue number" : "Zendesk ticket ID"}</label>
@@ -261,6 +262,7 @@ function ConnectionSection({ connection, canAct, isAdmin, oauthResult }: {
     {editProcedure && connection.procedure && !connection.managed_by && <TicketProcedureEditor key={connection.account} connection={connection.id} version={connection.procedure}
       source={connection.source} connected={connection.connected} template={connection.settings.template} clarificationLimit={connection.settings.clarification_limit}
       autoRunsAllowed={connection.settings.auto_runs_allowed}
+      commentsAllowed={connection.settings.investigation_comments || connection.settings.internal_notes}
       renderPreview={(ticket, draft) => <TicketDetail ticket={ticket} settings={{ ...connection.settings, policy: draft.policy }}
         mode="draft" busy={false} perform={perform} canAct={canAct} />} />}
     {mutation.isPending && <p role="status" className="quiet">Checking {kind}…</p>}

@@ -85,10 +85,17 @@ slot.
 Set `internal_notes: true` (reconnect Zendesk with `tickets:write` if the
 grant was read-only). From a completed investigation, **Review internal note**
 shows the run ID, outcome, a bounded agent summary, and selected process IDs,
-commands, and exit codes — the same sanitizer checks the preview, and a note
-that may leak a credential or another requester's identity is blocked from
-posting. TriageLab records the Zendesk comment ID and blocks a duplicate send
-for the same investigation, including across restarts.
+commands, and exit codes — the same sanitizer checks the preview and any
+operator edit, and a note that may leak a credential or another requester's
+identity is blocked from posting until the text resolves the finding.
+Reviewers can edit the prepared text before posting; Zendesk receives the
+exact edited body. TriageLab records the Zendesk comment ID and blocks a
+duplicate send for the same investigation, including across restarts.
+
+A procedure policy with `auto_comments: true` (requires `internal_notes`)
+posts the note without a reviewer once the run completes; if automatic
+posting cannot run — a missing OAuth connection, a held note, or a closed
+ticket — the preview stays ready for a human to review, edit, and post.
 
 ## Boundaries
 
