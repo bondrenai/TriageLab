@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 
 	"github.com/bondrenai/TriageLab/internal/agent"
+	"github.com/bondrenai/TriageLab/internal/kagent"
 )
 
 type Config struct {
@@ -35,6 +35,10 @@ type Config struct {
 	// whose pod network is the trust boundary; everything else stays
 	// loopback-only.
 	AllowClusterHTTP bool `json:"allow_cluster_http,omitempty"`
+	// Version identifies the TriageLab build that runs investigations and is
+	// recorded in reports. The composing command sets it after loading; a
+	// configuration file cannot.
+	Version string `json:"-"`
 }
 
 func DefaultConfig() Config {
@@ -100,17 +104,8 @@ func (c Config) Validate() error {
 		}
 		seen[ns] = true
 	}
-	u, err := url.Parse(c.Endpoint)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("endpoint must be HTTP(S) without credentials, query or fragment")
-	}
-	if u.Scheme == "http" && !isLoopbackHostname(u.Hostname()) {
-		if !c.AllowClusterHTTP {
-			return fmt.Errorf("HTTP is allowed only on loopback; use an SSH tunnel or allow_cluster_http inside a dedicated cluster")
-		}
-		if !isClusterServiceHostname(u.Hostname()) {
-			return fmt.Errorf("allow_cluster_http permits HTTP only on *.svc or *.svc.cluster.local service endpoints")
-		}
+	if err := kagent.CheckEndpoint(c.Endpoint, c.AllowClusterHTTP); err != nil {
+		return err
 	}
 	if c.InvestigationTimeout < 1 || c.ProcessTimeout < 1 || c.RequestTimeout < 1 || c.PollInterval < 1 || c.MaxExperiments < 1 || c.MaxOutputBytes < 1 {
 		return fmt.Errorf("limits must be positive")
@@ -119,18 +114,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("limits exceed MVP bounds or sandbox TTL does not cover investigation and cleanup")
 	}
 	return nil
-}
-
-func isLoopbackHostname(host string) bool {
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
-}
-
-// isClusterServiceHostname reports whether host is an in-cluster Kubernetes
-// service DNS name. IP-literal and public names stay excluded so an enabled
-// opt-in cannot hide a broader network exposure.
-func isClusterServiceHostname(host string) bool {
-	lower := strings.ToLower(host)
-	return strings.HasSuffix(lower, ".svc") || strings.HasSuffix(lower, ".svc.cluster.local")
 }
 
 // SelectManualAgent resolves an operator-configured choice without changing the workspace default.

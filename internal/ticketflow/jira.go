@@ -43,7 +43,6 @@ const jiraTimeLayout = "2006-01-02T15:04:05.000-0700"
 var ErrJiraReference = errors.New("use a Jira issue key (PROJ-123), the issue URL, or the numeric issue id")
 
 var jiraIssueKey = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$`)
-var jiraProjectKey = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 var jiraAccountID = regexp.MustCompile(`^[0-9A-Za-z:._-]{1,128}$`)
 var jiraAttachmentPath = regexp.MustCompile(`^/rest/api/3/attachment/content/([1-9][0-9]{0,18})$`)
 var jiraMediaHost = "api.media.atlassian.com"

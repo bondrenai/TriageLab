@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # Also called by release.yml so a release publishes only after these checks pass.
+  workflow_call:
   push:
   pull_request:
   workflow_dispatch:
@@ -10,6 +12,10 @@ on:
         required: false
         type: boolean
         default: false
+      cases:
+        description: Evaluation case names separated by commas, or all for the full corpus
+        type: string
+        default: config-bug
 
 permissions:
   contents: read
@@ -19,14 +25,52 @@ env:
 
 jobs:
   checks:
+    name: checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false # dependencies are vendored; no module cache is needed
+      - run: make check
+
+  # Separate from checks: the race detector slows the sign-in tests about tenfold.
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false # dependencies are vendored; no module cache is needed
+      - run: make race
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.3"
-          cache: false # dependencies are vendored; no module cache is needed
-      - run: make check
+          go-version: "1.27.4"
+          cache: false # the pinned linter is fetched on each run; the module itself is vendored
+      - run: make lint # staticcheck at a pinned version; see staticcheck.conf
+
+  # Separate from lint so a toolchain advisory is not mistaken for a code finding.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false # the pinned scanner is fetched on each run; the module itself is vendored
+      - run: make vulncheck # govulncheck at a pinned version
 
   frontend:
     runs-on: ubuntu-latest
@@ -70,12 +114,12 @@ jobs:
   integration:
     if: github.event_name == 'workflow_dispatch' && inputs.run_integration
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache: false # dependencies are vendored; no module cache is needed
       - name: Write the dedicated integration configuration privately
         env:
@@ -89,10 +133,19 @@ jobs:
           printf '%s' "$INTEGRATION_CONFIG" > "$RUNNER_TEMP/triagelab.json"
       - name: Run genuine integration tests
         env:
-          TRIAGELAB_INTEGRATION: "1"
+          TRIAGELAB_CASES: ${{ inputs.cases }}
+          TRIAGELAB_REPORT_DIR: ${{ runner.temp }}/reports
           TRIAGELAB_CONFIG: ${{ runner.temp }}/triagelab.json
           TRIAGELAB_TOKEN: ${{ secrets.TRIAGELAB_TOKEN }}
         run: make test-integration
+      - name: Keep the evaluation scorecard
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: investigation-evaluation-scorecard
+          path: ${{ runner.temp }}/reports/corpus-scorecard-*.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove integration configuration
         if: always()
         run: rm -f "$RUNNER_TEMP/triagelab.json"

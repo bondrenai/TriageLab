@@ -6,16 +6,18 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"unicode"
+
+	"github.com/bondrenai/TriageLab/internal/secretpattern"
 )
 
 const (
@@ -66,12 +68,16 @@ var credentialNames = map[string]bool{
 	"id_ecdsa": true, "id_ed25519": true, ".netrc": true, ".npmrc": true, ".pypirc": true,
 }
 
-var secretContent = regexp.MustCompile(
-	`-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----` +
-		`|\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b` +
-		`|\bAKIA[0-9A-Z]{16}\b|\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}\b` +
-		`|\bxox[baprs]-[A-Za-z0-9-]{20,}\b`,
-)
+// ErrLocation marks a failure to use the location an operator named: the
+// repository directory, or the directory that contains a named file or log.
+// Refusals of material found there never wrap it, so callers can tell a path
+// or environment problem from a content refusal. Its messages are fixed text.
+var ErrLocation = errors.New("cannot open the input location")
+
+// secretContent uses the same credential shapes that report redaction removes.
+func secretContent(content []byte) bool {
+	return secretpattern.PrivateKey.Match(content) || secretpattern.KnownToken.Match(content)
+}
 
 func newID() (string, error) {
 	var value [16]byte
@@ -140,23 +146,69 @@ func descendNoLinks(base *os.Root, relative string) (*os.Root, error) {
 	return current, nil
 }
 
-func openRootNoLinks(directory string) (*os.Root, error) {
-	for _, component := range strings.Split(filepath.ToSlash(directory), "/") {
+// rejectTraversal checks the name as given, before filepath.Clean can
+// normalize a parent reference away.
+func rejectTraversal(name string) error {
+	for _, component := range strings.Split(filepath.ToSlash(name), "/") {
 		if component == ".." {
-			return nil, fmt.Errorf("parent traversal is not accepted")
+			return fmt.Errorf("parent traversal is not accepted")
 		}
 	}
-	absolute, err := filepath.Abs(directory)
-	if err != nil {
-		return nil, fmt.Errorf("cannot resolve input directory")
+	return nil
+}
+
+// Input location policy: the operator chooses where inputs live, and the
+// material there is untrusted. Links in the path that leads to a named input
+// are followed once, when the kernel opens it, as for the report directory
+// (/tmp and /var are links on macOS). The named repository or file itself, and
+// everything below the repository, must not be a link; every later open is
+// relative to a held directory and refuses links (readFile, descendNoLinks,
+// and the repository walk).
+
+// openRepository opens the named repository directory. Lstat on the cleaned
+// name inspects the final component without following it (a trailing slash
+// would follow it). The identity check binds the opened root to that
+// inspection, so a link swapped in before the open is refused.
+func openRepository(repo string) (*os.Root, error) {
+	if err := rejectTraversal(repo); err != nil {
+		return nil, err
 	}
-	anchor := filepath.VolumeName(absolute) + string(filepath.Separator)
-	root, err := os.OpenRoot(anchor)
+	name := filepath.Clean(repo)
+	named, err := os.Lstat(name)
 	if err != nil {
-		return nil, fmt.Errorf("cannot open input directory root")
+		return nil, fmt.Errorf("cannot inspect the repository directory")
 	}
-	defer root.Close()
-	return descendNoLinks(root, strings.TrimPrefix(absolute, anchor))
+	if named.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("the repository directory is a symlink; name its target instead")
+	}
+	if !named.IsDir() {
+		return nil, fmt.Errorf("the repository is not a directory")
+	}
+	root, err := os.OpenRoot(name)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open the repository directory")
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(named, opened) {
+		root.Close()
+		return nil, fmt.Errorf("the repository directory changed while opening")
+	}
+	return root, nil
+}
+
+// openContaining opens the directory that holds a named file. That directory
+// is location, not material, so it needs no identity check; readFile refuses
+// a final-component link and checks the file's own identity.
+func openContaining(local string) (*os.Root, string, error) {
+	if err := rejectTraversal(local); err != nil {
+		return nil, "", err
+	}
+	name := filepath.Clean(local)
+	root, err := os.OpenRoot(filepath.Dir(name))
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot open the directory containing an input file")
+	}
+	return root, filepath.Base(name), nil
 }
 
 func readFile(root *os.Root, relative string) ([]byte, error) {
@@ -197,7 +249,7 @@ func readFile(root *os.Root, relative string) ([]byte, error) {
 	if len(content) > MaxFileBytes {
 		return nil, fmt.Errorf("file exceeds %d bytes: %s", MaxFileBytes, name)
 	}
-	if secretContent.Match(content) {
+	if secretContent(content) {
 		return nil, fmt.Errorf("potential secret detected in input: %s", name)
 	}
 	return content, nil
@@ -212,7 +264,7 @@ func Ingest(description, repo string, files, logs []string) (Case, error) {
 	if len(description) > MaxDescriptionBytes {
 		return Case{}, fmt.Errorf("description exceeds %d bytes", MaxDescriptionBytes)
 	}
-	if secretContent.MatchString(description) {
+	if secretContent([]byte(description)) {
 		return Case{}, fmt.Errorf("potential secret detected in problem description")
 	}
 	id, err := newID()
@@ -252,9 +304,9 @@ func Ingest(description, repo string, files, logs []string) (Case, error) {
 		return nil
 	}
 	if repo != "" {
-		root, err := openRootNoLinks(repo)
+		root, err := openRepository(repo)
 		if err != nil {
-			return Case{}, err
+			return Case{}, fmt.Errorf("%w: %w", ErrLocation, err)
 		}
 		defer root.Close()
 		result.Environment["repository_name"] = filepath.Base(filepath.Clean(repo))
@@ -290,18 +342,12 @@ func Ingest(description, repo string, files, logs []string) (Case, error) {
 		paths  []string
 	}{{"files", files}, {"logs", logs}} {
 		for _, local := range group.paths {
-			// Check the original string before filepath.Dir can normalize traversal.
-			for _, component := range strings.Split(filepath.ToSlash(local), "/") {
-				if component == ".." {
-					return Case{}, fmt.Errorf("parent traversal is not accepted")
-				}
-			}
-			root, err := openRootNoLinks(filepath.Dir(local))
+			root, name, err := openContaining(local)
 			if err != nil {
-				return Case{}, err
+				return Case{}, fmt.Errorf("%w: %w", ErrLocation, err)
 			}
-			destination := group.prefix + "/" + filepath.Base(local)
-			err = add(root, filepath.Base(local), destination)
+			destination := group.prefix + "/" + name
+			err = add(root, name, destination)
 			root.Close()
 			if err != nil {
 				return Case{}, err

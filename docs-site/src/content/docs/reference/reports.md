@@ -29,8 +29,10 @@ exit code never means the report should be discarded.
   does not certify root causes.
 - **Cleanup record** — what was deleted, what failed, and any request IDs
   needed for manual recovery. New runs keep operational identities in a private
-  `lifecycle.json`; `triagelab close --report` uses it. Legacy cleanup still
-  supports reports created before lifecycle records existed.
+  `lifecycle.json`; `triagelab close --report` uses it. `triagelab cleanup
+  --report` and the workspace's **Retry cleanup** consume the report's own
+  cleanup record for runs without a lifecycle journal, and refuse a report
+  whose `schema_version` is missing or is not the version the build writes.
 
 ## Reviewing the model's reasoning
 

@@ -94,6 +94,7 @@ func TestRoleEnforcement(t *testing.T) {
 	}{
 		{"POST", "/api/runs", strings.NewReader("")},
 		{"POST", "/api/runs/" + workerUUID + "/cancel", nil},
+		{"POST", "/api/runs/" + workerUUID + "/cleanup", nil},
 		{"POST", "/api/tickets/c/0a1b2c3d/1/preview", nil},
 		{"POST", "/api/agents/definition", strings.NewReader(`{}`)},
 		{"GET", "/api/auth/admin/users", nil},
@@ -107,6 +108,9 @@ func TestRoleEnforcement(t *testing.T) {
 	// Users may interact and steer runs but not define agents or procedures.
 	if w := requestAs(s, user, "POST", "/api/runs/"+workerUUID+"/cancel", nil); w.Code != 409 {
 		t.Fatalf("user cancel should pass the role gate: %d %s", w.Code, w.Body)
+	}
+	if w := requestAs(s, user, "POST", "/api/runs/"+workerUUID+"/cleanup", nil); w.Code != 404 {
+		t.Fatalf("user cleanup retry should pass the role gate: %d %s", w.Code, w.Body)
 	}
 	for _, attempt := range []struct {
 		method, path string

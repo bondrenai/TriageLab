@@ -22,7 +22,7 @@ Do not use a live `main` branch as a dependency.
 | Sandbox guest image | `sandbox-guest:1.0.0` | `sha256:354825706868fc4d39300fe7795f4fa04d1eb53c3c93fb5b65b5da76f8222db7` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
 | Development Kubernetes | `kindest/node:v1.35.0` | kagent 1.0.0's development configuration |
-| TriageLab Go toolchain | `go1.27.3` | verified against the official release SHA-256 |
+| TriageLab Go toolchain | `go1.27.4` | latest security release; `net/http` GO-2026-6859 fixed |
 | OpenTelemetry Go SDK | `v1.47.0` line | `sdk`, `sdk/metric`, `sdk/log`, OTLP/HTTP exporters, `otelslog` bridge, vendored |
 
 The two Substrate repositories are intentionally distinguished. kagent

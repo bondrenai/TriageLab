@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -28,6 +28,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
+
+// version is this build's TriageLab version. Release builds set it with
+// -ldflags "-X main.version=v0.2.0"; run passes it explicitly to the kagent
+// client and to investigation reports.
+var version = "dev"
 
 type stringsFlag []string
 
@@ -63,21 +68,28 @@ type runOptions struct {
 	logs                stringsFlag
 }
 
-// registerRunFlags declares the flags shared by investigate, serve, doctor,
-// and cleanup, plus the command-specific flags for serve and investigate.
+// registerRunFlags declares the flags of investigate, serve, doctor, or
+// cleanup. Each command defines only the options it uses, so another
+// command's flags are rejected instead of silently ignored.
 func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 	opts := &runOptions{}
 	flags.StringVar(&opts.configPath, "config", "", "JSON configuration (default: built-in localhost settings)")
-	flags.StringVar(&opts.description, "description", "", "local issue description")
-	flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
-	flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
-	flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
-	flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
-	flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
-	flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
-	flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only)")
 	flags.StringVar(&opts.telemetryPath, "telemetry", "", "optional OTLP telemetry configuration exporting logs, metrics, and traces")
-	if command == "serve" {
+	switch command {
+	case "investigate":
+		flags.StringVar(&opts.description, "description", "", "local issue description")
+		flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
+		flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
+		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
+		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
+		flags.StringVar(&opts.runNamespace, "namespace", "", "namespace configured under run_namespaces (default: the configured namespace)")
+		flags.Var(&opts.files, "file", "attachment (repeatable)")
+		flags.Var(&opts.logs, "log", "log file (repeatable)")
+	case "serve":
+		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
+		flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
+		flags.StringVar(&opts.assets, "assets", "web/dist", "built frontend directory")
+		flags.StringVar(&opts.tickets, "tickets", "", "optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only)")
 		flags.StringVar(&opts.gitopsPath, "gitops", "", "optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation")
 		flags.StringVar(&opts.statusKubeconfig, "status-kubeconfig", "", "explicit Kubernetes config for live deployment status and optional saves")
 		flags.StringVar(&opts.statusContext, "status-context", "", "Kubernetes context for live deployment status")
@@ -87,13 +99,16 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.chatConfigPath, "chat", "", "optional results chat model configuration JSON")
 		flags.StringVar(&opts.mcpConfigPath, "mcp", "", "optional HTTP MCP credentials and origins configuration JSON")
 		flags.StringVar(&opts.clientsPath, "clients", "", "API client file for OAuth access (default <output>/.auth/clients.json)")
+	case "pause", "close", "cleanup":
+		flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
+	case "resume":
+		flags.StringVar(&opts.reportPath, "report", "", "saved report.json for pause, resume, close, or cleanup")
+		flags.StringVar(&opts.description, "description", "", "local issue description")
+		flags.StringVar(&opts.descriptionFile, "description-file", "", "UTF-8 issue description file")
+		flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
+		flags.Var(&opts.files, "file", "attachment (repeatable)")
+		flags.Var(&opts.logs, "log", "log file (repeatable)")
 	}
-	if command == "investigate" {
-		flags.StringVar(&opts.manualAgent, "agent", "", "agent name configured under manual_agents")
-		flags.StringVar(&opts.runNamespace, "namespace", "", "namespace configured under run_namespaces (default: the configured namespace)")
-	}
-	flags.Var(&opts.files, "file", "attachment (repeatable)")
-	flags.Var(&opts.logs, "log", "log file (repeatable)")
 	return opts
 }
 
@@ -150,15 +165,19 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		fmt.Fprintln(errout, "Usage: triagelab <investigate|pause|resume|close|serve|doctor|cleanup|manifest|agent-manifest|user|docs|version> [options]")
 		return 2
 	}
-	if args[0] == "version" {
-		fmt.Fprintf(out, "triagelab 0.1.0 (kagent %s / Substrate v1.0.0)\n", kagent.Version)
-		return 0
-	}
-	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	command, args := args[0], args[1:]
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(errout)
-	if args[0] == "manifest" {
+	switch command {
+	case "version":
+		if !parseFlags(flags, args, errout) {
+			return 2
+		}
+		fmt.Fprintf(out, "triagelab %s (kagent %s / Substrate v1.0.0)\n", version, kagent.Version)
+		return 0
+	case "manifest":
 		manifestOpts := registerManifestFlags(flags)
-		if err := flags.Parse(args[1:]); err != nil {
+		if !parseFlags(flags, args, errout) {
 			return 2
 		}
 		data, err := agent.Manifest(manifestOpts.workloadImage)
@@ -168,10 +187,9 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		}
 		fmt.Fprintln(out, string(data))
 		return 0
-	}
-	if args[0] == "agent-manifest" {
+	case "agent-manifest":
 		agentOpts := registerAgentManifestFlags(flags)
-		if err := flags.Parse(args[1:]); err != nil {
+		if err := flags.Parse(args); err != nil {
 			return 2
 		}
 		if agentOpts.definition == "" || flags.NArg() != 0 {
@@ -199,19 +217,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 4
 		}
 		return 0
-	}
-	if args[0] == "user" {
-		return runUserCommand(args[1:], out, errout, os.Stdin)
-	}
-	if args[0] == "docs" {
-		return runDocsCommand(args[1:], out, errout)
-	}
-	opts := registerRunFlags(flags, args[0])
-	if err := flags.Parse(args[1:]); err != nil {
+	case "user":
+		return runUserCommand(args, out, errout, os.Stdin)
+	case "docs":
+		return runDocsCommand(args, out, errout)
+	case "investigate", "pause", "resume", "close", "serve", "doctor", "cleanup":
+	default:
+		fmt.Fprintln(errout, "Unknown command:", command)
 		return 2
 	}
-	if flags.NArg() != 0 {
-		fmt.Fprintln(errout, "Unexpected positional arguments")
+	opts := registerRunFlags(flags, command)
+	if !parseFlags(flags, args, errout) {
 		return 2
 	}
 	if opts.telemetryPath != "" {
@@ -240,8 +256,10 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		fmt.Fprintln(errout, err)
 		return 2
 	}
+	config.Version = version
+	// The token is read from the configured environment variable, never a flag.
 	token := os.Getenv(config.TokenEnv)
-	var clientOpts []kagent.Option
+	clientOpts := []kagent.Option{kagent.ClientVersion(version)}
 	if config.AllowClusterHTTP {
 		clientOpts = append(clientOpts, kagent.AllowClusterHTTP())
 	}
@@ -252,7 +270,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	}
 	defer client.Close()
 	runner := investigation.Investigator{Client: client, Config: config, Trigger: "cli", Secrets: []string{token}, Progress: func(s string) { fmt.Fprintln(out, s) }}
-	ctx, commandSpan := otel.Tracer("github.com/bondrenai/TriageLab/cmd/triagelab").Start(ctx, "triagelab "+args[0])
+	ctx, commandSpan := otel.Tracer("github.com/bondrenai/TriageLab/cmd/triagelab").Start(ctx, "triagelab "+command)
 	defer func() {
 		commandSpan.SetAttributes(attribute.Int("exit_code", exitCode))
 		if exitCode != 0 {
@@ -260,9 +278,9 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		}
 		commandSpan.End()
 	}()
-	switch args[0] {
+	switch command {
 	case "pause", "resume", "close":
-		return runSavedInvestigation(ctx, args[0], opts, &runner, out, errout)
+		return runSavedInvestigation(ctx, command, opts, &runner, out, errout)
 	case "serve":
 		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, token)
 		if err != nil {
@@ -407,54 +425,77 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
 			return 2
 		}
-		if _, stateErr := os.Lstat(filepath.Join(filepath.Dir(opts.reportPath), "lifecycle.json")); stateErr == nil {
+		dir := filepath.Dir(opts.reportPath)
+		unlock, err := investigation.LockLegacyCleanup(dir)
+		if errors.Is(err, investigation.ErrLifecycleExists) {
 			return runSavedInvestigation(ctx, "close", opts, &runner, out, errout)
-		} else if !os.IsNotExist(stateErr) {
-			fmt.Fprintln(errout, "Cannot read the investigation lifecycle record")
+		}
+		if err != nil {
+			fmt.Fprintln(errout, report.Redact(err.Error(), token))
 			return 4
 		}
+		defer unlock()
 		f, err := os.Open(opts.reportPath)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
 		defer f.Close()
-		var saved map[string]any
-		if err = json.NewDecoder(io.LimitReader(f, 32<<20)).Decode(&saved); err != nil {
+		const maxReportBytes = 64 << 20
+		raw, err := io.ReadAll(io.LimitReader(f, maxReportBytes+1))
+		if err != nil || len(raw) > maxReportBytes {
+			fmt.Fprintln(errout, "Invalid or oversized report JSON")
+			return 2
+		}
+		saved, err := investigation.DecodeReport(raw)
+		if errors.Is(err, investigation.ErrUnsupportedSchema) {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if err != nil {
 			fmt.Fprintln(errout, "Invalid report JSON")
 			return 2
 		}
-		conn, _ := saved["connection"].(map[string]any)
-		if conn["endpoint"] != config.Endpoint || conn["user_id"] != config.UserID || !config.AllowsNamespace(fmt.Sprint(conn["namespace"])) {
+		if conn := saved.Connection; conn == nil || conn.Endpoint != config.Endpoint || conn.UserID != config.UserID || !config.AllowsNamespace(conn.Namespace) {
 			fmt.Fprintln(errout, "Configuration must match the report endpoint, user and an allowed namespace")
 			return 2
 		}
-		if _, ok := saved["cleanup"].(map[string]any); !ok {
+		if saved.Cleanup == nil {
 			fmt.Fprintln(errout, "Report has no cleanup record")
 			return 2
 		}
 		cleanupCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		runner.Cleanup(cleanupCtx, saved)
-		if err = report.Write(filepath.Dir(opts.reportPath), saved, token); err != nil {
+		if err = report.Write(dir, saved, token); err != nil {
 			fmt.Fprintln(errout, err)
 			return 4
 		}
-		cleanup := saved["cleanup"].(map[string]any)
-		if len(cleanup["errors"].([]string)) > 0 {
+		if len(saved.Cleanup.Errors) > 0 {
 			fmt.Fprintln(errout, "Cleanup remains incomplete; see report.")
 			return 5
 		}
-		if saved["creation_uncertain"] == true {
+		if saved.CreationUncertain != nil && *saved.CreationUncertain {
 			fmt.Fprintln(errout, "Sandbox creation outcome is unknown; use saved request ID and upstream TTL to recover.")
 			return 5
 		}
 		fmt.Fprintln(out, "Recorded runtime cleanup completed.")
 		return 0
 	default:
-		fmt.Fprintln(errout, "Unknown command:", args[0])
+		fmt.Fprintln(errout, "Unknown command:", command)
 		return 2
 	}
+}
+
+func parseFlags(flags *flag.FlagSet, args []string, errout io.Writer) bool {
+	if err := flags.Parse(args); err != nil {
+		return false
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(errout, "Unexpected positional arguments")
+		return false
+	}
+	return true
 }
 
 // resolveUsersPath keeps local accounts beside the reports so they persist on

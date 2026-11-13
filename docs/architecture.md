@@ -96,6 +96,26 @@ between API calls. An agent can exceed the count before detection; this is not
 admission control. Per-request and overall deadlines, runtime resource limits,
 and server TTLs complement those watchdogs. SIGKILL and network partitions may
 leave a sandbox until its TTL. Session cleanup can require manual recovery.
+Read-only polling (session, transcript, process state, and output reads)
+tolerates two consecutive connection failures, timeouts, or gateway 502/503/504
+responses, one poll interval apart, which can delay the watchdog by up to two
+poll intervals and three request timeouts. Uploads, process starts and kills,
+and the model invocation are never repeated.
+
+Each report records the TriageLab version and the SHA-256 digests of the
+investigator prompt and output schema embedded in that binary. TriageLab does
+not read back the deployed Agent's prompt or model (the pinned kagent session
+tools expose neither), so a report cannot show which model answered or that the
+deployed prompt matches those digests.
+
+`report.json` is the Go type `investigation.Report`. It types the members
+TriageLab defines; the sandbox and session resources, the saved creation
+requests, tool-call arguments and responses, and the schema-validated analysis
+stay generic because kagent or the model defines their shape. Cleanup of a
+saved report (the CLI command or the workspace's Retry cleanup) refuses a
+report whose `schema_version` is missing or is not the version this build
+writes, and otherwise writes back every member it did not change exactly as
+read. The read-only workspace views still serve the saved file as stored.
 
 ## Extension points
 

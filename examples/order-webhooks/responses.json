@@ -1,0 +1,4 @@
+{
+  "note": "Partner behaviour during the 2026-03-10 outage: two 503s, then recovery.",
+  "statuses": [503, 503, 200]
+}

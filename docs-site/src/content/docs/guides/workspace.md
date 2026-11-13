@@ -10,7 +10,7 @@ downloads from the same `reports/` directory the CLI writes.
 
 ## Run it
 
-Use Node.js 24 and Go 1.27.3 on the development VM:
+Use Node.js 24 and Go 1.27.4 on the development VM:
 
 ```sh
 make install-ui
@@ -151,8 +151,9 @@ HTTP MCP. [Start investigations from a policy workflow](/TriageLab/guides/chat-m
 - The server accepts **one investigation at a time**. Closing a tab leaves a
   run going; use **Cancel** to stop it.
 - Server shutdown cancels active work and allows bounded cleanup. After an
-  abrupt crash, inspect the report and use `triagelab cleanup` if resources
-  remain.
+  abrupt crash, use **Close investigation** for runs with a lifecycle journal.
+  Older reports offer **Retry cleanup** to users and admins when resources
+  may remain. You can also use `triagelab cleanup --report`.
 - The workspace can also show live kagent deployment status and save kagent
   resources — see [defining agents](/TriageLab/guides/agents/).
 

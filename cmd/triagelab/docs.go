@@ -47,7 +47,7 @@ func cliCommandDocs() []commandDoc {
 		{name: "close", usage: "triagelab close --report <report.json> [options]", purpose: "Release an investigation's retained session and sandbox using its private lifecycle record. Keep the reports and previous rounds.", flags: runCommand("close")},
 		{name: "serve", usage: "triagelab serve [options]", purpose: "Serve the authenticated browser workspace on loopback, sharing the CLI's investigation workflow and report directory.", flags: runCommand("serve")},
 		{name: "doctor", usage: "triagelab doctor [options]", purpose: "Check that the kagent sandbox API is reachable with the configured credentials, and report whether durable pause retention is available or a release controller runs without it. A live investigation is still needed to verify runtime and model access.", flags: runCommand("doctor")},
-		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.", flags: runCommand("cleanup")},
+		{name: "cleanup", usage: "triagelab cleanup [options]", purpose: "Finish sandbox and session cleanup. When a lifecycle journal exists, use its recorded resource identities and close the run. For older runs, use the saved report. The endpoint and user must match the configuration, and the namespace must be allowed.", flags: runCommand("cleanup")},
 		{name: "manifest", usage: "triagelab manifest [options]", purpose: "Render the kagent workspace resources (investigator agent, sandbox template, tools service) as Kubernetes JSON.", flags: func() *flag.FlagSet {
 			return newFlagSet("triagelab manifest", registerManifestFlags)
 		}},
@@ -176,6 +176,9 @@ func renderConfigurationPage() ([]byte, error) {
 	for i := 0; i < configType.NumField(); i++ {
 		field := configType.Field(i)
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue // set by the binary, never read from the configuration file
+		}
 		doc, ok := configFieldDocs[name]
 		if !ok {
 			return nil, fmt.Errorf("configuration field %q has no documentation entry in configFieldDocs", name)

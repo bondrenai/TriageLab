@@ -89,7 +89,7 @@ Use a dedicated, disposable Linux VM. Start with 4 vCPUs, 16 GiB of RAM, and
 about 30 GiB of free disk. Install:
 
 - Docker, Git, kubectl, Helm 3, and kind 0.33.0
-- Go 1.27.3
+- Go 1.27.4
 
 You also need an OpenAI API key. The example investigator uses `gpt-6.1-sol`
 through the Responses API.
@@ -196,7 +196,18 @@ expires. Without `--config`, the CLI uses the same settings as
 `triagelab.example.json`. To change the endpoint, time limits, or experiment
 budget, copy that file and pass `--config`.
 
+That example is the first of six evaluation cases in `examples/`. The others
+cover a report that does not reproduce, missing information, an unrelated
+nonzero exit, a deterministic failure that looks intermittent, and
+prompt-injection bait beside a real bug. Expected results live in
+`examples/corpus.json`, outside the uploaded case directories.
+`make test-integration` runs the timeout smoke case by default. Set
+`TRIAGELAB_CASES=all` to score the full corpus, or use a comma-separated list
+of case names. Only the timeout example has run against a model so far;
+see [verification](docs/verification.md#evaluation-corpus-authored-not-run-live).
+
 ### 6. Tear down
+
 
 Copy any reports you want to keep off the VM, then delete the cluster:
 
@@ -221,7 +232,8 @@ them, and the optional microVM backend.
 `--log` and `--file` can be repeated. TriageLab copies the inputs into
 `/data/workspace` in the sandbox; nothing is mounted from the host. The limits
 are 64 files, 1 MiB per file, and 4 MiB in total. Symlinks, special files,
-path traversal, and common credential files and contents are rejected.
+path traversal, and common credential files and contents are rejected. Links
+in the path leading to an input, such as macOS `/tmp`, are followed.
 
 Everything you submit goes to the model provider. Keep repositories small,
 and review support data before sending it: secret detection catches only
@@ -400,12 +412,22 @@ Run checks on the development VM, not your laptop:
 ```bash
 make fmt
 make check                    # gofmt check, go vet, unit and HTTP protocol tests
-make build
+make race                     # the same tests under the race detector (several minutes)
+make lint                     # staticcheck, pinned via go run (see staticcheck.conf)
+make vulncheck                # govulncheck, pinned via go run
+make build                    # VERSION defaults to git describe, else "dev"
+make dist                     # static linux/darwin amd64/arm64 binaries + SHA256SUMS in dist/
 make check-ui                 # TypeScript check (after make install-ui)
 make build-ui                 # production browser assets
 TRIAGELAB_CONFIG=triagelab.example.json make test-integration
 make test-sandbox-integration # sandbox upload, egress denial, kill, delete; no model
 ```
+
+CI runs `make check` on Ubuntu and macOS, and `make lint` and `make vulncheck`
+on Ubuntu. A `v*` tag release repeats those checks, then publishes the
+multi-arch image, the chart, and static CLI binaries with checksums (the
+binaries do not include the web UI that `serve` needs); see
+[Helm deployment](docs/helm.md#publishing-maintainers).
 
 The integration test is opt-in and needs the real deployment and a model
 credential; it never falls back to a mock. The sandbox test is also opt-in and

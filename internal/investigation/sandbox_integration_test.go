@@ -110,7 +110,7 @@ func TestLiveSandboxBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s output: %v", label, err)
 		}
-		process.Stdout, process.Stderr = str(outputs["stdout"]), str(outputs["stderr"])
+		process.Stdout, process.Stderr = outputs.Stdout, outputs.Stderr
 		record.Experiments = append(record.Experiments, process)
 		return process
 	}

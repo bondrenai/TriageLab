@@ -219,8 +219,9 @@ func TestJiraReadsConversationAndProvenance(t *testing.T) {
 }
 
 func TestJiraIdentifiersMapStably(t *testing.T) {
-	if jiraAccountHash(jiraReporterID) <= 0 || jiraAccountHash(jiraReporterID) != jiraAccountHash(jiraReporterID) ||
-		jiraAccountHash(jiraReporterID) == jiraAccountHash(jiraAgentID) || jiraAccountHash("") != 0 ||
+	reporterHash := jiraAccountHash(jiraReporterID)
+	if reporterHash <= 0 || reporterHash != jiraAccountHash(jiraReporterID) ||
+		reporterHash == jiraAccountHash(jiraAgentID) || jiraAccountHash("") != 0 ||
 		jiraAccountHash("bad account id!") != 0 {
 		t.Fatal("Jira account mapping is not stable and distinct")
 	}

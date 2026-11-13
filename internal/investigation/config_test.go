@@ -77,7 +77,8 @@ func TestConfigRunNamespaces(t *testing.T) {
 }
 
 func TestConfigRejectsUnknownFieldsAndTrailingObjects(t *testing.T) {
-	for _, data := range []string{`{"surprise":true}`, `{} {}`, `{"poll_interval":1.5}`, `{"process_timeout":false}`} {
+	// The build version is composed by the command, never read from a file.
+	for _, data := range []string{`{"surprise":true}`, `{} {}`, `{"poll_interval":1.5}`, `{"process_timeout":false}`, `{"Version":"v9"}`, `{"version":"v9"}`} {
 		path := filepath.Join(t.TempDir(), "config.json")
 		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 			t.Fatal(err)

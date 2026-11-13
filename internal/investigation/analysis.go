@@ -9,7 +9,7 @@ import (
 )
 
 // ValidateAnalysis validates the model's claim and references, not the truth of its causal reasoning.
-func ValidateAnalysis(text string, experiments []map[string]any) (map[string]any, []string, error) {
+func ValidateAnalysis(text string, experiments []Experiment) (map[string]any, []string, error) {
 	text = strings.TrimSpace(text)
 	if strings.HasPrefix(text, "```json\n") && strings.HasSuffix(text, "```") {
 		text = strings.TrimSuffix(strings.TrimPrefix(text, "```json\n"), "```")
@@ -42,9 +42,9 @@ func ValidateAnalysis(text string, experiments []map[string]any) (map[string]any
 	}
 	verified := map[string]bool{}
 	for _, e := range experiments {
-		_, valid := integer(e["exit_code"])
-		if str(e["process_id"]) != "" && str(e["state"]) == "PROCESS_STATE_EXITED" && e["outputs_complete"] != false && e["truncated"] != true && e["timed_out"] != true && valid {
-			verified[str(e["process_id"])] = true
+		truncated := e.Output != nil && e.Output.Truncated
+		if e.ProcessID != "" && e.exited() && e.OutputsComplete && !truncated && !e.TimedOut && e.ExitCode != nil {
+			verified[e.ProcessID] = true
 		}
 	}
 	supported := func(v any) bool {

@@ -24,7 +24,7 @@ Do not use a live `main` branch as a dependency.
 | Sandbox guest image | `sandbox-guest:1.0.0` | `sha256:354825706868fc4d39300fe7795f4fa04d1eb53c3c93fb5b65b5da76f8222db7` |
 | Fixture tools image | `python:3.12-slim-bookworm` | `sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` |
 | Development Kubernetes | `kindest/node:v1.35.0` | kagent 1.0.0's development configuration |
-| TriageLab Go toolchain | `go1.27.3` | Development VM installation verified against the official release SHA-256 |
+| TriageLab Go toolchain | `go1.27.4` | latest security release; `net/http` GO-2026-6859 fixed. Re-verify the release SHA-256 on the next VM install |
 | OpenTelemetry Go SDK | `v1.47.0` line | `otel`/`sdk`/`sdk/metric` `v1.47.0`, `sdk/log` `v1.47.0`, OTLP/HTTP exporters `v1.47.0`/`v0.23.0`, `contrib/bridges/otelslog` `v0.21.0`, vendored in `vendor/` |
 | OAuth client-credentials library | `zitadel/oidc v3.52.0` | `go-jose` v4.1.9 line, vendored in `vendor/`; only `pkg/op`'s token and revocation endpoints |
 
@@ -322,7 +322,7 @@ Constraints that affect TriageLab:
   identifiers (run IDs). Case descriptions, attachments, model prompts, tool
   outputs, credentials, and account names are never instrumented; phase log
   messages pass through the report redactor first.
-- The pinned line requires Go >= 1.26.0; the toolchain pin is `go1.27.3`.
+- The pinned line requires Go >= 1.26.0; the toolchain pin is `go1.27.4`.
   The logs SDK stable (`sdk/log v1.47.0`) line exists only from v1.47 onward.
 - Verified by unit tests against an in-process OTLP/HTTP collector decoding
   the exported protobuf for all three signals (see

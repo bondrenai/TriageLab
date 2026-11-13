@@ -81,7 +81,7 @@ func newFixture(t *testing.T) *fixture {
 			_ = json.NewEncoder(w).Encode(map[string]any{"comments": f.comments, "meta": map[string]bool{"has_more": f.more}})
 		case "GET /attachments/app.py", "GET /attachments/app.py.txt":
 			if f.redirect != "" {
-				http.Redirect(w, r, f.redirect, 302)
+				http.Redirect(w, r, f.redirect, http.StatusFound)
 				return
 			}
 			_, _ = w.Write([]byte(f.contents))

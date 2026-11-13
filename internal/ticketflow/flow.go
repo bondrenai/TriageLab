@@ -1035,6 +1035,10 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 		return casefile.Case{}, errors.New("Ticket evidence contains a configured credential.")
 	}
 	c, err := casefile.Ingest(desc, dir, nil, nil)
+	if errors.Is(err, casefile.ErrLocation) {
+		// The directory is ours, so this is an environment problem, not the ticket.
+		return casefile.Case{}, errors.New("Could not read the prepared ticket evidence. Check that the ticket state directory is accessible.")
+	}
 	if err != nil {
 		return casefile.Case{}, errors.New("The selected evidence failed ingestion checks. Review the ticket for secrets or unsafe files.")
 	}

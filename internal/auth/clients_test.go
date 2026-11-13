@@ -242,6 +242,7 @@ func TestFailedSaveLeavesNoClientBehind(t *testing.T) {
 	if _, ok := store.LookupToken(token); !ok {
 		t.Fatal("token revoked by a failed save")
 	}
+	restore()
 }
 
 func TestAccessTokenLifecycle(t *testing.T) {

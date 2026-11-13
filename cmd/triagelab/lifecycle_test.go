@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/bondrenai/TriageLab/internal/casefile"
 	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/report"
 )
@@ -262,7 +263,7 @@ func TestCLIResumeRejectsInvalidAdditionalInputsBeforeRestoring(t *testing.T) {
 				if name == "conflicting-description" {
 					opts.description = "A second description"
 				} else {
-					text = strings.Repeat("x", 32769)
+					text = strings.Repeat("x", casefile.MaxDescriptionBytes+1)
 				}
 				if err := os.WriteFile(opts.descriptionFile, []byte(text), 0o600); err != nil {
 					t.Fatal(err)
@@ -305,7 +306,7 @@ func TestInvestigationExitCodesDistinguishPauseCloseFailureAndFindings(t *testin
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var out, stderr bytes.Buffer
-			result := map[string]any{"status": test.status, "outcome": test.outcome, "cleanup": map[string]any{"errors": test.cleanupErrors}}
+			result := &investigation.Report{Status: investigation.Status(test.status), Outcome: investigation.Outcome(test.outcome), Cleanup: &investigation.CleanupRecord{Errors: test.cleanupErrors}}
 			code := printInvestigationResult(result, test.runErr, dir, &out, &stderr, "private-test-secret")
 			if code != test.want {
 				t.Fatalf("exit=%d want=%d stdout=%s stderr=%s", code, test.want, &out, &stderr)

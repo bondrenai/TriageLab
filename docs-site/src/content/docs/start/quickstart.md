@@ -16,7 +16,7 @@ Use a dedicated, disposable Linux VM. Start with 4 vCPUs, 16 GiB of RAM, and
 about 30 GiB of free disk. Install:
 
 - Docker, Git, kubectl, Helm 3, and kind 0.33.0
-- Go 1.27.3, plus Node.js 24 if you want the browser workspace
+- Go 1.27.4, plus Node.js 24 if you want the browser workspace
 
 You also need an OpenAI API key. The example investigator uses `gpt-6.1-sol`
 through the Responses API.

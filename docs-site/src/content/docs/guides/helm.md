@@ -113,7 +113,8 @@ with TLS and set an `https://` endpoint instead.
   `--allow-resource-writes`) are not wired into the chart; extend the pod
   arguments explicitly if you accept that scope.
 - Token rotation is manual.
-- The published image is linux/amd64.
+- The published image covers linux/amd64 and linux/arm64. The arm64 variant is
+  built but not exercised by any automated test.
 
 Chart versions follow the application tag (`v0.1.0` → chart `0.1.0`) so one
 release updates the image and chart together; pin `image.digest` to a reviewed

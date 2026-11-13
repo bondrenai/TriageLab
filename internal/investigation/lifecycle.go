@@ -28,6 +28,14 @@ import (
 const maxRounds = 32
 const maxReportBytes = 64 << 20
 
+func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+// stampTime returns the current UTC instant for a report timestamp member.
+func stampTime() *time.Time {
+	now := time.Now().UTC()
+	return &now
+}
+
 // ErrBusy means another process owns this investigation's lifecycle.
 var ErrBusy = errors.New("investigation is active in another operation")
 
@@ -175,6 +183,26 @@ func lockRun(dir string) (func(), error) {
 	return func() { _ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN); _ = file.Close() }, nil
 }
 
+// ErrLifecycleExists directs saved-report cleanup to the lifecycle journal.
+var ErrLifecycleExists = errors.New("this investigation has a lifecycle journal; use close to release its resources")
+
+// LockLegacyCleanup serializes report-based recovery with other operations on
+// this run. Any lifecycle journal, even an unreadable one, requires Close.
+func LockLegacyCleanup(dir string) (func(), error) {
+	unlock, err := lockRun(dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "lifecycle.json")); !errors.Is(err, os.ErrNotExist) {
+		unlock()
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrLifecycleExists
+	}
+	return unlock, nil
+}
+
 type pauseRequest struct {
 	RunID  string `json:"run_id"`
 	Round  int    `json:"round"`
@@ -225,49 +253,42 @@ func sandboxRequest(state State) map[string]any {
 	return request
 }
 
-func stateFromReport(state *State, r map[string]any) {
-	state.SandboxID = str(obj(r["sandbox"])["id"])
-	state.SessionID = str(obj(r["session"])["id"])
-	state.TaskID = str(obj(r["session"])["task_id"])
-	state.SandboxCreationPending = r["creation_uncertain"] == true
-	state.SessionCreationPending = r["session_creation_uncertain"] == true
+func stateFromReport(state *State, r *Report) {
+	state.SandboxID = r.sandboxID()
+	state.SessionID = r.sessionID()
+	state.TaskID = r.taskID()
+	state.SandboxCreationPending = isSet(r.CreationUncertain)
+	state.SessionCreationPending = isSet(r.SessionCreationUncertain)
 }
 
-func cleanupComplete(r map[string]any) bool {
-	cleanup := obj(r["cleanup"])
-	return !(r["creation_uncertain"] == true || r["session_creation_uncertain"] == true) &&
-		(str(obj(r["sandbox"])["id"]) == "" || cleanup["sandbox_deleted"] == true) &&
-		(str(obj(r["session"])["id"]) == "" || cleanup["session_deleted"] == true)
+func cleanupComplete(r *Report) bool {
+	sandboxDeleted := r.Cleanup != nil && r.Cleanup.SandboxDeleted
+	sessionDeleted := r.Cleanup != nil && r.Cleanup.SessionDeleted
+	return !isSet(r.CreationUncertain) && !isSet(r.SessionCreationUncertain) &&
+		(r.sandboxID() == "" || sandboxDeleted) &&
+		(r.sessionID() == "" || sessionDeleted)
 }
 
-func loadReport(name string, state *State, round int) (map[string]any, error) {
-	var result map[string]any
-	if err := readJSON(name, maxReportBytes, &result, false); err != nil {
+func loadReport(name string, state *State, round int) (*Report, error) {
+	var data json.RawMessage
+	if err := readJSON(name, maxReportBytes, &data, false); err != nil {
 		return nil, err
 	}
-	n, ok := integer(result["round"])
-	if !ok || n != round || str(result["run_id"]) != state.RunID {
+	result, err := DecodeReport(data)
+	if err != nil {
+		return nil, err
+	}
+	if result.Round != round || result.RunID != state.RunID {
 		return nil, fmt.Errorf("report does not match the saved investigation round")
 	}
-	experiments := []map[string]any{}
-	values, ok := result["experiments"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid saved experiment evidence")
+	if result.Experiments == nil {
+		result.Experiments = []Experiment{}
 	}
-	for _, value := range values {
-		experiment, ok := value.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("invalid saved experiment evidence")
-		}
-		experiments = append(experiments, experiment)
+	if result.Errors == nil {
+		result.Errors = []string{}
 	}
-	result["experiments"] = experiments
-	for _, field := range []string{"errors", "warnings"} {
-		texts := []string{}
-		for _, value := range anySlice(result[field]) {
-			texts = append(texts, str(value))
-		}
-		result[field] = texts
+	if result.Warnings == nil {
+		result.Warnings = []string{}
 	}
 	return result, nil
 }
@@ -280,7 +301,7 @@ func roundDir(dir string, round int) string {
 
 // archiveRound never replaces a published round. Archives omit history so that
 // latest report history stays flat and process IDs remain scoped to their round.
-func (i *Investigator) archiveRound(dir string, state *State, r map[string]any) error {
+func (i *Investigator) archiveRound(dir string, state *State, r *Report) error {
 	destination := roundDir(dir, state.Round)
 	if _, err := os.Lstat(filepath.Join(destination, "report.json")); err == nil {
 		_, err = loadReport(filepath.Join(destination, "report.json"), state, state.Round)
@@ -288,16 +309,12 @@ func (i *Investigator) archiveRound(dir string, state *State, r map[string]any) 
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	copy := make(map[string]any, len(r))
-	for key, value := range r {
-		if key != "rounds" {
-			copy[key] = value
-		}
-	}
-	return i.persist(destination, copy)
+	archived := *r
+	archived.Rounds = nil
+	return i.persist(destination, &archived)
 }
 
-func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r map[string]any, observed map[string]time.Time) error {
+func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r *Report, observed map[string]time.Time) error {
 	for iteration := 0; ; iteration++ {
 		requested, err := pauseRequested(dir, state)
 		if err != nil {
@@ -322,7 +339,7 @@ func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r
 		if finished {
 			// Without durable retention a suspended sandbox still expires at its
 			// original deadline, so a missing-information pause is pointless.
-			if state.Retention && listLen(obj(r["analysis"])["missing_information"]) > 0 {
+			if state.Retention && listLen(r.Analysis["missing_information"]) > 0 {
 				return i.pauseRound(ctx, dir, state, r)
 			}
 			return nil
@@ -331,7 +348,7 @@ func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r
 }
 
 // settleTask observes cancellation before capturing guest-local process handles.
-func (i *Investigator) settleTask(ctx context.Context, state *State, r map[string]any) error {
+func (i *Investigator) settleTask(ctx context.Context, state *State, r *Report) error {
 	if state.TaskID == "" {
 		return fmt.Errorf("task identity is uncertain; close the investigation to release its resources")
 	}
@@ -346,7 +363,7 @@ func (i *Investigator) settleTask(ctx context.Context, state *State, r map[strin
 			return fmt.Errorf("cannot confirm the current investigator task")
 		}
 		phase := str(obj(turns[len(turns)-1])["state"])
-		r["task_state"] = phase
+		r.TaskState = phase
 		if terminal(phase) {
 			return nil
 		}
@@ -362,12 +379,12 @@ func (i *Investigator) settleTask(ctx context.Context, state *State, r map[strin
 	}
 }
 
-func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State, r map[string]any) error {
+func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State, r *Report) error {
 	state.Phase = "pausing"
 	if err := saveState(dir, state); err != nil {
 		return err
 	}
-	r["status"] = "pausing"
+	r.Status = StatusPausing
 	i.progress(ctx, "Settling the investigator and preserving evidence before suspension")
 	if !state.PauseReady {
 		if err := i.settleTask(ctx, state, r); err != nil {
@@ -379,23 +396,24 @@ func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State,
 			if _, err := i.observe(ctx, r, observed); err != nil {
 				return fmt.Errorf("pause evidence capture: %w", err)
 			}
-			for _, call := range r["tool_calls"].([]kagent.ToolCall) {
+			for _, call := range r.ToolCalls {
 				if call.Pending {
 					return fmt.Errorf("cannot confirm quiescence while a tool call has no settled result; close the investigation")
 				}
 			}
 			settled := true
-			for _, e := range r["experiments"].([]map[string]any) {
-				if e["state"] == "PROCESS_STATE_EXITED" && e["outputs_complete"] == true {
+			for index := range r.Experiments {
+				e := &r.Experiments[index]
+				if e.exited() && e.OutputsComplete {
 					continue
 				}
 				settled = false
-				pid := str(e["process_id"])
+				pid := e.ProcessID
 				if !killed[pid] {
 					if _, err := i.call(ctx, "kill_sandbox_process", map[string]any{"sandbox_id": state.SandboxID, "process_id": pid}); err != nil {
 						return fmt.Errorf("stop experiment for pause: %w", err)
 					}
-					e["stopped_for_pause"] = true
+					e.StoppedForPause = true
 					killed[pid] = true
 				}
 			}
@@ -417,7 +435,7 @@ func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State,
 	if err := i.sandboxTransition(ctx, "suspend_sandbox", "RUNTIME_STATE_SUSPENDED", state, r); err != nil {
 		return fmt.Errorf("suspension is not confirmed; retry resume to reconcile or close: %w", err)
 	}
-	r["status"], r["finished_at"] = "paused", stamp()
+	r.Status, r.FinishedAt = StatusPaused, stampTime()
 	if err := i.persist(dir, r); err != nil {
 		return err
 	}
@@ -432,7 +450,7 @@ func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State,
 	return nil
 }
 
-func (i *Investigator) sandboxTransition(ctx context.Context, tool, target string, state *State, r map[string]any) error {
+func (i *Investigator) sandboxTransition(ctx context.Context, tool, target string, state *State, r *Report) error {
 	for {
 		value, err := i.call(ctx, tool, map[string]any{"sandbox_id": state.SandboxID})
 		if err != nil {
@@ -441,7 +459,7 @@ func (i *Investigator) sandboxTransition(ctx context.Context, tool, target strin
 		if str(value["id"]) != state.SandboxID || value["retain_while_suspended"] != true {
 			return fmt.Errorf("sandbox identity or retention policy changed")
 		}
-		r["sandbox"] = value
+		r.Sandbox = value
 		if value["failure"] != nil {
 			return fmt.Errorf("sandbox lifecycle failed; inspect controller diagnostics")
 		}
@@ -468,6 +486,7 @@ func (i *Investigator) validateSaved(state State) error {
 	}
 	current, saved := i.Config, state.Config
 	current.TokenEnv, saved.TokenEnv = "", ""
+	current.Version, saved.Version = "", ""
 	current.ManualAgents, saved.ManualAgents = nil, nil
 	if !reflect.DeepEqual(current, saved) || !slices.Equal(i.AdditionalTools, state.AdditionalTools) {
 		return fmt.Errorf("resume requires the saved connection, identity, agent, template, tools, and execution limits")
@@ -509,7 +528,7 @@ func continuationDigest(c casefile.Case) (string, error) {
 
 // Resume explicitly authorizes one new bounded turn in the retained Session.
 // Pending lifecycle work may be retried; an uncertain invocation is never replayed.
-func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir string) (result map[string]any, returnErr error) {
+func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir string) (result *Report, returnErr error) {
 	unlock, err := lockRun(dir)
 	if err != nil {
 		return nil, err
@@ -559,36 +578,36 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 			return nil, err
 		}
 		prefix := fmt.Sprintf("rounds/%04d", state.Round+1)
-		for _, raw := range anySlice(obj(previous["case"])["attachments"]) {
-			original := str(obj(raw)["path"])
+		for _, attachment := range previous.Case.Attachments {
+			original := attachment.Path
 			if original == prefix || strings.HasPrefix(original, prefix+"/") || strings.HasPrefix(prefix, original+"/") {
 				return nil, fmt.Errorf("additional input directory conflicts with an original input; close this investigation before starting a new one")
 			}
 		}
 		result = previous
-		history := []any{}
+		history := []*Report{}
 		for round := 1; round <= state.Round; round++ {
 			prior, err := loadReport(filepath.Join(roundDir(dir, round), "report.json"), &state, round)
 			if err != nil {
 				return nil, err
 			}
-			delete(prior, "rounds")
+			prior.Rounds = nil
 			history = append(history, prior)
 		}
-		result["rounds"] = history
-		result["round"] = state.Round + 1
-		result["round_started_at"], result["finished_at"] = stamp(), nil
-		result["status"], result["outcome"] = "resuming", "inconclusive"
-		result["experiments"], result["tool_calls"] = []map[string]any{}, []kagent.ToolCall{}
-		result["analysis"], result["warnings"], result["errors"] = map[string]any{}, []string{}, []string{}
-		result["continuation"] = added
-		delete(result, "resumed_by")
+		result.Rounds = history
+		result.Round = state.Round + 1
+		result.RoundStartedAt, result.FinishedAt = stampTime(), nil
+		result.Status, result.Outcome = StatusResuming, OutcomeInconclusive
+		result.Experiments, result.ToolCalls = []Experiment{}, []kagent.ToolCall{}
+		result.Analysis, result.Warnings, result.Errors = map[string]any{}, []string{}, []string{}
+		result.Continuation = &added
+		result.ResumedBy = ""
 		if i.Actor != "" {
-			result["resumed_by"] = i.Actor
+			result.ResumedBy = i.Actor
 		}
-		delete(result, "task_state")
-		delete(result, "task_failure")
-		result["session"] = map[string]any{"id": state.SessionID}
+		result.TaskState = ""
+		result.TaskFailure = ""
+		result.Session = map[string]any{"id": state.SessionID}
 		if err := i.persist(dir, result); err != nil {
 			return result, err
 		}
@@ -607,7 +626,7 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 		if err != nil {
 			return nil, err
 		}
-		result["continuation"] = added
+		result.Continuation = &added
 	}
 	setResourceIDs(result, state)
 	defer func() {
@@ -615,8 +634,8 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 			returnErr = errors.Join(returnErr, ctx.Err())
 		}
 		if returnErr != nil {
-			result["errors"] = append(result["errors"].([]string), returnErr.Error())
-			result["status"] = state.Phase
+			result.Errors = append(result.Errors, returnErr.Error())
+			result.Status = Status(state.Phase)
 		}
 		if ctx.Err() != nil && state.Phase != "running" && state.Phase != "paused" {
 			returnErr = i.cancelLifecycle(dir, &state, result, returnErr)
@@ -624,19 +643,19 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 		}
 		if state.Phase == "running" {
 			if returnErr != nil {
-				result["status"] = "error"
+				result.Status = StatusError
 				if errors.Is(returnErr, context.Canceled) {
-					result["status"] = "interrupted"
+					result.Status = StatusInterrupted
 				}
 				if errors.Is(returnErr, context.DeadlineExceeded) {
-					result["status"] = "timed_out"
+					result.Status = StatusTimedOut
 				}
 			}
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 			if returnErr != nil && state.TaskID != "" {
 				captureCtx, captureCancel := context.WithTimeout(cleanupCtx, 20*time.Second)
 				if _, err := i.observe(captureCtx, result, map[string]time.Time{}); err != nil {
-					result["warnings"] = append(result["warnings"].([]string), "Final evidence capture was incomplete")
+					result.Warnings = append(result.Warnings, "Final evidence capture was incomplete")
 				}
 				captureCancel()
 			}
@@ -646,7 +665,7 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 			if cleanupComplete(result) {
 				state.Phase = "closed"
 			}
-			result["finished_at"] = stamp()
+			result.FinishedAt = stampTime()
 			returnErr = errors.Join(returnErr, saveState(dir, &state), i.archiveRound(dir, &state, result))
 		}
 		returnErr = errors.Join(returnErr, i.persist(dir, result))
@@ -696,8 +715,8 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 		return result, fmt.Errorf("continuation omitted its exact session/task identity; invocation will not be replayed")
 	}
 	state.TaskID, state.Phase = str(invoked["task_id"]), "running"
-	obj(result["session"])["task_id"] = state.TaskID
-	result["status"] = "running"
+	result.Session["task_id"] = state.TaskID
+	result.Status = StatusRunning
 	if err := saveState(dir, &state); err != nil {
 		return result, err
 	}
@@ -707,28 +726,27 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 	return result, i.runRound(ctx, dir, &state, result, map[string]time.Time{})
 }
 
-func setResourceIDs(r map[string]any, state State) {
-	if obj(r["sandbox"]) == nil {
-		r["sandbox"] = map[string]any{}
+func setResourceIDs(r *Report, state State) {
+	if r.Sandbox == nil {
+		r.Sandbox = map[string]any{}
 	}
-	if obj(r["session"]) == nil {
-		r["session"] = map[string]any{}
+	if r.Session == nil {
+		r.Session = map[string]any{}
 	}
-	obj(r["sandbox"])["id"] = state.SandboxID
-	obj(r["session"])["id"], obj(r["session"])["task_id"] = state.SessionID, state.TaskID
+	r.Sandbox["id"] = state.SandboxID
+	r.Session["id"], r.Session["task_id"] = state.SessionID, state.TaskID
 }
 
 // Cancellation or the round budget ending means stop, including during a
 // lifecycle transition. Transport failures alone leave the durable intent for
 // reconciliation. A confirmed paused state is never discarded by cancellation.
-func (i *Investigator) cancelLifecycle(dir string, state *State, r map[string]any, cause error) error {
-	r["status"] = "interrupted"
+func (i *Investigator) cancelLifecycle(dir string, state *State, r *Report, cause error) error {
+	r.Status = StatusInterrupted
 	if errors.Is(cause, context.DeadlineExceeded) {
-		r["status"] = "timed_out"
+		r.Status = StatusTimedOut
 	}
-	errorsList, _ := r["errors"].([]string)
-	if cause != nil && !slices.Contains(errorsList, cause.Error()) {
-		r["errors"] = append(errorsList, cause.Error())
+	if cause != nil && !slices.Contains(r.Errors, cause.Error()) {
+		r.Errors = append(r.Errors, cause.Error())
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	i.Cleanup(cleanupCtx, r)
@@ -738,13 +756,13 @@ func (i *Investigator) cancelLifecycle(dir string, state *State, r map[string]an
 	if cleanupComplete(r) {
 		state.Phase = "closed"
 	}
-	r["finished_at"] = stamp()
+	r.FinishedAt = stampTime()
 	return errors.Join(cause, saveState(dir, state), i.persist(dir, r), i.archiveRound(dir, state, r))
 }
 
 // Close releases retained resources using the private journal, including after
 // process restart or an uncertain invocation. It never invokes an investigator.
-func (i *Investigator) Close(parent context.Context, dir string) (map[string]any, error) {
+func (i *Investigator) Close(parent context.Context, dir string) (*Report, error) {
 	unlock, err := lockRun(dir)
 	if err != nil {
 		return nil, err
@@ -767,43 +785,43 @@ func (i *Investigator) Close(parent context.Context, dir string) (map[string]any
 	if err != nil {
 		// Closing must remain possible if a crash interrupted the report/state
 		// boundary. Only journaled identities and creation keys are operational.
-		r = map[string]any{"schema_version": 1, "run_id": state.RunID, "round": state.Round, "case": map[string]any{"description": "Investigation evidence report unavailable"}, "started_at": "", "agent": map[string]any{"namespace": state.Config.Namespace, "name": state.Config.Agent}, "sandbox_template": state.Config.Template, "experiments": []map[string]any{}, "errors": []string{}, "warnings": []string{"Saved evidence report could not be loaded; existing round archives are unchanged"}}
+		r = &Report{SchemaVersion: SchemaVersion, RunID: state.RunID, Round: state.Round, Case: casefile.Case{Description: "Investigation evidence report unavailable"}, Agent: &AgentRef{Namespace: state.Config.Namespace, Name: state.Config.Agent}, SandboxTemplate: state.Config.Template, Experiments: []Experiment{}, Errors: []string{}, Warnings: []string{"Saved evidence report could not be loaded; existing round archives are unchanged"}}
 	}
-	if state.Round > 1 && r["rounds"] == nil {
-		history := []any{}
+	if state.Round > 1 && r.Rounds == nil {
+		history := []*Report{}
 		for round := 1; round < state.Round; round++ {
 			previous, err := loadReport(filepath.Join(roundDir(dir, round), "report.json"), &state, round)
 			if err != nil {
-				r["history_incomplete"] = true
-				r["warnings"] = append(r["warnings"].([]string), fmt.Sprintf("Round %d evidence archive could not be loaded; its existing files were left unchanged", round))
+				r.HistoryIncomplete = true
+				r.Warnings = append(r.Warnings, fmt.Sprintf("Round %d evidence archive could not be loaded; its existing files were left unchanged", round))
 				continue
 			}
-			delete(previous, "rounds")
+			previous.Rounds = nil
 			history = append(history, previous)
 		}
-		r["rounds"] = history
+		r.Rounds = history
 	}
 	setResourceIDs(r, state)
 	if state.Phase == "closed" {
 		// Cleanup was committed before its report write. Reconcile that write
 		// after a crash without repeating upstream operations or turning a
 		// completed investigation into a different outcome.
-		if !slices.Contains([]string{"completed", "error", "interrupted", "timed_out", "closed"}, str(r["status"])) {
-			r["status"] = "closed"
+		if !slices.Contains([]Status{StatusCompleted, StatusError, StatusInterrupted, StatusTimedOut, StatusClosed}, r.Status) {
+			r.Status = StatusClosed
 		}
-		cleanup := obj(r["cleanup"])
-		if cleanup == nil {
-			cleanup = map[string]any{"errors": []string{}}
-			r["cleanup"] = cleanup
+		if r.Cleanup == nil {
+			r.Cleanup = &CleanupRecord{Errors: []string{}}
 		}
 		if state.SandboxID != "" {
-			cleanup["sandbox_deleted"] = true
+			r.Cleanup.SandboxDeleted = true
 		}
 		if state.SessionID != "" {
-			cleanup["session_deleted"] = true
+			r.Cleanup.SessionDeleted = true
 		}
-		if str(r["finished_at"]) == "" {
-			r["finished_at"] = state.UpdatedAt
+		if r.FinishedAt == nil {
+			if parsed, err := time.Parse(time.RFC3339Nano, state.UpdatedAt); err == nil {
+				r.FinishedAt = &parsed
+			}
 		}
 		return r, i.persist(dir, r)
 	}
@@ -811,10 +829,10 @@ func (i *Investigator) Close(parent context.Context, dir string) (map[string]any
 	if err := saveState(dir, &state); err != nil {
 		return r, err
 	}
-	r["creation_uncertain"], r["session_creation_uncertain"] = state.SandboxCreationPending, state.SessionCreationPending
-	r["sandbox_request"] = sandboxRequest(state)
-	r["session_request"] = map[string]any{"agent": map[string]any{"namespace": state.Config.Namespace, "name": state.Config.Agent}, "request_id": state.RunID, "name": "triagelab-" + state.RunID}
-	r["cleanup"] = map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}}
+	r.CreationUncertain, r.SessionCreationUncertain = flag(state.SandboxCreationPending), flag(state.SessionCreationPending)
+	r.SandboxRequest = sandboxRequest(state)
+	r.SessionRequest = map[string]any{"agent": map[string]any{"namespace": state.Config.Namespace, "name": state.Config.Agent}, "request_id": state.RunID, "name": "triagelab-" + state.RunID}
+	r.Cleanup = &CleanupRecord{Errors: []string{}}
 	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
 	defer cancel()
 	i.Cleanup(ctx, r)
@@ -822,7 +840,7 @@ func (i *Investigator) Close(parent context.Context, dir string) (map[string]any
 	if cleanupComplete(r) {
 		state.Phase = "closed"
 	}
-	r["status"], r["finished_at"] = state.Phase, stamp()
+	r.Status, r.FinishedAt = Status(state.Phase), stampTime()
 	writeErr := errors.Join(saveState(dir, &state), i.persist(dir, r))
 	if state.Phase != "closed" {
 		return r, errors.Join(fmt.Errorf("investigation cleanup is incomplete; retry close"), writeErr)
@@ -831,7 +849,7 @@ func (i *Investigator) Close(parent context.Context, dir string) (map[string]any
 }
 
 // Keep report growth bounded even when many rounds contain large process output.
-func checkReportSize(r map[string]any) error {
+func checkReportSize(r *Report) error {
 	encoded, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err

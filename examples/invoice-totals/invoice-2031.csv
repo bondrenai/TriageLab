@@ -1,0 +1,7 @@
+invoice,line,description,quantity,unit_price
+INV-2031,1,Platform subscription (March),1,899.00
+INV-2031,2,Additional seats,6,25.00
+INV-2031,3,Storage overage (GB),40,0.35
+INV-2031,4,Onboarding workshop,1,99.00
+INV-2031,5,SMS credit pack,3,6.00
+INV-2031,6,Priority support,1,49.50

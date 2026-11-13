@@ -187,8 +187,9 @@ func TestBondrenReadsConversationAndProvenance(t *testing.T) {
 }
 
 func TestBondrenIdentifiersMapStably(t *testing.T) {
-	if bondrenID(bondrenIssueUUIDF) <= 0 || bondrenID(bondrenIssueUUIDF) != bondrenID(bondrenIssueUUIDF) ||
-		bondrenID(bondrenIssueUUIDF) == bondrenID(bondrenAuthorUUID) || bondrenID("not-a-uuid") != 0 || bondrenID("") != 0 {
+	issueID := bondrenID(bondrenIssueUUIDF)
+	if issueID <= 0 || issueID != bondrenID(bondrenIssueUUIDF) ||
+		issueID == bondrenID(bondrenAuthorUUID) || bondrenID("not-a-uuid") != 0 || bondrenID("") != 0 {
 		t.Fatal("Bondren UUID mapping is not stable and distinct")
 	}
 }

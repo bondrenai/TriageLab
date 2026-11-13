@@ -30,7 +30,7 @@ func TestRunTelemetrySpansAndRedaction(t *testing.T) {
 	investigator := Investigator{Client: f, Config: fixtureConfig(), Trigger: "test", Secrets: []string{secret}}
 	c := casefile.Case{ID: "telemetry-case", Description: "unique case description marker", Attachments: []casefile.Attachment{{Path: "app.py", Content: []byte("example"), SizeBytes: 7}}}
 	result, err := investigator.Run(context.Background(), c, dir)
-	if err != nil || result["status"] != "completed" {
+	if err != nil || result.Status != StatusCompleted {
 		t.Fatalf("run failed: %v %v", result, err)
 	}
 
@@ -42,7 +42,7 @@ func TestRunTelemetrySpansAndRedaction(t *testing.T) {
 			t.Fatalf("run identifier leaked into span name %q", span.Name)
 		}
 		for _, attr := range span.Attributes {
-			text := attr.Value.Emit()
+			text := attr.Value.String()
 			if strings.Contains(text, secret) || strings.Contains(text, "unique case description marker") {
 				t.Fatalf("span %q attribute %q=%q leaked sensitive content", span.Name, attr.Key, text)
 			}
@@ -83,7 +83,7 @@ func findSpanByName(spans []tracetest.SpanStub, name string) *tracetest.SpanStub
 func spanAttributes(span *tracetest.SpanStub) map[string]string {
 	attrs := map[string]string{}
 	for _, attr := range span.Attributes {
-		attrs[string(attr.Key)] = attr.Value.Emit()
+		attrs[string(attr.Key)] = attr.Value.String()
 	}
 	return attrs
 }

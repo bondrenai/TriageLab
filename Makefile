@@ -3,9 +3,33 @@ NPM ?= npm
 HELM ?= helm
 export GOFLAGS := -trimpath
 
-.PHONY: build fmt check test test-integration test-pause-integration test-sandbox-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
+# Release version stamped into the binary (main.version). Override with
+# VERSION=v1.2.3; without git metadata it falls back to "dev".
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.version=$(VERSION)
+
+# Linters run as pinned `go run module@version`, which keeps them out of go.mod
+# and vendor/. Unlike the vendored build, they download from the module proxy.
+STATICCHECK ?= honnef.co/go/tools/cmd/staticcheck@v0.8.2
+GOVULNCHECK ?= golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+# Static CLI binaries published to the GitHub Release (they do not embed the web UI).
+DIST ?= dist
+DIST_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+
+.PHONY: build fmt check test race lint vulncheck dist test-integration test-pause-integration test-sandbox-integration demo manifest install-ui dev-ui build-ui check-ui install-docs dev-docs build-docs docs-generate docs-check chart-lint
 build:
-	$(GO) build -o bin/triagelab ./cmd/triagelab
+	$(GO) build -ldflags "$(LDFLAGS)" -o bin/triagelab ./cmd/triagelab
+dist:
+	mkdir -p $(DIST)
+	rm -f $(DIST)/triagelab_* $(DIST)/SHA256SUMS
+	@set -e; for t in $(DIST_TARGETS); do \
+		os=$${t%/*}; arch=$${t#*/}; \
+		echo "building $$os/$$arch"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -ldflags "$(LDFLAGS)" \
+			-o $(DIST)/triagelab_$${os}_$${arch} ./cmd/triagelab; \
+	done
+	cd $(DIST) && shasum -a 256 triagelab_* > SHA256SUMS
 install-ui:
 	$(NPM) --prefix web ci
 dev-ui:
@@ -32,8 +56,16 @@ check:
 	$(GO) test ./...
 test:
 	$(GO) test ./...
+# Separate from check: the race detector slows the password-hashing sign-in
+# tests about tenfold, past the default per-package timeout on small runners.
+race:
+	$(GO) test -race -timeout 30m ./...
+lint:
+	$(GO) run $(STATICCHECK) ./...
+vulncheck:
+	$(GO) run $(GOVULNCHECK) ./...
 test-integration:
-	TRIAGELAB_INTEGRATION=1 $(GO) test -count=1 -timeout 15m -v ./internal/investigation -run TestLiveInvestigation
+	TRIAGELAB_INTEGRATION=1 $(GO) test -count=1 -timeout 75m -v ./internal/investigation -run TestLiveInvestigation
 test-pause-integration:
 	TRIAGELAB_PAUSE_INTEGRATION=1 $(GO) test -count=1 -timeout 20m -v ./internal/investigation -run '^TestLiveInvestigationPauseResume$$'
 test-sandbox-integration:

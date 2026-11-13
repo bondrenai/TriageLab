@@ -132,12 +132,12 @@ func (f *lifecycleFixture) CancelTask(ctx context.Context, session, task string)
 	return f.fixtureBackend.CancelTask(ctx, session, task)
 }
 
-func startPaused(t *testing.T, f *lifecycleFixture) (*Investigator, string, map[string]any) {
+func startPaused(t *testing.T, f *lifecycleFixture) (*Investigator, string, *Report) {
 	t.Helper()
 	i := &Investigator{Client: f, Config: fixtureConfig(), Secrets: []string{"secret-marker"}}
 	dir := t.TempDir()
 	r, err := i.Run(context.Background(), casefile.Case{ID: "durable-case", Description: "Original customer problem secret-marker", Source: map[string]any{"kind": "local"}}, dir)
-	if err != nil || r["status"] != "paused" {
+	if err != nil || r.Status != StatusPaused {
 		t.Fatalf("pause failed: report=%v error=%v", r, err)
 	}
 	return i, dir, r
@@ -150,7 +150,7 @@ func TestMissingInformationPausesAndPreservesPrivateJournal(t *testing.T) {
 	if err != nil || state.Phase != "paused" || state.Round != 1 || !state.PauseReady || state.SandboxID != "sandbox" || state.SessionID != "session" || state.TaskID != "task" {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
-	if obj(r["cleanup"])["sandbox_deleted"] == true || obj(r["cleanup"])["session_deleted"] == true {
+	if r.Cleanup.SandboxDeleted || r.Cleanup.SessionDeleted {
 		t.Fatal("pause deleted retained resources")
 	}
 	for _, call := range f.operations {
@@ -185,17 +185,17 @@ func TestResumeAfterRestartPreservesRoundsAndNeverReadsOldHandles(t *testing.T) 
 	restarted := &Investigator{Client: f, Config: i.Config, Secrets: i.Secrets}
 	added := casefile.Case{ID: "fresh-ingestion-id", Description: "Customer supplied the configuration", Attachments: []casefile.Attachment{{Path: "config.json", Content: []byte("{}"), SizeBytes: 2}}}
 	r, err := restarted.Resume(context.Background(), added, dir)
-	if err != nil || r["status"] != "completed" || f.invocations != 1 {
+	if err != nil || r.Status != StatusCompleted || f.invocations != 1 {
 		t.Fatalf("resume result=%v error=%v invocations=%d", r, err, f.invocations)
 	}
-	if str(obj(r["case"])["description"]) != "Original customer problem [REDACTED]" || r["continuation"].(casefile.Case).ID != added.ID {
+	if r.Case.Description != "Original customer problem [REDACTED]" || r.Continuation.ID != added.ID {
 		t.Fatal("resume replaced the original case or lost additional information")
 	}
-	if len(r["experiments"].([]map[string]any)) != 0 || len(r["rounds"].([]any)) != 1 {
+	if len(r.Experiments) != 0 || len(r.Rounds) != 1 {
 		t.Fatal("historical experiments leaked into the current round")
 	}
-	old := r["rounds"].([]any)[0].(map[string]any)
-	if len(old["experiments"].([]map[string]any)) != 2 || old["rounds"] != nil {
+	old := r.Rounds[0]
+	if len(old.Experiments) != 2 || old.Rounds != nil {
 		t.Fatal("history lost evidence or recursively embedded reports")
 	}
 	after, err := os.ReadFile(filepath.Join(roundDir(dir, 1), "report.json"))
@@ -219,10 +219,10 @@ func TestUpstreamRunCompletesWhenInformationIsMissing(t *testing.T) {
 	i := &Investigator{Client: f, Config: fixtureConfig()}
 	dir := t.TempDir()
 	r, err := i.Run(context.Background(), casefile.Case{ID: "release-controller", Description: "Release controller blocks"}, dir)
-	if err != nil || r["status"] != "completed" {
+	if err != nil || r.Status != StatusCompleted {
 		t.Fatalf("result=%v error=%v", r, err)
 	}
-	analysis := obj(r["analysis"])
+	analysis := r.Analysis
 	if listLen(analysis["missing_information"]) == 0 {
 		t.Fatal("missing information was dropped from the report")
 	}
@@ -230,8 +230,8 @@ func TestUpstreamRunCompletesWhenInformationIsMissing(t *testing.T) {
 	if err != nil || state.Phase != "closed" || state.Retention {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
-	if obj(r["cleanup"])["sandbox_deleted"] != true || obj(r["cleanup"])["session_deleted"] != true {
-		t.Fatalf("release-controller run retained resources: %v", r["cleanup"])
+	if !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted {
+		t.Fatalf("release-controller run retained resources: %v", r.Cleanup)
 	}
 	for _, operation := range f.operations {
 		if operation == "suspend_sandbox" {
@@ -280,11 +280,11 @@ func TestManualPauseSettlesTaskAndProcessesBeforeSuspending(t *testing.T) {
 	dir := t.TempDir()
 	f.onFirstPoll = func() error { return RequestPause(dir) }
 	r, err := i.Run(context.Background(), casefile.Case{ID: "manual-pause", Description: "Pause running experiments"}, dir)
-	if err != nil || r["status"] != "paused" || !f.canceled {
+	if err != nil || r.Status != StatusPaused || !f.canceled {
 		t.Fatalf("result=%v error=%v canceled=%v", r, err, f.canceled)
 	}
-	for _, e := range r["experiments"].([]map[string]any) {
-		if e["state"] != "PROCESS_STATE_EXITED" || e["outputs_complete"] != true || e["stopped_for_pause"] != true {
+	for _, e := range r.Experiments {
+		if !e.exited() || !e.OutputsComplete || !e.StoppedForPause {
 			t.Fatalf("experiment not settled before pause: %v", e)
 		}
 	}
@@ -304,7 +304,7 @@ func TestPauseRequestedDuringFinalPollIsHonored(t *testing.T) {
 	dir := t.TempDir()
 	f.onFirstPoll = func() error { return RequestPause(dir) }
 	r, err := i.Run(context.Background(), casefile.Case{ID: "final-poll-pause", Description: "Pause at completion"}, dir)
-	if err != nil || r["status"] != "paused" || !f.suspended {
+	if err != nil || r.Status != StatusPaused || !f.suspended {
 		t.Fatalf("accepted pause was lost: result=%v error=%v", r, err)
 	}
 	for _, operation := range f.operations {
@@ -320,7 +320,7 @@ func TestUncertainSuspendReconcilesWithoutReadingLostHandles(t *testing.T) {
 	i := &Investigator{Client: f, Config: fixtureConfig()}
 	dir := t.TempDir()
 	r, err := i.Run(context.Background(), casefile.Case{ID: "suspend-uncertain", Description: "Blocked investigation"}, dir)
-	if err == nil || r["status"] != "pausing" {
+	if err == nil || r.Status != StatusPausing {
 		t.Fatalf("result=%v error=%v", r, err)
 	}
 	state, err := LoadState(dir)
@@ -330,7 +330,7 @@ func TestUncertainSuspendReconcilesWithoutReadingLostHandles(t *testing.T) {
 	f.noExperiments, f.missing = true, false
 	f.resumed = true // The old registry is already gone after the lost suspension response.
 	r, err = i.Resume(context.Background(), casefile.Case{Description: "Received requested information"}, dir)
-	if err != nil || r["status"] != "completed" || f.invocations != 1 {
+	if err != nil || r.Status != StatusCompleted || f.invocations != 1 {
 		t.Fatalf("reconciliation failed: result=%v error=%v", r, err)
 	}
 }
@@ -355,7 +355,7 @@ func TestUncertainResumeRequiresSameInputAndDoesNotInvokeBeforeRecovery(t *testi
 	f.noExperiments, f.missing = true, false
 	added.ID = "new-ingestion-id"
 	r, err := i.Resume(context.Background(), added, dir)
-	if err != nil || r["status"] != "completed" || f.invocations != 1 {
+	if err != nil || r.Status != StatusCompleted || f.invocations != 1 {
 		t.Fatalf("retry result=%v error=%v", r, err)
 	}
 }
@@ -376,16 +376,20 @@ func TestUncertainInvocationNeverReplaysAndCloseUsesJournalIDs(t *testing.T) {
 	if _, err := i.Resume(context.Background(), added, dir); err == nil || f.invocations != 1 {
 		t.Fatal("uncertain invocation was replayed")
 	}
-	var report map[string]any
-	if err := readJSON(filepath.Join(dir, "report.json"), maxReportBytes, &report, false); err != nil {
+	var raw json.RawMessage
+	if err := readJSON(filepath.Join(dir, "report.json"), maxReportBytes, &raw, false); err != nil {
 		t.Fatal(err)
 	}
-	report["sandbox"], report["session"] = map[string]any{"id": "wrong-sandbox"}, map[string]any{"id": "wrong-session", "task_id": "wrong-task"}
+	report, err := DecodeReport(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Sandbox, report.Session = map[string]any{"id": "wrong-sandbox"}, map[string]any{"id": "wrong-session", "task_id": "wrong-task"}
 	if err := i.persist(dir, report); err != nil {
 		t.Fatal(err)
 	}
 	r, err := i.Close(context.Background(), dir)
-	if err != nil || r["status"] != "closed" || obj(r["cleanup"])["sandbox_deleted"] != true {
+	if err != nil || r.Status != StatusClosed || !r.Cleanup.SandboxDeleted {
 		t.Fatalf("close result=%v error=%v", r, err)
 	}
 	for _, call := range f.calls {
@@ -417,6 +421,27 @@ func TestLifecycleLockRejectsConcurrentResumeAndClose(t *testing.T) {
 	}
 }
 
+func TestLegacyCleanupSharesTheLifecycleLock(t *testing.T) {
+	dir := t.TempDir()
+	unlock, err := lockRun(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LockLegacyCleanup(dir); !errors.Is(err, ErrBusy) {
+		unlock()
+		t.Fatalf("expected lifecycle lock conflict, got %v", err)
+	}
+	unlock()
+	release, err := LockLegacyCleanup(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := lockRun(dir); !errors.Is(err, ErrBusy) {
+		t.Fatalf("expected cleanup lock conflict, got %v", err)
+	}
+}
+
 func TestStalePauseMarkerDoesNotPauseAnotherRound(t *testing.T) {
 	f := newLifecycleFixture()
 	i, dir, _ := startPaused(t, f)
@@ -425,7 +450,7 @@ func TestStalePauseMarkerDoesNotPauseAnotherRound(t *testing.T) {
 	}
 	f.noExperiments, f.missing = true, false
 	r, err := i.Resume(context.Background(), casefile.Case{Description: "Additional information"}, dir)
-	if err != nil || r["status"] != "completed" {
+	if err != nil || r.Status != StatusCompleted {
 		t.Fatalf("stale request paused new turn: result=%v error=%v", r, err)
 	}
 }
@@ -435,7 +460,7 @@ func TestRetentionCapabilityAndSavedConnectionFailClosed(t *testing.T) {
 	f.retentionMissing = true
 	i := &Investigator{Client: f, Config: fixtureConfig()}
 	r, err := i.Run(context.Background(), casefile.Case{ID: "unsupported", Description: "Old backend"}, t.TempDir())
-	if err == nil || obj(r["cleanup"])["sandbox_deleted"] != true {
+	if err == nil || !r.Cleanup.SandboxDeleted {
 		t.Fatalf("unsupported retention result=%v error=%v", r, err)
 	}
 	for _, operation := range f.operations {
@@ -486,11 +511,11 @@ func TestResumeRejectsMismatchedPendingReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var r map[string]any
-	if err := json.Unmarshal(encoded, &r); err != nil {
+	r, err := DecodeReport(encoded)
+	if err != nil {
 		t.Fatal(err)
 	}
-	r["round"] = 1
+	r.Round = 1
 	if err := i.persist(dir, r); err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +531,7 @@ func TestPauseRefusesUnsettledToolCall(t *testing.T) {
 	i := &Investigator{Client: f, Config: fixtureConfig()}
 	dir := t.TempDir()
 	r, err := i.Run(context.Background(), casefile.Case{ID: "pending-tool", Description: "Pause requires quiescence"}, dir)
-	if err == nil || r["status"] != "pausing" || f.suspended {
+	if err == nil || r.Status != StatusPausing || f.suspended {
 		t.Fatalf("unsettled tool was suspended: result=%v error=%v", r, err)
 	}
 	state, err := LoadState(dir)
@@ -514,7 +539,7 @@ func TestPauseRefusesUnsettledToolCall(t *testing.T) {
 		t.Fatalf("unsafe pause receipt: state=%+v error=%v", state, err)
 	}
 	closed, err := i.Close(context.Background(), dir)
-	if err != nil || closed["status"] != "closed" {
+	if err != nil || closed.Status != StatusClosed {
 		t.Fatalf("failed pause could not be closed: result=%v error=%v", closed, err)
 	}
 }
@@ -529,18 +554,18 @@ func TestRepeatedPausesKeepFlatImmutableHistory(t *testing.T) {
 			i.Actor = "workspace-user"
 		}
 		r, err := i.Resume(context.Background(), casefile.Case{Description: "Additional information still leaves a question"}, dir)
-		if err != nil || r["status"] != "paused" {
+		if err != nil || r.Status != StatusPaused {
 			t.Fatalf("round=%d result=%v error=%v", round, r, err)
 		}
-		if round == 3 && r["resumed_by"] != nil {
+		if round == 3 && r.ResumedBy != "" {
 			t.Fatal("CLI continuation inherited the preceding user's attribution")
 		}
-		history := r["rounds"].([]any)
+		history := r.Rounds
 		if len(history) != round-1 {
 			t.Fatalf("round %d history count %d", round, len(history))
 		}
 		for _, previous := range history {
-			if obj(previous)["rounds"] != nil {
+			if previous.Rounds != nil {
 				t.Fatal("recursive report history")
 			}
 		}
@@ -560,7 +585,7 @@ func TestPauseRequiresExpirationExemptionReceipt(t *testing.T) {
 	i := &Investigator{Client: f, Config: fixtureConfig()}
 	dir := t.TempDir()
 	r, err := i.Run(context.Background(), casefile.Case{ID: "retention-receipt", Description: "Durable retention must be confirmed"}, dir)
-	if err == nil || r["status"] != "pausing" {
+	if err == nil || r.Status != StatusPausing {
 		t.Fatalf("expiring suspension was accepted: result=%v error=%v", r, err)
 	}
 	state, err := LoadState(dir)
@@ -578,14 +603,14 @@ func TestCloseReconcilesReportAfterCleanupCommit(t *testing.T) {
 	}
 	// Simulate the prior report surviving a crash after the closed state was
 	// synced. The state proves deletion; the stale report is only a view.
-	r["status"], r["finished_at"] = "pausing", nil
-	r["cleanup"] = map[string]any{"sandbox_deleted": false, "session_deleted": false, "errors": []string{}}
+	r.Status, r.FinishedAt = StatusPausing, nil
+	r.Cleanup = &CleanupRecord{Errors: []string{}}
 	if err := i.persist(dir, r); err != nil {
 		t.Fatal(err)
 	}
 	before := len(f.operations)
 	r, err = i.Close(context.Background(), dir)
-	if err != nil || r["status"] != "closed" || obj(r["cleanup"])["sandbox_deleted"] != true || obj(r["cleanup"])["session_deleted"] != true || str(r["finished_at"]) == "" || len(f.operations) != before {
+	if err != nil || r.Status != StatusClosed || !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted || r.FinishedAt == nil || len(f.operations) != before {
 		t.Fatalf("close reconciliation result=%v error=%v", r, err)
 	}
 }
@@ -670,13 +695,13 @@ func TestCloseFallbackRebuildsHistoryAndPreservesExactNumbers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			obj(first["case"])["environment"] = map[string]any{"large_record_id": json.Number("9007199254740993")}
+			first.Case.Environment = map[string]any{"large_record_id": json.Number("9007199254740993")}
 			if err := i.persist(roundDir(dir, 1), first); err != nil {
 				t.Fatal(err)
 			}
 			f.noExperiments = true
 			r, err := i.Resume(context.Background(), casefile.Case{Description: "More information"}, dir)
-			if err != nil || r["status"] != "paused" {
+			if err != nil || r.Status != StatusPaused {
 				t.Fatalf("result=%v error=%v", r, err)
 			}
 			if err := os.WriteFile(filepath.Join(dir, "report.json"), []byte("interrupted report write"), 0o600); err != nil {
@@ -688,19 +713,19 @@ func TestCloseFallbackRebuildsHistoryAndPreservesExactNumbers(t *testing.T) {
 				}
 			}
 			r, err = i.Close(context.Background(), dir)
-			if err != nil || r["status"] != "closed" {
+			if err != nil || r.Status != StatusClosed {
 				t.Fatalf("fallback close result=%v error=%v", r, err)
 			}
-			history := r["rounds"].([]any)
+			history := r.Rounds
 			if missing {
-				if len(history) != 0 || r["history_incomplete"] != true || len(r["warnings"].([]string)) == 0 {
+				if len(history) != 0 || !r.HistoryIncomplete || len(r.Warnings) == 0 {
 					t.Fatal("unreadable earlier history silently disappeared")
 				}
 			} else {
-				if len(history) != 1 || obj(history[0])["rounds"] != nil {
+				if len(history) != 1 || history[0].Rounds != nil {
 					t.Fatal("fallback discarded or nested earlier history")
 				}
-				value := obj(obj(obj(history[0])["case"])["environment"])["large_record_id"]
+				value := history[0].Case.Environment["large_record_id"]
 				if value != json.Number("9007199254740993") {
 					t.Fatalf("historical integer changed: %v", value)
 				}
@@ -725,10 +750,10 @@ func TestCanceledLifecycleTransitionsCleanUpInsteadOfRetaining(t *testing.T) {
 				}
 				r, err := i.Run(context.Background(), casefile.Case{ID: "cancel-transition", Description: "Blocked investigation"}, dir)
 				if transition == "reconcile-suspend" {
-					if err == nil || r["status"] != "pausing" {
+					if err == nil || r.Status != StatusPausing {
 						t.Fatalf("expected uncertain pause: result=%v error=%v", r, err)
 					}
-				} else if err != nil || r["status"] != "paused" {
+				} else if err != nil || r.Status != StatusPaused {
 					t.Fatalf("pause result=%v error=%v", r, err)
 				}
 			}
@@ -742,14 +767,14 @@ func TestCanceledLifecycleTransitionsCleanUpInsteadOfRetaining(t *testing.T) {
 			if transition == "invoke" {
 				f.cancelOn = "invoke_agent"
 			}
-			var r map[string]any
+			var r *Report
 			var err error
 			if transition == "initial-suspend" {
 				r, err = i.Run(ctx, casefile.Case{ID: "cancel-transition", Description: "Blocked investigation"}, dir)
 			} else {
 				r, err = i.Resume(ctx, casefile.Case{Description: "Additional information"}, dir)
 			}
-			if !errors.Is(err, context.Canceled) || r["status"] != "interrupted" || obj(r["cleanup"])["sandbox_deleted"] != true || obj(r["cleanup"])["session_deleted"] != true {
+			if !errors.Is(err, context.Canceled) || r.Status != StatusInterrupted || !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted {
 				t.Fatalf("canceled transition retained resources: result=%v error=%v", r, err)
 			}
 			state, err := LoadState(dir)

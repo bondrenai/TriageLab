@@ -16,19 +16,15 @@ triagelab investigate [options]
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--agent` | (none) | agent name configured under manual_agents |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
 | `--description` | (none) | local issue description |
 | `--description-file` | (none) | UTF-8 issue description file |
 | `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
 | `--log` | (repeatable) | log file (repeatable) |
 | `--namespace` | (none) | namespace configured under run_namespaces (default: the configured namespace) |
 | `--output` | reports | parent directory for private reports |
 | `--repo` | (none) | small local repository or fixture directory |
-| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## pause
 
@@ -40,18 +36,9 @@ triagelab pause --report <report.json> [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
-| `--description` | (none) | local issue description |
-| `--description-file` | (none) | UTF-8 issue description file |
-| `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
-| `--log` | (repeatable) | log file (repeatable) |
-| `--output` | reports | parent directory for private reports |
-| `--repo` | (none) | small local repository or fixture directory |
 | `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## resume
 
@@ -63,18 +50,14 @@ triagelab resume --report <report.json> --description <new-information> [options
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
 | `--description` | (none) | local issue description |
 | `--description-file` | (none) | UTF-8 issue description file |
 | `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
 | `--log` | (repeatable) | log file (repeatable) |
-| `--output` | reports | parent directory for private reports |
 | `--repo` | (none) | small local repository or fixture directory |
 | `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## close
 
@@ -86,18 +69,9 @@ triagelab close --report <report.json> [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
-| `--description` | (none) | local issue description |
-| `--description-file` | (none) | UTF-8 issue description file |
-| `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
-| `--log` | (repeatable) | log file (repeatable) |
-| `--output` | reports | parent directory for private reports |
-| `--repo` | (none) | small local repository or fixture directory |
 | `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## serve
 
@@ -115,16 +89,10 @@ triagelab serve [options]
 | `--chat` | (none) | optional results chat model configuration JSON |
 | `--clients` | (none) | API client file for OAuth access (default <output>/.auth/clients.json) |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
-| `--description` | (none) | local issue description |
-| `--description-file` | (none) | UTF-8 issue description file |
-| `--file` | (repeatable) | attachment (repeatable) |
 | `--gitops` | (none) | optional GitOps JSON configuration for TicketConnection and TicketProcedure reconciliation |
 | `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
-| `--log` | (repeatable) | log file (repeatable) |
 | `--mcp` | (none) | optional HTTP MCP credentials and origins configuration JSON |
 | `--output` | reports | parent directory for private reports |
-| `--repo` | (none) | small local repository or fixture directory |
-| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--status-context` | (none) | Kubernetes context for live deployment status |
 | `--status-kubeconfig` | (none) | explicit Kubernetes config for live deployment status and optional saves |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
@@ -141,22 +109,12 @@ triagelab doctor [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
-| `--description` | (none) | local issue description |
-| `--description-file` | (none) | UTF-8 issue description file |
-| `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
-| `--log` | (repeatable) | log file (repeatable) |
-| `--output` | reports | parent directory for private reports |
-| `--repo` | (none) | small local repository or fixture directory |
-| `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## cleanup
 
-Finish sandbox and session cleanup from a saved report; the configuration must match the report's endpoint, user, and namespace.
+Finish sandbox and session cleanup. When a lifecycle journal exists, use its recorded resource identities and close the run. For older runs, use the saved report. The endpoint and user must match the configuration, and the namespace must be allowed.
 
 ```text
 triagelab cleanup [options]
@@ -164,18 +122,9 @@ triagelab cleanup [options]
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--assets` | web/dist | built frontend directory |
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
-| `--description` | (none) | local issue description |
-| `--description-file` | (none) | UTF-8 issue description file |
-| `--file` | (repeatable) | attachment (repeatable) |
-| `--listen` | 127.0.0.1:8080 | loopback address for the private web UI |
-| `--log` | (repeatable) | log file (repeatable) |
-| `--output` | reports | parent directory for private reports |
-| `--repo` | (none) | small local repository or fixture directory |
 | `--report` | (none) | saved report.json for pause, resume, close, or cleanup |
 | `--telemetry` | (none) | optional OTLP telemetry configuration exporting logs, metrics, and traces |
-| `--tickets` | (none) | optional Zendesk, GitHub, GitLab, Linear, Bondren, or Jira case configuration (serve only) |
 
 ## manifest
 

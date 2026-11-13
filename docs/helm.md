@@ -130,13 +130,28 @@ stays unnecessary and can be disabled.
 
 ## Publishing (maintainers)
 
-The [release workflow](../.github/workflows/release.yml) publishes both
-artifacts on a pushed `v*` tag (or a manual dispatch with a version input):
+The [release workflow](../.github/workflows/release.yml) runs on a pushed `v*`
+tag (or a manual dispatch with a version input, started from that same tag).
+It first runs the CI workflow's jobs (Go checks on Linux and macOS,
+`make race`, `make lint`, `make vulncheck`, frontend, docs site, chart lint, image build); nothing is published
+unless all of them pass in that run. It then publishes:
 
-- the linux/amd64 container image built from the root `Dockerfile`, as
-  `ghcr.io/bondrenai/triagelab:<version>`;
+- the multi-arch (linux/amd64 and linux/arm64) container image built from the
+  root `Dockerfile`, as `ghcr.io/bondrenai/triagelab:<version>`, stamped with
+  the version (`-X main.version`) and with a build provenance attestation
+  (adds `id-token: write` and `attestations: write` to the publish job only);
 - the chart packaged with that version and appVersion, as
-  `oci://ghcr.io/bondrenai/charts/triagelab`.
+  `oci://ghcr.io/bondrenai/charts/triagelab`;
+- static CLI binaries (`triagelab_<os>_<arch>` for linux and darwin on amd64
+  and arm64) and a `SHA256SUMS` file, attached to the GitHub Release for the
+  tag with the `gh` CLI. This separate job alone holds `contents: write`.
+  Verify with `shasum -a 256 -c SHA256SUMS`. The binaries do not contain the
+  web UI: `triagelab serve` also needs the built assets (`make build-ui`, or
+  the container image).
+
+The Go build cross-compiles on the runner and the image's final stage runs no
+commands, so the arm64 image is built without emulation. Base images in the
+`Dockerfile` are pinned by digest; refresh each tag and digest together.
 
 One-time setup after the first release: change both ghcr.io packages
 (`triagelab` and `charts/triagelab`) from private to public in the
@@ -144,7 +159,9 @@ repository's Packages settings; newly created container packages default to
 private even in public repositories.
 
 CI lints and renders the chart on every change (`make chart-lint`) and builds
-the image without publishing. The chart's default image tag tracks the chart
+the image without publishing. The release's `GITHUB_TOKEN` is otherwise
+read-only; no new third-party actions are used (`gh` is preinstalled, and the
+attestation action is first-party and pinned by commit SHA). The chart's default image tag tracks the chart
 appVersion; pin `image.digest` to a reviewed digest for controlled
 deployments, in line with the project's digest-pinning rules.
 
@@ -166,4 +183,5 @@ so one release updates the image and chart together.
 - Telemetry export ships no collector: bring your own OTLP endpoint and mind
   that it is a new outbound network path from the workspace pod. Header
   secrets are only accepted through the `telemetry.headers` Secret path.
-- The published image is linux/amd64.
+- The published image covers linux/amd64 and linux/arm64. The arm64 variant is
+  built but not exercised by any automated test.

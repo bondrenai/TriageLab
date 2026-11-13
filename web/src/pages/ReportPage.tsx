@@ -6,7 +6,7 @@ import { Assessment, commandText, EvidenceInspector, EvidenceReferences, Process
 import { hasRetainedWorkspace, InvestigationBrief, ReportStatusBand, reproductionLabel, RoundHistory } from "../components/report-overview";
 import { MarkdownBlocks, MarkdownInline } from "../components/markdown";
 import { InvestigationChat } from "../components/result-chat";
-import { useCancelRun, useCloseRun, usePauseRun, usePostTicketNote, useResumeRun, useRun, useSettings } from "../hooks/use-investigations";
+import { useCancelRun, useCleanupRun, useCloseRun, usePauseRun, usePostTicketNote, useResumeRun, useRun, useSettings } from "../hooks/use-investigations";
 import { useSession } from "../hooks/use-auth";
 import { roleAtLeast } from "../lib/auth";
 import { caseTitle, elapsed, exampleReport, fileSize, formatDate, reportURL } from "../lib/investigations";
@@ -118,7 +118,7 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
     {showResume && !active && lifecycle?.can_resume && <div className="report-resume"><ResumePanel report={latest} onCancel={() => setShowResume(false)} onStarted={() => { setShowResume(false); selectRound(null); }} /></div>}
     {confirmClose && !active && lifecycle?.can_close && <div className="notice" role="alert"><strong>Close this investigation?</strong><p>This deletes the investigation’s remaining sandbox and investigator session. Saved reports remain available, but this investigation cannot be resumed afterward.</p><div className="button-row"><Button disabled={close.isPending} onClick={() => { void close.mutateAsync({ round: lifecycle.round, settings: lifecycle.resume_settings }).then(() => setConfirmClose(false)).catch(() => {}); }}>{close.isPending ? "Closing…" : "Close and delete resources"}</Button><Button variant="ghost" disabled={close.isPending} onClick={() => setConfirmClose(false)}>Keep investigation</Button></div></div>}
     {messages.length > 0 && <ErrorPlate title="This run needs attention" error={[...new Set(messages)].join("\n")} />}
-    {!active && (latest.status === "running" || latest.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence and {lifecycle?.can_close ? "close the investigation to clean up its execution resources." : "use the CLI cleanup command if resources are still present."}</p></div>}
+    {!active && (latest.status === "running" || latest.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence and {lifecycle?.can_close ? "close the investigation to clean up its execution resources." : !lifecycle && latest.cleanup ? "retry cleanup under Current resource cleanup if resources may still be present." : "use the CLI cleanup command if resources are still present."}</p></div>}
     {(report.warnings?.length ?? 0) > 0 && <div className="notice"><strong>Round {round} notes</strong><ul>{report.warnings?.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
     <RoundHistory latest={latest} selectedRound={selectedRound} onSelect={selectRound} />
     <div className="report-layout">
@@ -151,7 +151,7 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
           <div><dt>{report.round_started_at ? "Round started" : "Started"}</dt><dd><time dateTime={report.round_started_at ?? report.started_at}>{formatDate(report.round_started_at ?? report.started_at)}</time></dd></div>
           <div><dt>Duration</dt><dd className="mono">{active && !historical ? "In progress" : report.finished_at ? elapsed(report.round_started_at ?? report.started_at, report.finished_at) : !historical && latest.status === "paused" ? "Paused" : "Not recorded"}</dd></div>
           <div><dt>Experiments</dt><dd className="mono">{experiments.length}</dd></div><div><dt>Original files</dt><dd className="mono">{attachments.length}</dd></div>
-        </dl><div className="cleanup-record"><h3>Current resource cleanup</h3>{cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : retained ? <p>Workspace and conversation retained until resumed or closed.</p> : active ? <p>Resources remain while work is active. Completion or closing attempts cleanup.</p> : latest.status === "paused" ? <p>Workspace retention is unconfirmed. Review the saved record and lifecycle messages.</p> : <p>Cleanup is not confirmed. Review the saved report and run messages.</p>}</div>
+        </dl><div className="cleanup-record"><h3>Current resource cleanup</h3>{cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : retained ? <p>Workspace and conversation retained until resumed or closed.</p> : active ? <p>Resources remain while work is active. Completion or closing attempts cleanup.</p> : latest.status === "paused" ? <p>Workspace retention is unconfirmed. Review the saved record and lifecycle messages.</p> : <p>Cleanup is not confirmed. Review the saved report and run messages.</p>}{!example && !active && !retained && !lifecycle && latest.cleanup && <CleanupControl report={latest} done={cleanupDone} canRetry={canRun} />}</div>
           {!example && <div className="report-downloads"><h3>Download investigation</h3>{(latest.rounds?.length ?? 0) > 0 && <p className="field-help">Downloads include all rounds.</p>}<a className="button button-secondary" href={reportURL(latest.run_id, "json")} download><ArrowDownToLine size={15} aria-hidden="true" />JSON</a><a className="button button-secondary" href={reportURL(latest.run_id, "md")} download><ArrowDownToLine size={15} aria-hidden="true" />Markdown</a></div>}
         </div></Panel>
         <Panel title="Original issue"><div className="panel-body">{report.case?.description ? <MarkdownBlocks className="original-issue" tabIndex={0} role="region" aria-label="Original issue description" text={report.case.description} /> : <div className="original-issue" tabIndex={0} role="region" aria-label="Original issue description">Original case unavailable; review the saved round reports.</div>}</div></Panel>
@@ -200,6 +200,19 @@ function ResumePanel({ report, onCancel, onStarted }: { report: InvestigationRep
     <p className="field-help">Approve this information, the selected files, and the displayed execution limits. Resuming may incur model and sandbox charges.</p>
     <div className="button-row"><Button type="submit" variant="primary" disabled={resume.isPending || !settings.data}>{resume.isPending ? "Resuming…" : "Approve and resume"}</Button><Button type="button" variant="ghost" disabled={resume.isPending} onClick={onCancel}>Cancel</Button></div>
   </form></Panel>;
+}
+
+function CleanupControl({ report, done, canRetry }: { report: InvestigationReport; done: boolean; canRetry: boolean }) {
+  const cleanup = useCleanupRun(report.run_id);
+  const running = cleanup.isPending || report.cleanup_running === true;
+  return <div className="cleanup-actions">
+    {running && <p role="status">Cleaning up. This can take up to 90 seconds.</p>}
+    {!running && !done && canRetry && <Button onClick={() => cleanup.mutate()}>Retry cleanup</Button>}
+    {!running && done && cleanup.isSuccess && <p role="status">Cleanup finished.</p>}
+    {!running && !done && cleanup.isSuccess && !report.cleanup_error && <p role="status">Cleanup ran but is still not confirmed. If it keeps failing, use the CLI: <code>triagelab cleanup --report reports/{report.run_id}/report.json</code> with the same configuration.</p>}
+    {report.cleanup_error && <p role="alert">{report.cleanup_error}</p>}
+    {cleanup.isError && <p role="alert">{cleanup.error instanceof Error ? cleanup.error.message : "Cleanup could not be started."}</p>}
+  </div>;
 }
 
 function TicketNotePanel({ runID, note, canPost }: { runID: string; note: TicketNote; canPost: boolean }) {

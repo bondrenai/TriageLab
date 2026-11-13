@@ -644,8 +644,14 @@ func ecKey(x, y string) (crypto.PublicKey, error) {
 	if err != nil || len(yb) != 32 {
 		return nil, fmt.Errorf("bad y coordinate")
 	}
-	return &ecdsa.PublicKey{Curve: elliptic.P256(),
-		X: new(big.Int).SetBytes(xb), Y: new(big.Int).SetBytes(yb)}, nil
+	// SEC 1 uncompressed form: 0x04 || X || Y. Parsing it also refuses a point
+	// that is not on the curve, so such a key is never used for verification.
+	point := append(append([]byte{4}, xb...), yb...)
+	key, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), point)
+	if err != nil {
+		return nil, fmt.Errorf("bad curve point")
+	}
+	return key, nil
 }
 
 func decodeSegment(segment string) ([]byte, error) {

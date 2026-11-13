@@ -88,8 +88,11 @@ the recorded execution results came from the service, not that arbitrary output 
 true or that a model's causal explanation is correct. Reports distinguish observed
 experiments from hypotheses, retain failures, and do not assert confirmed root cause.
 
-Local ingestion refuses symlinks, special files, obvious credential filenames and
-patterns, unsafe destination names, and oversized inputs. It excludes version-control
+Local ingestion refuses symlinks inside the submitted material (including a named
+repository or file that is itself a link), special files, obvious credential filenames
+and patterns, unsafe destination names, and oversized inputs. Links in the path that
+leads to a named input are followed when it is opened, so name inputs through
+directories you control, not through an extracted archive. It excludes version-control
 and common generated/vendor directories. These rules are intentionally conservative,
 and secret detection is incomplete. Review selected files before submitting a case.
 Support text and relevant file/output contents may be sent to the configured model

@@ -1,6 +1,6 @@
 # Working on TriageLab
 
-TriageLab is a Go 1.27.3 CLI and a React UI for evidence-driven investigations.
+TriageLab is a Go 1.27.4 CLI and a React UI for evidence-driven investigations.
 Keep it small: one investigator, one standalone sandbox per run, local
 JSON/Markdown reports. There is no database, operator, custom sandbox runtime,
 or agent framework. The UI is a private, authenticated client (local accounts

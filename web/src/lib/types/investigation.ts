@@ -77,6 +77,8 @@ export interface InvestigationReport {
   started_at: string;
   finished_at?: string;
   active?: boolean;
+  cleanup_running?: boolean;
+  cleanup_error?: string;
   progress?: string[];
   action_error?: string;
   ticket_note?: TicketNote;

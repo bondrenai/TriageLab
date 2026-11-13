@@ -1,57 +1,147 @@
 name: Release
 
-# Publishes the container image and the Helm chart to the public ghcr.io OCI
-# registry. One-time setup: make both ghcr.io packages public in the
-# repository's Packages settings after the first release; see docs/helm.md.
+# Publishes the container image (linux/amd64 and linux/arm64) and the Helm
+# chart to the public ghcr.io OCI registry, and static CLI binaries with a
+# SHA-256 checksum file to the GitHub Release for the tag. Nothing is
+# published unless the same checks CI runs (ci.yml) pass in this run.
+# One-time setup: make both ghcr.io packages public in the repository's
+# Packages settings after the first release; see docs/helm.md.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, including the leading v (for example v0.1.0)"
+        description: "Version to publish, including the leading v (for example v0.1.0). Run the workflow from that tag."
         required: true
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  version:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Resolve the release version
+      - id: resolve
+        name: Resolve the release version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            VERSION="${GITHUB_REF_NAME}"
+            VERSION="$REF_NAME"
           fi
           case "$VERSION" in
             v[0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "Version must look like v0.1.0" >&2; exit 2 ;;
           esac
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # The checks, the build, and the release all use the workflow's ref,
+          # so a manual run must be started from the tag it publishes.
+          if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "$VERSION" ]; then
+            echo "Run this workflow from the tag $VERSION, not from $REF_NAME" >&2
+            exit 2
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # The same jobs CI runs on every push (Go checks on Linux and macOS, lint, vulncheck,
+  # frontend, chart, image build). Publishing jobs depend on all of them.
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # packages: write pushes the image and chart. id-token and attestations
+    # let the attest step sign build provenance for the image digest.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Log in to ghcr.io
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
-            -u "${{ github.actor }}" --password-stdin
-          printf '%s' "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
-            -u "${{ github.actor }}" --password-stdin
-      - name: Build and push the linux/amd64 image
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
+      - name: Build and push the multi-arch image
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
         run: |
-          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr 'A-Z' 'a-z')"
-          docker buildx build --platform linux/amd64 --push \
-            --tag "$IMAGE:$VERSION" .
+          IMAGE="ghcr.io/$(echo "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          # Multi-platform push needs a docker-container builder. The Go and
+          # UI stages cross-compile on the runner, so no QEMU emulation.
+          docker buildx create --name release --driver docker-container \
+            --driver-opt image=moby/buildkit@sha256:de10faf919fc71ba4eb1dd7bd6449566d012b0c9436b1c61bfee21d621b009aa \
+            --use
+          docker buildx build --builder release \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg "VERSION=$VERSION" \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" \
+            --push --tag "$IMAGE:$VERSION" .
+          echo "name=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/image-metadata.json")" >> "$GITHUB_OUTPUT"
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
       - name: Package, check, and push the Helm chart
+        env:
+          OWNER: ${{ github.repository_owner }}
         run: |
-          CHART_REPO="oci://ghcr.io/$(echo '${{ github.repository_owner }}' | tr 'A-Z' 'a-z')/charts"
+          CHART_REPO="oci://ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/charts"
           helm package chart/triagelab --version "${VERSION#v}" --app-version "$VERSION"
           helm template ./triagelab-*.tgz --set token.value=release-check > /dev/null
           helm push ./triagelab-*.tgz "$CHART_REPO"
+
+  # Separate job so contents: write is held only by the step that uploads
+  # release assets, never by the job that handles registry credentials.
+  binaries:
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.4"
+          cache: false # dependencies are vendored; no module cache is needed
+      - name: Build static CLI binaries and checksums
+        run: make dist VERSION="$VERSION"
+      - name: Attach the binaries to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+          else
+            gh release create "$VERSION" dist/* --verify-tag --title "$VERSION" --generate-notes
+          fi

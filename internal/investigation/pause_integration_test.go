@@ -188,7 +188,7 @@ func livePauseStage(t *testing.T, stage string, config Config, token string) {
 			requested = true
 		}
 	}}
-	var result map[string]any
+	var result *Report
 	var err error
 	switch stage {
 	case "run":
@@ -228,8 +228,8 @@ func livePauseStage(t *testing.T, stage string, config Config, token string) {
 		}
 		return
 	}
-	if result["status"] != "paused" || !requested || experimentCount(result) == 0 {
-		t.Fatalf("real model did not execute an experiment and honor pause: status=%v", result["status"])
+	if result.Status != StatusPaused || !requested || len(result.Experiments) == 0 {
+		t.Fatalf("real model did not execute an experiment and honor pause: status=%v", result.Status)
 	}
 }
 

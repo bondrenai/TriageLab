@@ -23,9 +23,9 @@ func ingestRunOptions(opts *runOptions) (casefile.Case, error) {
 			return casefile.Case{}, err
 		}
 		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, 32769))
-		if err != nil || len(data) > 32768 {
-			return casefile.Case{}, fmt.Errorf("Cannot read description, or it exceeds 32 KiB")
+		data, err := io.ReadAll(io.LimitReader(f, casefile.MaxDescriptionBytes+1))
+		if err != nil || len(data) > casefile.MaxDescriptionBytes {
+			return casefile.Case{}, fmt.Errorf("Cannot read description, or it exceeds %d KiB", casefile.MaxDescriptionBytes>>10)
 		}
 		description = string(data)
 	}
@@ -66,7 +66,7 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 		fmt.Fprintln(out, "Pause requested. The report will say paused after evidence collection and sandbox suspension finish.")
 		return 0
 	}
-	var result map[string]any
+	var result *investigation.Report
 	if command == "resume" {
 		if state.Trigger == "ticket" {
 			fmt.Fprintln(errout, "Resume ticket investigations in the signed-in workspace to approve the new evidence and saved run settings.")
@@ -88,7 +88,7 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 	return printInvestigationResult(result, err, dir, out, errout, runner.Secrets...)
 }
 
-func printInvestigationResult(result map[string]any, runErr error, dir string, out, errout io.Writer, secrets ...string) int {
+func printInvestigationResult(result *investigation.Report, runErr error, dir string, out, errout io.Writer, secrets ...string) int {
 	if _, err := os.Stat(filepath.Join(dir, "report.md")); err == nil {
 		fmt.Fprintf(out, "Report: %s\n", filepath.Join(dir, "report.md"))
 	} else {
@@ -100,31 +100,30 @@ func printInvestigationResult(result map[string]any, runErr error, dir string, o
 	if result == nil {
 		return 4
 	}
-	fmt.Fprintf(out, "Outcome: %v (%v)\n", result["outcome"], result["status"])
-	cleanup, _ := result["cleanup"].(map[string]any)
-	if problems, ok := cleanup["errors"].([]string); ok && len(problems) > 0 {
+	fmt.Fprintf(out, "Outcome: %v (%v)\n", result.Outcome, result.Status)
+	if result.Cleanup != nil && len(result.Cleanup.Errors) > 0 {
 		fmt.Fprintln(errout, "Cleanup incomplete; see report and use triagelab close.")
 		return 5
 	}
-	switch result["status"] {
-	case "interrupted":
+	switch result.Status {
+	case investigation.StatusInterrupted:
 		return 130
-	case "timed_out":
+	case investigation.StatusTimedOut:
 		return 124
-	case "error":
+	case investigation.StatusError:
 		return 4
 	}
 	if runErr != nil {
 		return 4
 	}
-	switch result["status"] {
-	case "paused", "closed":
+	switch result.Status {
+	case investigation.StatusPaused, investigation.StatusClosed:
 		return 0
 	}
-	switch result["outcome"] {
-	case "reproduced":
+	switch result.Outcome {
+	case investigation.OutcomeReproduced:
 		return 0
-	case "not_reproduced":
+	case investigation.OutcomeNotReproduced:
 		return 1
 	default:
 		return 3

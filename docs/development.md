@@ -22,8 +22,10 @@ unchanged (loopback listener, `kubectl port-forward` only).
 
 - Linux with Docker or a compatible kind provider. Docker is used to host kind;
   its socket is never mounted into an investigator or reproduction sandbox.
-- Go 1.27.3, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
+- Go 1.27.4, Git, `kubectl`, Helm 3, and kind 0.33.0. The included Python fixture
   runs inside the reproduction sandbox, not on the development host.
+- A C compiler (`gcc` or `clang`) for `make race`, which runs the tests with
+  the race detector and needs cgo; the released binary is built without it.
 - kagent CLI **1.0.0**, matching the charts and runtime images. The installation
   script installs the released controller; the reviewed fork for durable
   pause/resume is built from source only when selected.
@@ -197,7 +199,16 @@ Run tests, lint, and formatting on the VM:
 
 ```sh
 make check
+make race
+make lint
+make vulncheck
 ```
+
+`make race` repeats the tests under the race detector. It takes several
+minutes because the sign-in tests hash passwords.
+
+`make lint` and `make vulncheck` download pinned staticcheck and govulncheck
+builds with `go run`, so they need network access to the Go module proxy.
 
 Inspect template and agent readiness before diagnosing a model problem:
 

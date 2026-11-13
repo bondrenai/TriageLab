@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -309,6 +310,46 @@ func TestGitHubFlowRejectsUnsafeOrOversizedAttachments(t *testing.T) {
 			c, err := flow.Preview(t.Context(), 42)
 			if err != nil || c.State != "review" || c.Plan != "" || len(c.Files) != 0 {
 				t.Fatalf("unsafe evidence admitted: %+v, %v", c, err)
+			}
+		})
+	}
+}
+
+// A content refusal and an unusable evidence location reach the operator as
+// different reasons, and neither reason carries the refused content.
+func TestGitHubFlowSeparatesIngestionRefusalFromLocationFailure(t *testing.T) {
+	token := "ghp_" + strings.Repeat("A", 36)
+	for _, tc := range []struct {
+		name   string
+		dir    func(*testing.T) string
+		change func(*githubFlowSource)
+		want   string
+	}{
+		{"credential-shaped attachment", func(t *testing.T) string { return filepath.Join(t.TempDir(), "cases") },
+			func(s *githubFlowSource) {
+				s.contents[s.snapshot.Comments[1].Files[0].URL] = []byte("print('" + token + "')\n")
+			}, "failed ingestion checks"},
+		{"unusable evidence location", func(t *testing.T) string {
+			// The store opens through this path, but ingestion refuses the
+			// parent reference in the evidence directory built under it.
+			base := t.TempDir()
+			if err := os.Mkdir(filepath.Join(base, "x"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return base + "/x/../cases"
+		}, func(*githubFlowSource) {}, "ticket state directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newGitHubFlowSource()
+			tc.change(s)
+			flow := openGitHubFlowFixture(t, s, tc.dir(t))
+			c, err := flow.Preview(t.Context(), 42)
+			if err != nil || c.State != "review" || c.Plan != "" || !strings.Contains(c.Reason, tc.want) {
+				t.Fatalf("unexpected preview: %+v, %v", c, err)
+			}
+			data, err := json.Marshal(c)
+			if err != nil || strings.Contains(string(data), token) {
+				t.Fatal("refused content appeared in the case response")
 			}
 		})
 	}

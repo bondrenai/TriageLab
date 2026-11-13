@@ -18,7 +18,7 @@ shape, update all of these files.
 For the configured `bondren-build` workspace with results chat and agentgateway,
 see [build VM access and operations](build-vm-chat-mcp.md).
 
-Use Node.js 24 and Go 1.27.3. Install dependencies and build on the VM:
+Use Node.js 24 and Go 1.27.4. Install dependencies and build on the VM:
 
 ```sh
 make install-ui
@@ -68,8 +68,12 @@ make check
 The API is a local interface for a small team, not a hosted service. It accepts one
 investigation at a time. Closing a tab leaves the investigation running; use
 Cancel to stop it. Server shutdown also cancels active work and allows bounded
-cleanup. After an abrupt crash, inspect the report and use the CLI cleanup
-command if resources remain. A recorded outcome does not override cleanup errors.
+cleanup. After an abrupt crash, use **Close investigation** for a run with a
+lifecycle journal. Older runs with a cleanup record offer **Retry cleanup**
+to users and admins. It runs in the background for up to 90 seconds and uses
+the report's saved resource IDs and recovery requests. The endpoint and user
+must match the workspace configuration, and the namespace must be allowed.
+The CLI equivalent is `triagelab cleanup --report`.
 
 Launches choose from operator-configured options: the manual agents (and saved
 agents, when the workspace allows resource writes), sandbox templates, and,
