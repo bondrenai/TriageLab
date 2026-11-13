@@ -97,7 +97,7 @@ func TestRetainedHistorySurvivesRestartWithoutExposingControlRecord(t *testing.T
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"paused"`) {
 		t.Fatalf("history: %d %s", w.Code, w.Body)
 	}
-	for _, name := range []string{"lifecycle.json", "pause-request.json", "rounds/0001/report.json"} {
+	for _, name := range []string{"lifecycle.json", "pause-request.json", "steer-request.json", "rounds/0001/report.json"} {
 		w = requestAs(restarted, cookie, "GET", "/api/runs/"+state.RunID+"/"+name, nil)
 		if w.Code != 404 {
 			t.Fatalf("private route %s: %d", name, w.Code)
@@ -208,6 +208,71 @@ func TestPauseRequestsSettlementWithoutCancelingRun(t *testing.T) {
 	w = request(s, "POST", "/api/runs/"+state.RunID+"/cancel", nil)
 	if w.Code != 202 || !canceled {
 		t.Fatalf("stop lost cancellation behavior: %d", w.Code)
+	}
+}
+
+func TestSteerStagesGuidanceWithoutRetentionOrCancelingRun(t *testing.T) {
+	s := newTestServer(t, nil)
+	state := retainedState(s)
+	state.Phase, state.TaskID, state.Retention = "running", "task-1", false
+	saveRetainedRun(t, s, state)
+	lock, err := os.OpenFile(filepath.Join(s.directory, state.RunID, ".lifecycle.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	canceled := false
+	wake := make(chan struct{}, 1)
+	s.activeID, s.active = state.RunID, &runningCase{cancel: func() { canceled = true }, done: make(chan struct{}), wake: wake}
+	defer func() { s.activeID, s.active = "", nil }()
+
+	view := s.lifecycle(state.RunID, state, true)
+	if !view.CanSteer || view.CanPause {
+		t.Fatalf("expected steer enabled and pause disabled without retention: %+v", view)
+	}
+
+	// Viewer role cannot steer.
+	viewerReq := continuationRequest(t, s, state, "steer")
+	viewerReq.Header.Del("Cookie")
+	viewerReq.AddCookie(loginAs(t, s, "observer", "viewer-password-1"))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, viewerReq)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("viewer steer=%d, want 403", w.Code)
+	}
+
+	// Stale round binding is rejected.
+	staleReq := continuationRequest(t, s, state, "steer")
+	staleReq.Header.Set("X-TriageLab-Resume-Round", "2")
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, staleReq)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("stale steer=%d, want 409", w.Code)
+	}
+
+	// Valid steer stages steer-request.json, wakes the runner, and does not cancel the run.
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, continuationRequest(t, s, state, "steer"))
+	if w.Code != http.StatusAccepted || canceled {
+		t.Fatalf("steer=%d canceled=%v body=%s", w.Code, canceled, w.Body)
+	}
+	select {
+	case <-wake:
+	default:
+		t.Fatal("steer did not wake the active poll loop")
+	}
+	afterView := s.lifecycle(state.RunID, state, true)
+	if afterView.CanSteer || !strings.Contains(afterView.Message, "Steering queued") {
+		t.Fatalf("pending steer not reflected in lifecycle view: %+v", afterView)
+	}
+	// Duplicate steer while one is already staged is rejected with 409.
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, continuationRequest(t, s, state, "steer"))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate steer=%d, want 409", w.Code)
 	}
 }
 

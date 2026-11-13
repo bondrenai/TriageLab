@@ -92,7 +92,7 @@ func TestMCPTransportSchemasAndPerCallRoles(t *testing.T) {
 	if err := json.Unmarshal(mcpRPC(t, handler, viewer, "tools/list", map[string]any{}), &listing); err != nil {
 		t.Fatal(err)
 	}
-	if len(listing.Tools) != 10 {
+	if len(listing.Tools) != 11 {
 		t.Fatalf("tools = %d", len(listing.Tools))
 	}
 	for _, tool := range listing.Tools {
@@ -110,6 +110,7 @@ func TestMCPTransportSchemasAndPerCallRoles(t *testing.T) {
 	for name, args := range map[string]any{
 		"start_investigation":  map[string]any{"description": "A problem"},
 		"pause_investigation":  map[string]any{"run_id": retainedRunID},
+		"steer_investigation":  map[string]any{"run_id": retainedRunID, "round": 1, "resume_settings": strings.Repeat("a", 64), "description": "Check another file"},
 		"resume_investigation": map[string]any{"run_id": retainedRunID, "round": 1, "resume_settings": strings.Repeat("a", 64), "description": "More information"},
 		"close_investigation":  map[string]any{"run_id": retainedRunID, "round": 1, "resume_settings": strings.Repeat("a", 64)},
 		"ask_investigation":    map[string]any{"run_id": retainedRunID, "message": "Why?"},

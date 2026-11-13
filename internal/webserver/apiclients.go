@@ -99,7 +99,7 @@ func clientRoute(method, path string) (clientAccess, string) {
 		return clientRead, parts[0]
 	case len(parts) == 2 && method == http.MethodPost:
 		switch parts[1] {
-		case "cancel", "pause", "resume", "close":
+		case "cancel", "pause", "steer", "resume", "close":
 			return clientSteer, parts[0]
 		}
 	}

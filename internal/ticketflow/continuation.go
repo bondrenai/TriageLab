@@ -46,7 +46,7 @@ func (f *Flow) ApproveContinuation(a ContinuationApproval, launch func(reserve f
 	if !ok || c.Paused || a.Round < 1 || a.Round >= 32 || a.Actor == "" || len(a.Actor) > 256 || launch == nil {
 		return ErrBlocked
 	}
-	if a.Report["status"] != "paused" && a.Report["status"] != "pausing" && a.Report["status"] != "resuming" {
+	if a.Report["status"] != "running" && a.Report["status"] != "paused" && a.Report["status"] != "pausing" && a.Report["status"] != "resuming" {
 		return ErrBlocked
 	}
 	if err := a.Config.Validate(); err != nil {

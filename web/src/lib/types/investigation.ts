@@ -27,10 +27,20 @@ export interface RunSummary {
   attention?: { reason: string; action: string };
 }
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  args?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  pending?: boolean;
+}
+
 export interface Experiment {
+  call_id?: string;
   process_id: string;
   command: string[];
   cwd?: string;
+  env?: Record<string, string>;
   state?: string;
   exit_code?: number | null;
   stdout?: string;
@@ -38,6 +48,7 @@ export interface Experiment {
   outputs_complete?: boolean;
   truncated?: boolean;
   timed_out?: boolean;
+  stopped_for_pause?: boolean;
 }
 
 export interface Hypothesis {
@@ -81,6 +92,8 @@ export interface InvestigationReport {
   cleanup_error?: string;
   progress?: string[];
   action_error?: string;
+  task_state?: string;
+  task_failure?: string;
   ticket_note?: TicketNote;
   round?: number;
   round_started_at?: string;
@@ -89,6 +102,7 @@ export interface InvestigationReport {
     phase: string;
     round: number;
     can_pause: boolean;
+    can_steer?: boolean;
     can_resume: boolean;
     can_close: boolean;
     resume_settings: string;
@@ -103,6 +117,7 @@ export interface InvestigationReport {
   };
   continuation?: InvestigationReport["case"];
   experiments?: Experiment[];
+  tool_calls?: ToolCall[];
   analysis?: {
     summary?: string;
     observations?: string[];

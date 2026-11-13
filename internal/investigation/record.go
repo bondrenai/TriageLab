@@ -180,8 +180,8 @@ type Experiment struct {
 	// State is the sandbox service's process state; absent until first read.
 	State    string `json:"state,omitzero"`
 	ExitCode *int   `json:"exit_code,omitempty"`
-	// Output is present once the process exited and its output was read. Its
-	// members are stored inline, beside the other experiment members.
+	// Output holds the latest bounded output read from the sandbox; OutputsComplete
+	// marks the final read after the process exited. Its members are stored inline.
 	*Output
 	OutputsComplete bool `json:"outputs_complete,omitempty"`
 	TimedOut        bool `json:"timed_out,omitempty"`

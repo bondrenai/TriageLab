@@ -245,6 +245,174 @@ func pauseRequested(dir string, state *State) (bool, error) {
 	return request.RunID == state.RunID && request.Round == state.Round && request.TaskID == state.TaskID, nil
 }
 
+type steerAttachment struct {
+	Path      string `json:"path"`
+	SizeBytes int    `json:"size_bytes"`
+	SHA256    string `json:"sha256"`
+	Data      []byte `json:"data,omitempty"`
+}
+
+type steerRequest struct {
+	RunID       string            `json:"run_id"`
+	Round       int               `json:"round"`
+	TaskID      string            `json:"task_id"`
+	Actor       string            `json:"actor,omitempty"`
+	Digest      string            `json:"digest"`
+	Description string            `json:"description"`
+	Source      map[string]any    `json:"source"`
+	Environment map[string]any    `json:"environment"`
+	Attachments []steerAttachment `json:"attachments,omitempty"`
+	Evidence    []string          `json:"evidence"`
+}
+
+func checkContinuationPaths(original []casefile.Attachment, nextRound int) error {
+	prefix := fmt.Sprintf("rounds/%04d", nextRound)
+	for _, attachment := range original {
+		existing := attachment.Path
+		if existing == prefix || strings.HasPrefix(existing, prefix+"/") || strings.HasPrefix(prefix, existing+"/") {
+			return fmt.Errorf("additional input directory conflicts with an original input; close this investigation before starting a new one")
+		}
+	}
+	return nil
+}
+
+// RequestSteer queues operator guidance to interrupt the active round at the
+// next poll boundary and start a new round in the same live sandbox and session.
+// Unlike RequestPause, it never suspends the sandbox and works on both release
+// and fork kagent controllers.
+func RequestSteer(dir string, added casefile.Case, actor string) error {
+	return RequestSteerWithReserve(dir, added, actor, nil)
+}
+
+// RequestSteerWithReserve validates steering eligibility under the active-run
+// lock check before invoking reserve and writing the private steer request.
+func RequestSteerWithReserve(dir string, added casefile.Case, actor string, reserve func() error) error {
+	state, err := LoadState(dir)
+	if err != nil {
+		return err
+	}
+	if state.Phase != "running" || state.TaskID == "" || state.SandboxID == "" || state.SessionID == "" {
+		return fmt.Errorf("only an active running investigation can be steered")
+	}
+	if state.Round >= maxRounds {
+		return fmt.Errorf("investigation reached the %d round limit; let it finish or stop it", maxRounds)
+	}
+	if paused, err := pauseRequested(dir, &state); err != nil {
+		return err
+	} else if paused {
+		return fmt.Errorf("a pause is already pending for this round")
+	}
+	if _, steered, err := steerRequested(dir, &state); err != nil {
+		return err
+	} else if steered {
+		return fmt.Errorf("steering is already pending for this round")
+	}
+	digest, err := continuationDigest(added)
+	if err != nil {
+		return err
+	}
+	current, err := loadReport(filepath.Join(dir, "report.json"), &state, state.Round)
+	if err != nil {
+		return err
+	}
+	if err := checkContinuationPaths(current.Case.Attachments, state.Round+1); err != nil {
+		return err
+	}
+	unlock, err := lockRun(dir)
+	if err == nil {
+		unlock()
+		return fmt.Errorf("investigation is no longer active; close its saved resources")
+	}
+	if !errors.Is(err, ErrBusy) {
+		return err
+	}
+	if reserve != nil {
+		if err := reserve(); err != nil {
+			return err
+		}
+	}
+	attachments := make([]steerAttachment, len(added.Attachments))
+	for index, attachment := range added.Attachments {
+		sum := sha256.Sum256(attachment.Content)
+		attachments[index] = steerAttachment{
+			Path:      attachment.Path,
+			SizeBytes: attachment.SizeBytes,
+			SHA256:    hex.EncodeToString(sum[:]),
+			Data:      append([]byte(nil), attachment.Content...),
+		}
+	}
+	return writePrivate(filepath.Join(dir, "steer-request.json"), steerRequest{
+		RunID:       state.RunID,
+		Round:       state.Round,
+		TaskID:      state.TaskID,
+		Actor:       actor,
+		Digest:      digest,
+		Description: added.Description,
+		Source:      added.Source,
+		Environment: added.Environment,
+		Attachments: attachments,
+		Evidence:    added.Evidence,
+	})
+}
+
+func steerRequested(dir string, state *State) (steerRequest, bool, error) {
+	var request steerRequest
+	err := readJSON(filepath.Join(dir, "steer-request.json"), 8<<20, &request, true)
+	if errors.Is(err, os.ErrNotExist) {
+		return steerRequest{}, false, nil
+	}
+	if err != nil {
+		return steerRequest{}, false, err
+	}
+	if request.RunID != state.RunID || request.Round != state.Round || request.TaskID != state.TaskID {
+		return steerRequest{}, false, nil
+	}
+	return request, true, nil
+}
+
+func steerCase(request steerRequest) (casefile.Case, error) {
+	attachments := make([]casefile.Attachment, len(request.Attachments))
+	for index, item := range request.Attachments {
+		attachments[index] = casefile.Attachment{
+			Path:      item.Path,
+			SizeBytes: item.SizeBytes,
+			SHA256:    item.SHA256,
+			Content:   item.Data,
+		}
+	}
+	added := casefile.Case{
+		Description: request.Description,
+		Source:      request.Source,
+		Environment: request.Environment,
+		Attachments: attachments,
+		Evidence:    request.Evidence,
+	}
+	digest, err := continuationDigest(added)
+	if err != nil {
+		return casefile.Case{}, err
+	}
+	if digest != request.Digest {
+		return casefile.Case{}, fmt.Errorf("staged steer request digest mismatch")
+	}
+	for index := range added.Attachments {
+		sum := sha256.Sum256(added.Attachments[index].Content)
+		added.Attachments[index].SHA256 = hex.EncodeToString(sum[:])
+	}
+	return added, nil
+}
+
+// HasPendingPause reports whether a valid pause request is queued for state.
+func HasPendingPause(dir string, state State) bool {
+	ok, err := pauseRequested(dir, &state)
+	return err == nil && ok
+}
+
+// HasPendingSteer reports whether a valid steer request is queued for state.
+func HasPendingSteer(dir string, state State) bool {
+	_, ok, err := steerRequested(dir, &state)
+	return err == nil && ok
+}
+
 func sandboxRequest(state State) map[string]any {
 	request := map[string]any{"namespace": state.Config.Namespace, "template": state.Config.Template, "request_id": state.RunID, "name": "triagelab-" + state.RunID, "ttl_seconds": state.Config.SandboxTTL}
 	if state.Retention {
@@ -314,14 +482,27 @@ func (i *Investigator) archiveRound(dir string, state *State, r *Report) error {
 	return i.persist(destination, &archived)
 }
 
-func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r *Report, observed map[string]time.Time) error {
+func (i *Investigator) runRound(parent context.Context, activeCtx *context.Context, extraCancels *[]context.CancelFunc, dir string, state *State, r *Report, observed map[string]time.Time) error {
 	for iteration := 0; ; iteration++ {
+		ctx := *activeCtx
 		requested, err := pauseRequested(dir, state)
 		if err != nil {
 			return err
 		}
 		if requested {
 			return i.pauseRound(ctx, dir, state, r)
+		}
+		steered, hasSteer, err := steerRequested(dir, state)
+		if err != nil {
+			return err
+		}
+		if hasSteer {
+			if err := i.steerRound(parent, activeCtx, extraCancels, dir, state, r, steered); err != nil {
+				return err
+			}
+			observed = map[string]time.Time{}
+			iteration = -1
+			continue
 		}
 		finished, err := i.pollOnce(ctx, dir, state.TaskID, r, observed, iteration)
 		if err != nil {
@@ -335,6 +516,18 @@ func (i *Investigator) runRound(ctx context.Context, dir string, state *State, r
 		}
 		if requested {
 			return i.pauseRound(ctx, dir, state, r)
+		}
+		steered, hasSteer, err = steerRequested(dir, state)
+		if err != nil {
+			return err
+		}
+		if hasSteer {
+			if err := i.steerRound(parent, activeCtx, extraCancels, dir, state, r, steered); err != nil {
+				return err
+			}
+			observed = map[string]time.Time{}
+			iteration = -1
+			continue
 		}
 		if finished {
 			// Without durable retention a suspended sandbox still expires at its
@@ -379,6 +572,49 @@ func (i *Investigator) settleTask(ctx context.Context, state *State, r *Report) 
 	}
 }
 
+func (i *Investigator) quiesceRound(ctx context.Context, dir string, state *State, r *Report, action string) error {
+	if err := i.settleTask(ctx, state, r); err != nil {
+		return fmt.Errorf("%s task: %w", action, err)
+	}
+	observed := map[string]time.Time{}
+	killed := map[string]bool{}
+	for {
+		if _, err := i.observe(ctx, r, observed); err != nil {
+			return fmt.Errorf("%s evidence capture: %w", action, err)
+		}
+		for _, call := range r.ToolCalls {
+			if call.Pending {
+				return fmt.Errorf("cannot confirm quiescence while a tool call has no settled result; close the investigation")
+			}
+		}
+		settled := true
+		for index := range r.Experiments {
+			e := &r.Experiments[index]
+			if e.exited() && e.OutputsComplete {
+				continue
+			}
+			settled = false
+			pid := e.ProcessID
+			if !killed[pid] {
+				if _, err := i.call(ctx, "kill_sandbox_process", map[string]any{"sandbox_id": state.SandboxID, "process_id": pid}); err != nil {
+					return fmt.Errorf("stop experiment for %s: %w", action, err)
+				}
+				e.StoppedForPause = true
+				killed[pid] = true
+			}
+		}
+		if err := i.persist(dir, r); err != nil {
+			return err
+		}
+		if settled {
+			return nil
+		}
+		if err := i.pause(ctx); err != nil {
+			return err
+		}
+	}
+}
+
 func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State, r *Report) error {
 	state.Phase = "pausing"
 	if err := saveState(dir, state); err != nil {
@@ -387,45 +623,8 @@ func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State,
 	r.Status = StatusPausing
 	i.progress(ctx, "Settling the investigator and preserving evidence before suspension")
 	if !state.PauseReady {
-		if err := i.settleTask(ctx, state, r); err != nil {
-			return fmt.Errorf("pause task: %w", err)
-		}
-		observed := map[string]time.Time{}
-		killed := map[string]bool{}
-		for {
-			if _, err := i.observe(ctx, r, observed); err != nil {
-				return fmt.Errorf("pause evidence capture: %w", err)
-			}
-			for _, call := range r.ToolCalls {
-				if call.Pending {
-					return fmt.Errorf("cannot confirm quiescence while a tool call has no settled result; close the investigation")
-				}
-			}
-			settled := true
-			for index := range r.Experiments {
-				e := &r.Experiments[index]
-				if e.exited() && e.OutputsComplete {
-					continue
-				}
-				settled = false
-				pid := e.ProcessID
-				if !killed[pid] {
-					if _, err := i.call(ctx, "kill_sandbox_process", map[string]any{"sandbox_id": state.SandboxID, "process_id": pid}); err != nil {
-						return fmt.Errorf("stop experiment for pause: %w", err)
-					}
-					e.StoppedForPause = true
-					killed[pid] = true
-				}
-			}
-			if err := i.persist(dir, r); err != nil {
-				return err
-			}
-			if settled {
-				break
-			}
-			if err := i.pause(ctx); err != nil {
-				return err
-			}
+		if err := i.quiesceRound(ctx, dir, state, r, "pause"); err != nil {
+			return err
 		}
 		state.PauseReady = true
 		if err := saveState(dir, state); err != nil {
@@ -448,6 +647,128 @@ func (i *Investigator) pauseRound(ctx context.Context, dir string, state *State,
 	}
 	i.progress(ctx, "Investigation paused; workspace and session retained")
 	return nil
+}
+
+func (i *Investigator) steerRound(parent context.Context, activeCtx *context.Context, extraCancels *[]context.CancelFunc, dir string, state *State, r *Report, request steerRequest) error {
+	_ = os.Remove(filepath.Join(dir, "steer-request.json"))
+	if state.Round >= maxRounds {
+		return fmt.Errorf("investigation reached the %d round limit; let it finish or stop it", maxRounds)
+	}
+	added, err := steerCase(request)
+	if err != nil {
+		return err
+	}
+	if err := checkContinuationPaths(r.Case.Attachments, state.Round+1); err != nil {
+		return err
+	}
+	settleCtx := *activeCtx
+	i.progress(settleCtx, fmt.Sprintf("Redirecting the investigator: settling round %d", state.Round))
+	if err := i.quiesceRound(settleCtx, dir, state, r, "steer"); err != nil {
+		return err
+	}
+	if r.Status != StatusCompleted {
+		r.Status = StatusInterrupted
+	}
+	r.FinishedAt = stampTime()
+	if err := i.persist(dir, r); err != nil {
+		return err
+	}
+	if err := i.archiveRound(dir, state, r); err != nil {
+		return err
+	}
+	history := []*Report{}
+	for round := 1; round <= state.Round; round++ {
+		prior, err := loadReport(filepath.Join(roundDir(dir, round), "report.json"), state, round)
+		if err != nil {
+			return err
+		}
+		prior.Rounds = nil
+		history = append(history, prior)
+	}
+	nextCtx, nextCancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
+	*extraCancels = append(*extraCancels, nextCancel)
+	*activeCtx = nextCtx
+
+	r.Rounds = history
+	r.Round = state.Round + 1
+	r.RoundStartedAt, r.FinishedAt = stampTime(), nil
+	r.Status, r.Outcome = StatusRunning, OutcomeInconclusive
+	r.Experiments, r.ToolCalls = []Experiment{}, []kagent.ToolCall{}
+	r.Analysis, r.Warnings, r.Errors = map[string]any{}, []string{}, []string{}
+	r.Continuation = &added
+	r.ResumedBy = request.Actor
+	if r.ResumedBy == "" && i.Actor != "" {
+		r.ResumedBy = i.Actor
+	}
+	r.TaskState = ""
+	r.TaskFailure = ""
+	r.Session = map[string]any{"id": state.SessionID}
+
+	state.ResumeFromRound = state.Round
+	state.Round++
+	state.TaskID, state.PauseReady, state.ContinuationDigest = "", false, request.Digest
+	state.MessageID = fmt.Sprintf("%s-round-%d", state.RunID, state.Round)
+	if err := saveState(dir, state); err != nil {
+		return err
+	}
+	if err := i.persist(dir, r); err != nil {
+		return err
+	}
+	setResourceIDs(r, *state)
+
+	workspace := path.Join("/data/workspace/rounds", fmt.Sprintf("%04d", state.Round))
+	for _, attachment := range added.Attachments {
+		value, err := i.call(nextCtx, "write_sandbox_file", map[string]any{
+			"sandbox_id":  state.SandboxID,
+			"path":        path.Join(workspace, attachment.Path),
+			"data_base64": base64.StdEncoding.EncodeToString(attachment.Content),
+			"mode":        384,
+		})
+		if err != nil {
+			return fmt.Errorf("upload continuation: %w", err)
+		}
+		n, ok := integer(value["bytes_written"])
+		if !ok || n != len(attachment.Content) {
+			return fmt.Errorf("incomplete continuation file upload")
+		}
+	}
+	message, err := json.Marshal(map[string]any{
+		"run_context": map[string]any{
+			"sandbox_id":                 state.SandboxID,
+			"workspace":                  "/data/workspace",
+			"additional_input_directory": workspace,
+			"round":                      state.Round,
+			"max_experiments":            i.Config.MaxExperiments,
+			"process_timeout_seconds":    i.Config.ProcessTimeout,
+		},
+		"untrusted_additional_information": added,
+	})
+	if err != nil {
+		return err
+	}
+	state.Phase = "invoking"
+	if err := saveState(dir, state); err != nil {
+		return err
+	}
+	i.progress(nextCtx, fmt.Sprintf("Starting steered round %d", state.Round))
+	invoked, err := i.call(nextCtx, "invoke_agent", map[string]any{
+		"session_id": state.SessionID,
+		"message_id": state.MessageID,
+		"message":    "The operator interrupted the previous turn to redirect this investigation in the same standalone sandbox. Incorporate the guidance and additional information below while preserving all sandbox safety and evidence rules. Previous round process IDs are historical: never read their handles or cite them as evidence for this round. Collect new experiments for current claims. Durable files remain under /data/workspace; new attachment paths are relative to additional_input_directory. Return the final structured report, including missing_information if blocked. The following JSON separates trusted run context from untrusted case material.\n\n" + string(message),
+	})
+	if err != nil {
+		return fmt.Errorf("continuation invocation outcome is uncertain; it will not be replayed, close the investigation to release resources: %w", err)
+	}
+	if str(invoked["session_id"]) != state.SessionID || str(invoked["task_id"]) == "" {
+		return fmt.Errorf("continuation omitted its exact session/task identity; invocation will not be replayed")
+	}
+	state.TaskID, state.Phase = str(invoked["task_id"]), "running"
+	r.Session["task_id"] = state.TaskID
+	r.Status = StatusRunning
+	if err := saveState(dir, state); err != nil {
+		return err
+	}
+	return i.persist(dir, r)
 }
 
 func (i *Investigator) sandboxTransition(ctx context.Context, tool, target string, state *State, r *Report) error {
@@ -554,8 +875,15 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 	if state.SandboxID == "" || state.SessionID == "" {
 		return nil, fmt.Errorf("retained resource identities are missing")
 	}
+	var extraCancels []context.CancelFunc
+	defer func() {
+		for _, fn := range extraCancels {
+			fn()
+		}
+	}()
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
 	defer cancel()
+	activeCtx := ctx
 	if state.Phase == "pausing" {
 		result, err = loadReport(filepath.Join(dir, "report.json"), &state, state.Round)
 		if err != nil {
@@ -577,12 +905,8 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 		if err != nil {
 			return nil, err
 		}
-		prefix := fmt.Sprintf("rounds/%04d", state.Round+1)
-		for _, attachment := range previous.Case.Attachments {
-			original := attachment.Path
-			if original == prefix || strings.HasPrefix(original, prefix+"/") || strings.HasPrefix(prefix, original+"/") {
-				return nil, fmt.Errorf("additional input directory conflicts with an original input; close this investigation before starting a new one")
-			}
+		if err := checkContinuationPaths(previous.Case.Attachments, state.Round+1); err != nil {
+			return nil, err
 		}
 		result = previous
 		history := []*Report{}
@@ -630,14 +954,15 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 	}
 	setResourceIDs(result, state)
 	defer func() {
-		if ctx.Err() != nil && state.Phase != "paused" {
-			returnErr = errors.Join(returnErr, ctx.Err())
+		_ = os.Remove(filepath.Join(dir, "steer-request.json"))
+		if activeCtx.Err() != nil && state.Phase != "paused" {
+			returnErr = errors.Join(returnErr, activeCtx.Err())
 		}
 		if returnErr != nil {
 			result.Errors = append(result.Errors, returnErr.Error())
 			result.Status = Status(state.Phase)
 		}
-		if ctx.Err() != nil && state.Phase != "running" && state.Phase != "paused" {
+		if activeCtx.Err() != nil && state.Phase != "running" && state.Phase != "paused" {
 			returnErr = i.cancelLifecycle(dir, &state, result, returnErr)
 			return
 		}
@@ -723,7 +1048,7 @@ func (i *Investigator) Resume(parent context.Context, added casefile.Case, dir s
 	if err := i.persist(dir, result); err != nil {
 		return result, err
 	}
-	return result, i.runRound(ctx, dir, &state, result, map[string]time.Time{})
+	return result, i.runRound(parent, &activeCtx, &extraCancels, dir, &state, result, map[string]time.Time{})
 }
 
 func setResourceIDs(r *Report, state State) {
@@ -778,6 +1103,7 @@ func (i *Investigator) Close(parent context.Context, dir string) (*Report, error
 	if err := i.validateSaved(state); err != nil {
 		return nil, err
 	}
+	_ = os.Remove(filepath.Join(dir, "steer-request.json"))
 	r, err := loadReport(filepath.Join(dir, "report.json"), &state, state.Round)
 	if err != nil {
 		r, err = loadReport(filepath.Join(roundDir(dir, state.Round), "report.json"), &state, state.Round)

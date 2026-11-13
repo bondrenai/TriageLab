@@ -787,3 +787,180 @@ func TestCanceledLifecycleTransitionsCleanUpInsteadOfRetaining(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectEvidenceStreamsLiveOutputBeforeExit(t *testing.T) {
+	f := newLifecycleFixture()
+	f.missing = false
+	f.state = "TASK_STATE_WORKING"
+	f.running = true
+	dir := t.TempDir()
+	wake := make(chan struct{}, 1)
+	var midRun *Report
+	polls := 0
+	f.onFirstPoll = func() error {
+		f.onFirstPoll = func() error {
+			polls++
+			state, err := LoadState(dir)
+			if err != nil {
+				return err
+			}
+			midRun, err = loadReport(filepath.Join(dir, "report.json"), &state, 1)
+			if err != nil {
+				return err
+			}
+			f.running = false
+			f.state = "TASK_STATE_COMPLETED"
+			return nil
+		}
+		wake <- struct{}{}
+		return nil
+	}
+	i := &Investigator{Client: f, Config: fixtureConfig(), Wake: wake}
+	r, err := i.Run(context.Background(), casefile.Case{ID: "live-stream", Description: "Stream partial command output while running"}, dir)
+	if err != nil || r.Status != StatusCompleted || polls != 1 {
+		t.Fatalf("result=%v error=%v polls=%d", r, err, polls)
+	}
+	if midRun == nil || len(midRun.Experiments) != 2 {
+		t.Fatalf("mid-run report missing live experiments: %+v", midRun)
+	}
+	if midRun.Experiments[0].Output == nil || midRun.Experiments[0].OutputsComplete || !strings.Contains(midRun.Experiments[0].Output.Stderr, "timeout configuration too small") {
+		t.Fatalf("expected live partial stderr before exit: %+v", midRun.Experiments[0])
+	}
+	if midRun.Experiments[1].Output == nil || midRun.Experiments[1].OutputsComplete || !strings.Contains(midRun.Experiments[1].Output.Stdout, "verification passed") {
+		t.Fatalf("expected live partial stdout before exit: %+v", midRun.Experiments[1])
+	}
+	for _, exp := range r.Experiments {
+		if !exp.OutputsComplete || exp.Output == nil {
+			t.Fatalf("expected final complete output on exit: %+v", exp)
+		}
+	}
+}
+
+func TestSteerSettlesActiveTurnAndContinuesWithoutSuspendingSandbox(t *testing.T) {
+	for _, retention := range []bool{false, true} {
+		t.Run(strBool(retention), func(t *testing.T) {
+			f := newLifecycleFixture()
+			f.retention = retention
+			f.missing = false
+			f.state = "TASK_STATE_WORKING"
+			f.running = true
+			dir := t.TempDir()
+			wake := make(chan struct{}, 1)
+			var stagedMode os.FileMode
+			f.onFirstPoll = func() error {
+				// After the first poll persists report.json and observes running processes,
+				// stage an operator steer request on the second poll.
+				f.onFirstPoll = func() error {
+					err := RequestSteer(dir, casefile.Case{
+						Description: "Stop checking app.py; inspect config.yaml secret-marker",
+						Attachments: []casefile.Attachment{{Path: "hint.txt", Content: []byte("focus here"), SizeBytes: 10}},
+					}, "operator")
+					if err != nil {
+						return err
+					}
+					info, statErr := os.Stat(filepath.Join(dir, "steer-request.json"))
+					if statErr != nil {
+						return statErr
+					}
+					stagedMode = info.Mode().Perm()
+					// Once cancel_task runs during quiesce, mark the turn canceled so quiesce settles,
+					// and omit Round 1's process starts during Round 2.
+					f.onFirstPoll = func() error {
+						if f.canceled && f.invocations == 0 {
+							f.state = "TASK_STATE_CANCELED"
+							f.noExperiments = true
+						}
+						return nil
+					}
+					return nil
+				}
+				wake <- struct{}{}
+				return nil
+			}
+			i := &Investigator{Client: f, Config: fixtureConfig(), Secrets: []string{"secret-marker"}, Wake: wake}
+			r, err := i.Run(context.Background(), casefile.Case{ID: "steered-case", Description: "Original problem"}, dir)
+			if err != nil || r.Status != StatusCompleted {
+				t.Fatalf("steered run failed: report=%v error=%v", r, err)
+			}
+			if stagedMode != 0o600 {
+				t.Fatalf("steer-request.json mode=%o, want 0600", stagedMode)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "steer-request.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("steer-request.json was not cleaned up: %v", err)
+			}
+			if r.Round != 2 || len(r.Rounds) != 1 {
+				t.Fatalf("round=%d history=%d, want round 2 with 1 archived round", r.Round, len(r.Rounds))
+			}
+			state, err := LoadState(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persisted, err := loadReport(filepath.Join(dir, "report.json"), &state, 2)
+			if err != nil || persisted.Continuation == nil || persisted.Continuation.Description != "Stop checking app.py; inspect config.yaml [REDACTED]" {
+				t.Fatalf("persisted continuation was not saved or redacted: report=%+v err=%v", persisted, err)
+			}
+			round1 := r.Rounds[0]
+			if round1.Status != StatusInterrupted || round1.Rounds != nil || len(round1.Experiments) != 2 || !round1.Experiments[0].StoppedForPause {
+				t.Fatalf("round 1 archive did not settle cleanly: %+v", round1)
+			}
+			wroteHint := false
+			for _, op := range f.operations {
+				if op == "suspend_sandbox" || op == "resume_sandbox" {
+					t.Fatalf("in-flight steer unexpectedly called %s", op)
+				}
+			}
+			for _, call := range f.calls {
+				if call.name == "write_sandbox_file" && call.args["path"] == "/data/workspace/rounds/0002/hint.txt" {
+					wroteHint = true
+				}
+			}
+			if !wroteHint || !f.canceled || f.invocations != 1 {
+				t.Fatalf("missing expected steer sequence: wroteHint=%v canceled=%v invocations=%d", wroteHint, f.canceled, f.invocations)
+			}
+			if !r.Cleanup.SandboxDeleted || !r.Cleanup.SessionDeleted {
+				t.Fatalf("steered run leaked resources on finish: %+v", r.Cleanup)
+			}
+		})
+	}
+}
+
+func TestSteerDigestRoundTripsIngestMetadata(t *testing.T) {
+	f := newLifecycleFixture()
+	f.missing = false
+	f.state = "TASK_STATE_WORKING"
+	f.running = true
+	dir := t.TempDir()
+	wake := make(chan struct{}, 1)
+	f.onFirstPoll = func() error {
+		f.onFirstPoll = func() error {
+			err := RequestSteer(dir, casefile.Case{
+				Description: "Stop the lock-timeout sweep; test cursor_columns=id,created_at",
+				Source:      map[string]any{"kind": "upload"},
+				Environment: map[string]any{},
+				Attachments: []casefile.Attachment{},
+				Evidence:    []string{},
+			}, "operator")
+			if err != nil {
+				return err
+			}
+			f.onFirstPoll = func() error {
+				if f.canceled && f.invocations == 0 {
+					f.state = "TASK_STATE_CANCELED"
+					f.noExperiments = true
+				}
+				return nil
+			}
+			return nil
+		}
+		wake <- struct{}{}
+		return nil
+	}
+	i := &Investigator{Client: f, Config: fixtureConfig(), Wake: wake}
+	r, err := i.Run(context.Background(), casefile.Case{ID: "steered-upload-case", Description: "Original problem"}, dir)
+	if err != nil || r.Status != StatusCompleted || r.Round != 2 || len(r.Rounds) != 1 {
+		t.Fatalf("steered upload run failed: report=%+v error=%v", r, err)
+	}
+	if r.Continuation == nil || r.Continuation.Source["kind"] != "upload" {
+		t.Fatalf("steered continuation lost source metadata: %+v", r.Continuation)
+	}
+}

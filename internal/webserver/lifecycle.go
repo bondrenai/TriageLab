@@ -21,6 +21,7 @@ type lifecycleView struct {
 	Phase          string `json:"phase"`
 	Round          int    `json:"round"`
 	CanPause       bool   `json:"can_pause"`
+	CanSteer       bool   `json:"can_steer"`
 	CanResume      bool   `json:"can_resume"`
 	CanClose       bool   `json:"can_close"`
 	ResumeSettings string `json:"resume_settings"`
@@ -65,13 +66,23 @@ func (s *Server) lifecycle(id string, state investigation.State, active bool) li
 		view.Message = "Restore this investigation's upstream connection and identity before continuing or closing it."
 		return view
 	}
-	view.CanPause = active && state.Phase == "running" && state.Retention
+	dir := filepath.Join(s.directory, id)
+	pendingPause := active && investigation.HasPendingPause(dir, state)
+	pendingSteer := active && investigation.HasPendingSteer(dir, state)
+	view.CanPause = active && state.Phase == "running" && state.Retention && !pendingPause && !pendingSteer
+	view.CanSteer = active && state.Phase == "running" && state.TaskID != "" && state.SandboxID != "" &&
+		state.SessionID != "" && state.Round < 32 && !pendingPause && !pendingSteer
 	view.CanResume = !active && state.SandboxID != "" && state.SessionID != "" &&
 		((state.Round < 32 && (state.Phase == "paused" || state.Phase == "pausing")) || state.Phase == "resuming")
 	view.CanClose = !active && state.Phase != "closed" && (state.SandboxID != "" || state.SessionID != "" || state.SandboxCreationPending || state.SessionCreationPending)
 	if state.Trigger == "ticket" && s.ticketOwner(id) == nil {
 		view.CanResume = false
+		view.CanSteer = false
 		view.Message = "Reconnect the original ticket source before resuming this investigation."
+	} else if pendingSteer {
+		view.Message = fmt.Sprintf("Steering queued — settling round %d before starting round %d.", state.Round, state.Round+1)
+	} else if pendingPause {
+		view.Message = "Pause requested — settling the current turn before suspending the workspace."
 	}
 	return view
 }
@@ -107,6 +118,82 @@ func (s *Server) pauseRun(w http.ResponseWriter, _ *http.Request, id string) {
 			return
 		}
 		fail(w, http.StatusConflict, "The investigation cannot pause at this stage. Refresh its status and try again.")
+		return
+	}
+	s.active.notify()
+	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
+}
+
+func (s *Server) steerRun(w http.ResponseWriter, r *http.Request, id string) {
+	state, err := s.loadRunState(id)
+	if err != nil {
+		fail(w, http.StatusConflict, "No active investigation state is available")
+		return
+	}
+	if r.Header.Get("X-TriageLab-Resume-Round") != strconv.Itoa(state.Round) ||
+		r.Header.Get("X-TriageLab-Resume-Settings") != resumeSettings(state) {
+		fail(w, http.StatusConflict, "The investigation changed. Refresh it and review the current round and limits.")
+		return
+	}
+	added, err := s.ingestUpload(w, r)
+	if err != nil {
+		fail(w, http.StatusBadRequest, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
+		return
+	}
+	if r.Context().Err() != nil {
+		return
+	}
+	actor := actorFrom(r.Context()).Username
+	config := state.Config
+	config.TokenEnv = s.config.TokenEnv
+	stage := func(reserve func() error) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.closed || s.ctx.Err() != nil {
+			return errWorkspaceClosed
+		}
+		if s.active == nil || s.activeID != id {
+			return errors.New("This investigation is not active")
+		}
+		current, err := s.loadRunState(id)
+		if err != nil || resumeSettings(current) != resumeSettings(state) || current.Phase != "running" {
+			return errors.New("the investigation changed; refresh it before steering")
+		}
+		view := s.lifecycle(id, current, true)
+		if !view.CanSteer {
+			if view.Message != "" {
+				return errors.New(view.Message)
+			}
+			return errors.New("steering is not available for the current investigation state")
+		}
+		if err := investigation.RequestSteerWithReserve(filepath.Join(s.directory, id), added, actor, reserve); err != nil {
+			return err
+		}
+		if len(s.active.progress) >= 100 {
+			s.active.progress = s.active.progress[1:]
+		}
+		s.active.progress = append(s.active.progress, "Operator steering queued for the investigator")
+		s.active.notify()
+		return nil
+	}
+	if state.Trigger == "ticket" {
+		saved, readErr := s.readReport(id)
+		owner := s.ticketOwner(id)
+		if readErr != nil || owner == nil {
+			fail(w, http.StatusConflict, "The original ticket approval is unavailable")
+			return
+		}
+		saved["status"] = state.Phase
+		err = owner.flow.ApproveContinuation(ticketflow.ContinuationApproval{RunID: id, Round: state.Round, Report: saved, Input: added, Config: config, Tools: state.AdditionalTools, Actor: actor}, stage)
+	} else {
+		err = stage(nil)
+	}
+	if err != nil {
+		status := http.StatusConflict
+		if errors.Is(err, errWorkspaceClosed) {
+			status = http.StatusServiceUnavailable
+		}
+		fail(w, status, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
@@ -218,12 +305,12 @@ func (s *Server) launchContinuation(id string, state investigation.State, config
 // The caller owns s.mu and has already persisted any ticket reservation.
 func (s *Server) startOperationLocked(id string, config investigation.Config, tools []string, actor, trigger, message string, operation func(context.Context, *investigation.Investigator) error) {
 	ctx, cancel := context.WithCancel(s.ctx)
-	active := &runningCase{cancel: cancel, done: make(chan struct{}), progress: []string{message}}
+	active := &runningCase{cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), progress: []string{message}}
 	delete(s.actionErrors, id)
 	s.activeID, s.active = id, active
 	go func() {
 		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, Secrets: s.secretList(), Actor: actor, Trigger: trigger, Progress: func(message string) {
+		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, Secrets: s.secretList(), Actor: actor, Trigger: trigger, Wake: active.wake, Progress: func(message string) {
 			safe := fmt.Sprint(report.Redact(message, s.secretList()...))
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -245,5 +332,10 @@ func (s *Server) startOperationLocked(id string, config investigation.Config, to
 		s.activeID, s.active = "", nil
 		close(active.done)
 		s.mu.Unlock()
+		if trigger == "ticket" {
+			// The procedure policy may post the investigation comment
+			// without operator review now that the report is final.
+			s.postAutomaticTicketNote(id)
+		}
 	}()
 }

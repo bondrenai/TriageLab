@@ -19,9 +19,19 @@ export function commandText(command: string[]) {
 }
 
 export function ProcessResult({ experiment }: { experiment: Experiment }) {
-  return typeof experiment.exit_code === "number"
-    ? <Stamp hue={experiment.exit_code === 0 ? "green" : "amber"}>Exit {experiment.exit_code}</Stamp>
-    : <Stamp>{experiment.state?.replace(/^PROCESS_STATE_/, "").toLowerCase() || "State unavailable"}</Stamp>;
+  if (typeof experiment.exit_code === "number") {
+    return <span className="process-result-stamps">
+      <Stamp hue={experiment.exit_code === 0 ? "green" : "amber"}>Exit {experiment.exit_code}</Stamp>
+      {experiment.exit_code === 0 && Boolean(experiment.stderr?.trim()) && <Stamp hue="amber">stderr</Stamp>}
+    </span>;
+  }
+  if (experiment.state === "PROCESS_STATE_RUNNING") {
+    return <Stamp hue="blue">Running</Stamp>;
+  }
+  if (experiment.stopped_for_pause) {
+    return <Stamp hue="amber">Stopped</Stamp>;
+  }
+  return <Stamp>{experiment.state?.replace(/^PROCESS_STATE_/, "").toLowerCase() || "State unavailable"}</Stamp>;
 }
 
 export function EvidenceReferences({ context, report, onReview, onOpenEvidence, label = "Cited experiments" }: {
@@ -60,14 +70,25 @@ export function Assessment({ assessment }: { assessment: ExperimentAssessment })
 }
 
 export function ProcessEvidence({ experiment, index, showCommand = false }: { experiment: Experiment; index: number; showCommand?: boolean }) {
+  const isRunning = experiment.state === "PROCESS_STATE_RUNNING";
+  const streaming = isRunning && experiment.outputs_complete !== true;
+  const envEntries = Object.entries(experiment.env ?? {});
+  const emptyStdout = streaming ? "Waiting for standard output…" : experiment.outputs_complete === true ? "No standard output." : "Output not collected.";
+  const emptyStderr = streaming ? "Waiting for standard error…" : experiment.outputs_complete === true ? "No standard error." : "Output not collected.";
+  const showIncompleteWarning = !isRunning && experiment.outputs_complete === false;
   return <>
     {showCommand && <><div className="output-label">Recorded command</div><pre className="process-output command-output" tabIndex={0} aria-label={`Command for experiment ${index + 1}`}>{commandText(experiment.command)}</pre></>}
-    <div className="process-context"><span className="annotation">Process {experiment.process_id}</span>{experiment.cwd && <span className="annotation">Directory {experiment.cwd}</span>}<span className="annotation">{experiment.state?.replace(/^PROCESS_STATE_/, "").toLowerCase() || "State unavailable"}</span></div>
-    <div className="output-label">Standard output</div>
-    <pre className="process-output" tabIndex={0} role="region" aria-label={`Standard output for experiment ${index + 1}`}>{experiment.stdout || (experiment.outputs_complete === true ? "No standard output." : "Output not collected.")}</pre>
-    <div className="output-label">Standard error</div>
-    <pre className="process-output stderr" tabIndex={0} role="region" aria-label={`Standard error for experiment ${index + 1}`}>{experiment.stderr || (experiment.outputs_complete === true ? "No standard error." : "Output not collected.")}</pre>
-    {(experiment.truncated || experiment.outputs_complete !== true || experiment.timed_out) && <p className="output-warning">{experiment.timed_out ? "The process exceeded its time limit. " : ""}{experiment.truncated ? "Output was truncated. " : ""}{experiment.outputs_complete === false ? "Output collection is incomplete." : experiment.outputs_complete === undefined ? "Output completeness was not recorded." : ""}</p>}
+    <div className="process-context">
+      <span className="annotation">Process {experiment.process_id}</span>
+      {experiment.cwd && <span className="annotation">Directory {experiment.cwd}</span>}
+      <span className="annotation">{experiment.state?.replace(/^PROCESS_STATE_/, "").toLowerCase() || "State unavailable"}</span>
+      {envEntries.length > 0 && <span className="annotation">Env {envEntries.map(([k, v]) => `${k}=${v}`).join(" ")}</span>}
+    </div>
+    <div className="output-label">Standard output{streaming && <span className="annotation live-tag"> · live</span>}</div>
+    <pre className="process-output" tabIndex={0} role="region" aria-label={`Standard output for experiment ${index + 1}`}>{experiment.stdout || emptyStdout}</pre>
+    <div className="output-label">Standard error{streaming && <span className="annotation live-tag"> · live</span>}</div>
+    <pre className="process-output stderr" tabIndex={0} role="region" aria-label={`Standard error for experiment ${index + 1}`}>{experiment.stderr || emptyStderr}</pre>
+    {(experiment.timed_out || experiment.stopped_for_pause || experiment.truncated || showIncompleteWarning || experiment.outputs_complete === undefined) && <p className="output-warning">{experiment.timed_out ? "The process exceeded its time limit. " : ""}{experiment.stopped_for_pause ? "Stopped early to pause or redirect this round. " : ""}{experiment.truncated ? "Output was truncated. " : ""}{showIncompleteWarning ? "Output collection is incomplete." : experiment.outputs_complete === undefined && !isRunning ? "Output completeness was not recorded." : ""}</p>}
   </>;
 }
 

@@ -44,7 +44,18 @@ var runID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}
 type runningCase struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
+	wake     chan struct{}
 	progress []string
+}
+
+func (c *runningCase) notify() {
+	if c == nil || c.wake == nil {
+		return
+	}
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
 }
 
 // Server has one active investigation. Completed reports are read from disk.
@@ -582,6 +593,9 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		switch parts[1] {
 		case "pause":
 			s.pauseRun(w, r, id)
+			return
+		case "steer":
+			s.steerRun(w, r, id)
 			return
 		case "resume", "close":
 			s.continueRun(w, r, id, parts[1])

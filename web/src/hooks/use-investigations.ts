@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cancelRun, cleanupRun, closeRun, createRun, getRun, getSettings, listRuns, pauseRun, postTicketNote, resumeRun, type ResumeInput } from "../lib/investigations";
+import { cancelRun, cleanupRun, closeRun, createRun, getRun, getSettings, listRuns, pauseRun, postTicketNote, resumeRun, steerRun, type ResumeInput } from "../lib/investigations";
 import type { InvestigationReport } from "../lib/types";
 import { queryKeys } from "../lib/query-keys";
 import { APIError } from "../lib/api-client";
@@ -43,6 +43,11 @@ function refreshRun(client: ReturnType<typeof useQueryClient>, id: string) {
 export function usePauseRun(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: () => pauseRun(id), onSettled: () => refreshRun(client, id) });
+}
+
+export function useSteerRun(id: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (input: ResumeInput) => steerRun(id, input), onSettled: () => refreshRun(client, id) });
 }
 
 export function useResumeRun(id: string) {

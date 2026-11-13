@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -40,6 +41,8 @@ type Investigator struct {
 	Config Config
 	// Progress receives TriageLab-authored phase messages for the CLI or UI.
 	Progress func(string)
+	// Wake optionally interrupts a poll sleep when pause or steer is requested.
+	Wake <-chan struct{}
 	// Trigger labels the launch origin for telemetry ("cli", "ui", "mcp", "ticket", "api").
 	Trigger string
 	// Actor records who started the run in the report provenance; it is
@@ -111,6 +114,18 @@ func (i *Investigator) call(ctx context.Context, name string, args map[string]an
 }
 func (i *Investigator) pause(ctx context.Context) error {
 	return wait(ctx, time.Duration(i.Config.PollInterval)*time.Second)
+}
+func (i *Investigator) pollSleep(ctx context.Context) error {
+	t := time.NewTimer(time.Duration(i.Config.PollInterval) * time.Second)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-i.Wake:
+		return nil
+	case <-t.C:
+		return nil
+	}
 }
 func listLen(value any) int {
 	switch list := value.(type) {
@@ -191,8 +206,15 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if _, err := LoadState(dir); !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("investigation directory already has lifecycle state; resume or close it")
 	}
+	var extraCancels []context.CancelFunc
+	defer func() {
+		for _, fn := range extraCancels {
+			fn()
+		}
+	}()
 	ctx, cancel := context.WithTimeout(parent, time.Duration(i.Config.InvestigationTimeout)*time.Second)
 	defer cancel()
+	activeCtx := ctx
 	// Retention is a controller capability, not a setting: probe it before any
 	// resource exists. A release controller runs the investigation without the
 	// fork's durable suspended-sandbox retention, so pausing stays unavailable.
@@ -214,6 +236,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 		attribute.String("agent", i.Config.Agent),
 		attribute.String("sandbox_template", i.Config.Template),
 	))
+	activeCtx = ctx
 	runStart := time.Now()
 	request := sandboxRequest(state)
 	result = newReport(c, i.Config, request)
@@ -224,9 +247,10 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	}
 	observed := map[string]time.Time{}
 	defer func() {
+		_ = os.Remove(filepath.Join(dir, "steer-request.json"))
 		if returnErr != nil {
-			if ctx.Err() != nil {
-				returnErr = errors.Join(returnErr, ctx.Err())
+			if activeCtx.Err() != nil {
+				returnErr = errors.Join(returnErr, activeCtx.Err())
 			}
 			result.Status = StatusError
 			if errors.Is(returnErr, context.Canceled) {
@@ -236,7 +260,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 			}
 			result.Errors = append(result.Errors, returnErr.Error())
 		}
-		if state.Phase == "paused" || state.Phase == "pausing" && ctx.Err() == nil {
+		if state.Phase == "paused" || state.Phase == "pausing" && activeCtx.Err() == nil {
 			result.Status = Status(state.Phase)
 			result.FinishedAt = stampTime()
 			if err := i.persist(dir, result); err != nil {
@@ -436,7 +460,7 @@ func (i *Investigator) Run(parent context.Context, c casefile.Case, dir string) 
 	if err = i.persist(dir, result); err != nil {
 		return result, err
 	}
-	return result, i.runRound(ctx, dir, &state, result, observed)
+	return result, i.runRound(parent, &activeCtx, &extraCancels, dir, &state, result, observed)
 }
 
 // pollOnce performs one session poll: read the latest turn, collect evidence,
@@ -461,7 +485,7 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r *Repo
 		return false, fmt.Errorf("invalid session turn summary")
 	}
 	if len(turns) == 0 {
-		if err = i.pause(ctx); err != nil {
+		if err = i.pollSleep(ctx); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -514,7 +538,7 @@ func (i *Investigator) pollOnce(ctx context.Context, dir, taskID string, r *Repo
 		r.Status = StatusCompleted
 		return true, nil
 	}
-	if err = i.pause(ctx); err != nil {
+	if err = i.pollSleep(ctx); err != nil {
 		return false, err
 	}
 	return false, nil
@@ -545,10 +569,36 @@ func (i *Investigator) collectEvidence(ctx context.Context, r *Report, observed 
 	if err != nil {
 		return "", err
 	}
+	seenCalls := make(map[string]bool, len(r.ToolCalls))
+	for _, call := range r.ToolCalls {
+		seenCalls[call.ID] = true
+	}
 	r.ToolCalls = calls
 	starts, err := kagent.ProcessStarts(calls, sid)
 	if err != nil {
 		return "", err
+	}
+	for _, call := range calls {
+		if !agent.IsSandboxTool(call.Name) && !slices.Contains(i.AdditionalTools, call.Name) {
+			return "", fmt.Errorf("investigator used a tool outside the configured tool set")
+		}
+	}
+	for _, call := range calls {
+		if seenCalls[call.ID] {
+			continue
+		}
+		switch call.Name {
+		case "read_sandbox_file":
+			i.progress(ctx, "Investigator inspected a sandbox file")
+		case "write_sandbox_file":
+			i.progress(ctx, "Investigator wrote a sandbox file")
+		case "kill_sandbox_process":
+			i.progress(ctx, "Investigator stopped a sandbox process")
+		default:
+			if !agent.IsSandboxTool(call.Name) {
+				i.progress(ctx, fmt.Sprintf("Investigator called tool %s", call.Name))
+			}
+		}
 	}
 	known := map[string]bool{}
 	for _, e := range r.Experiments {
@@ -559,11 +609,6 @@ func (i *Investigator) collectEvidence(ctx context.Context, r *Report, observed 
 			r.Experiments = append(r.Experiments, Experiment{CallID: start.CallID, ProcessID: start.ProcessID, Command: start.Command, CWD: start.CWD, Env: start.Env})
 			known[start.ProcessID] = true
 			i.progress(ctx, fmt.Sprintf("Experiment %d started", len(r.Experiments)))
-		}
-	}
-	for _, call := range calls {
-		if !agent.IsSandboxTool(call.Name) && !slices.Contains(i.AdditionalTools, call.Name) {
-			return "", fmt.Errorf("investigator used a tool outside the configured tool set")
 		}
 	}
 	startAttempts := 0
@@ -613,6 +658,12 @@ func (i *Investigator) collectEvidence(ctx context.Context, r *Report, observed 
 				return "", fmt.Errorf("kill timed-out process: %w", err)
 			}
 			return "", fmt.Errorf("process execution time limit reached: %w", context.DeadlineExceeded)
+		} else {
+			output, err := i.readOutputs(ctx, sid, pid)
+			if err != nil {
+				return "", err
+			}
+			e.Output = &output
 		}
 	}
 	return kagent.AgentReply(items), nil

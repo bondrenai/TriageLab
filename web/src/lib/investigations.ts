@@ -29,6 +29,13 @@ export function resumeRun(id: string, input: ResumeInput) {
   return request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/resume`, { method: "POST", body, headers: lifecycleHeaders(input.round, input.settings) });
 }
 
+export function steerRun(id: string, input: ResumeInput) {
+  const body = new FormData();
+  body.append("description", input.description);
+  for (const file of input.files) body.append("files", file, file.webkitRelativePath || file.name);
+  return request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/steer`, { method: "POST", body, headers: lifecycleHeaders(input.round, input.settings) });
+}
+
 export const closeRun = (id: string, input: { round: number; settings: string }) =>
   request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/close`, { method: "POST", headers: lifecycleHeaders(input.round, input.settings) });
 
