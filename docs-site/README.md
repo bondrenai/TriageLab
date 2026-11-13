@@ -54,6 +54,19 @@ project site), every internal link in content must be written **with the
 `/TriageLab` prefix** (`/TriageLab/reference/cli/`); the build fails
 otherwise. External links are not validated.
 
+## Search and social
+
+`public/robots.txt` allows all crawlers and points at the sitemap Starlight
+generates (`sitemap-index.xml`); its URL must stay in step with `site`/`base`
+in `astro.config.mjs`.
+
+Every page carries a social card. Pages that declare their own `og:image` in
+frontmatter keep it; all others get the default card, injected by the
+`Head` component override (`src/components/Head.astro`) from
+`public/social/triagelab-card.png`. Card sources live in `social/` as
+self-contained HTML (colors and type from `src/styles/tokens.css`); render
+them with the headless Chrome command in each file's comment after `npm ci`.
+
 ## Commands
 
 ```sh

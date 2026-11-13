@@ -1,0 +1,9 @@
+# Everything here is public documentation; crawlers are welcome.
+# Keep the sitemap URL in step with `site` and `base` in astro.config.mjs.
+# (Crawlers read robots.txt from the host root, so under the github.io
+# project-site URL this file documents intent; every page also carries
+# <link rel="sitemap">, and the sitemap is submittable from Search Console.)
+User-agent: *
+Allow: /
+
+Sitemap: https://bondrenai.github.io/TriageLab/sitemap-index.xml
