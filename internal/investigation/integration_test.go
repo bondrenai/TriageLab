@@ -2,6 +2,7 @@ package investigation
 
 import (
 	"context"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -116,6 +117,20 @@ func TestLiveInvestigation(t *testing.T) {
 			result, runErr := investigator.Run(ctx, c, dir)
 			score.DurationSeconds = math.Round(time.Since(started).Seconds()*10) / 10
 			canonical, err := corpusCanonical(result)
+			if result != nil && (result.Status == StatusPaused || result.Status == StatusPausing) {
+				// Evaluations have no operator to resume them. Score the saved
+				// round, then release the resources using the private journal.
+				closeCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+				closed, closeErr := investigator.Close(closeCtx, dir)
+				cancel()
+				runErr = errors.Join(runErr, closeErr)
+				if closed != nil && closed.Cleanup != nil && canonical != nil {
+					canonical["cleanup"] = map[string]any{
+						"sandbox_deleted": closed.Cleanup.SandboxDeleted,
+						"session_deleted": closed.Cleanup.SessionDeleted,
+					}
+				}
+			}
 			if err != nil {
 				score.Misses = append(score.Misses, "encode report: "+err.Error())
 				return

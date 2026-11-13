@@ -138,12 +138,12 @@ jobs:
           TRIAGELAB_CONFIG: ${{ runner.temp }}/triagelab.json
           TRIAGELAB_TOKEN: ${{ secrets.TRIAGELAB_TOKEN }}
         run: make test-integration
-      - name: Keep evaluation reports
+      - name: Keep the evaluation scorecard
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: investigation-evaluation
-          path: ${{ runner.temp }}/reports
+          name: investigation-evaluation-scorecard
+          path: ${{ runner.temp }}/reports/corpus-scorecard-*.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove integration configuration

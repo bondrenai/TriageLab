@@ -265,6 +265,22 @@ func TestCorpusScoringCollectsEveryMiss(t *testing.T) {
 	contains(corpusScoreReport(expect, map[string]any{"status": "error", "creation_uncertain": true}, refused), "sandbox deletion was not confirmed")
 }
 
+func TestCorpusScoresPausedRunAfterClosingResources(t *testing.T) {
+	expect := corpusCase{Outcomes: []string{"inconclusive"}, MissingInformation: true}
+	saved := map[string]any{
+		"status": "paused", "outcome": "inconclusive",
+		"analysis": map[string]any{"missing_information": []any{"customer logs"}},
+		"cleanup":  map[string]any{"sandbox_deleted": true, "session_deleted": true},
+	}
+	if misses := corpusScoreReport(expect, saved, nil); len(misses) != 0 {
+		t.Fatalf("cleaned-up pause missed: %q", misses)
+	}
+	saved["cleanup"] = nil
+	if misses := corpusScoreReport(expect, saved, nil); len(misses) != 2 {
+		t.Fatalf("expected both cleanup misses, got %q", misses)
+	}
+}
+
 func TestCorpusScorecardIsPrivateAndRedacted(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "reports")
 	card := corpusScorecard{

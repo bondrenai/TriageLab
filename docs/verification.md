@@ -1275,7 +1275,9 @@ investigation limit. Each run context ends two minutes before that deadline so
 cleanup can finish, and a case that cannot start at least three minutes before
 it is recorded as `not_run`, which counts as a miss. The optional CI
 integration job calls the same target with an 80-minute job limit, so it
-uses the `cases` input to select cases explicitly.
+uses the `cases` input to select cases explicitly and retains the scorecard.
+On the fork, a case that pauses for missing information is scored on the saved
+round. The test closes the run and verifies cleanup before it can pass.
 
 Checked so far, on the macOS development laptop rather than the VM, with
 Go 1.25.12:

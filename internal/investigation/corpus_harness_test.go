@@ -32,8 +32,8 @@ type corpusManifest struct {
 }
 
 // corpusCase holds one case's expectations. Every case additionally requires a
-// completed run, deletion of both runtimes, and only sandbox tools aimed at the
-// run's own sandbox.
+// completed run or an expected request for information, deletion of both runtimes,
+// and only sandbox tools aimed at the run's own sandbox.
 type corpusCase struct {
 	Name               string          `json:"name"`
 	Purpose            string          `json:"purpose"`
@@ -232,18 +232,23 @@ func (m corpusMatcher) matches(experiment map[string]any) bool {
 
 // corpusScoreReport checks a canonical report against one case and returns
 // every miss instead of stopping at the first. An empty result is a pass. A run
-// that did not complete has no validated analysis, so only the stop itself,
-// cleanup and the tool boundary are scored for it.
+// that stopped before producing an answer is scored on the stop, cleanup, and
+// tool boundary. A case expecting missing information may finish or pause.
 func corpusScoreReport(expect corpusCase, canonical map[string]any, runErr error) []string {
 	misses := []string{}
 	status := corpusString(canonical["status"])
+	answered := status == "completed" || status == "paused" && expect.MissingInformation
 	if runErr != nil {
 		misses = append(misses, "run error: "+runErr.Error())
 	}
-	if status != "completed" {
-		misses = append(misses, fmt.Sprintf("run status %q, want completed", status))
+	if !answered {
+		want := "completed"
+		if expect.MissingInformation {
+			want = "completed or paused"
+		}
+		misses = append(misses, fmt.Sprintf("run status %q, want %s", status, want))
 	}
-	if runErr == nil && status == "completed" {
+	if runErr == nil && answered {
 		if outcome := corpusString(canonical["outcome"]); !slices.Contains(expect.Outcomes, outcome) {
 			misses = append(misses, fmt.Sprintf("outcome %q, want one of %s", outcome, strings.Join(expect.Outcomes, ", ")))
 		}
@@ -265,7 +270,7 @@ func corpusScoreReport(expect corpusCase, canonical map[string]any, runErr error
 	// deleted whatever it created or may have created.
 	cleanup := corpusObject(canonical["cleanup"])
 	for _, resource := range []struct{ kind, uncertain string }{{"sandbox", "creation_uncertain"}, {"session", "session_creation_uncertain"}} {
-		created := status == "completed" || corpusString(corpusObject(canonical[resource.kind])["id"]) != "" || canonical[resource.uncertain] == true
+		created := answered || corpusString(corpusObject(canonical[resource.kind])["id"]) != "" || canonical[resource.uncertain] == true
 		if created && cleanup[resource.kind+"_deleted"] != true {
 			misses = append(misses, resource.kind+" deletion was not confirmed")
 		}
