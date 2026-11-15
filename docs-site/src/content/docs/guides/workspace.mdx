@@ -3,6 +3,9 @@ title: Browser workspace
 description: Run the loopback-only workspace UI, forward it over SSH, and iterate on it.
 ---
 
+import YouTubePlayer from "../../../components/YouTubePlayer.astro";
+import celPoliciesPoster from "../../../assets/cel-policies-poster.jpg";
+
 The browser workspace is the same investigation workflow as the CLI behind a
 small Bondren-styled UI: case inputs and recorded experiments, not dashboard
 metrics. It serves history, live runs, evidence inspection, and report
@@ -60,6 +63,25 @@ OAuth session; if it cannot run — the note is held by the output sanitizer or
 the ticket closed — the preview stays on the report for a human to review,
 edit, and post. Without this policy, completed runs always hold the comment
 for review, and reviewers can edit the exact text before it is posted.
+
+### CEL policy demo
+
+Follow three GitHub issues through TriageLab to see how CEL policies match a procedure,
+add a label when evidence is missing, and start an investigation when the ticket is ready.
+The demo also shows how to preview a policy and inspect the audit trail for a policy-started run.
+
+<YouTubePlayer
+  videoId="GwyqY59lKY8"
+  title="TriageLab CEL policies: from GitHub issues to investigations"
+  playLabel="Play the TriageLab CEL policy demo (5 minutes 30 seconds)"
+  poster={celPoliciesPoster}
+  posterAlt="TriageLab title card for the CEL ticket policies demo"
+  sizes="(max-width: 50rem) 100vw, 50rem"
+>
+  ▶ Play demo
+</YouTubePlayer>
+
+[Watch the CEL policy demo on YouTube](https://www.youtube.com/watch?v=GwyqY59lKY8) (5:30)
 
 ### Conditions based on ticket properties
 
