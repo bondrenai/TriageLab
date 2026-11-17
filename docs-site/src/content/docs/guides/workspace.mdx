@@ -124,12 +124,14 @@ CEL can also shape ticket preparation:
 | --- | --- | --- |
 | Procedure match condition | `policy.match_condition` | The first matching procedure supplies the investigator and sandbox template, which determines the image. A CEL condition takes the place of the tag check. The tag becomes the procedure label. Status, priority, and configured custom-field filters still apply. |
 | Conditional requirement | `evidence[].required_when` | A required evidence item is mandatory when its condition returns true. Otherwise the item is optional. |
+| Clarification condition | `policy.auto_question_condition` | When missing evidence would queue a clarification request (`auto_questions`), only enter `ask` or allow follow-up sends when this condition returns true. |
 | Automatic start condition | `policy.auto_run_condition` | A ready ticket starts automatically when the condition returns true and automatic starts are enabled. |
 
-A match or evidence condition that cannot be evaluated sends the case to
-review. Preview shows the selected sandbox and any missing evidence.
-An empty match condition uses the tag check. An empty evidence condition
-keeps the item's required or optional setting.
+A match, evidence, or clarification condition that cannot be evaluated sends the case to
+review (fail-closed). Preview shows the selected sandbox, any missing evidence, and whether
+clarification is allowed. An empty match condition uses the tag check. An empty evidence
+condition keeps the item's required or optional setting, and an empty clarification condition
+allows clarifications whenever required evidence is missing.
 
 CEL receives a `ticket` map with these properties from the current source read.
 

@@ -119,6 +119,9 @@ spec:
                         match_condition:
                           type: "string"
                           maxLength: 4096
+                        auto_question_condition:
+                          type: "string"
+                          maxLength: 4096
                         auto_run_condition:
                           type: "string"
                           maxLength: 4096

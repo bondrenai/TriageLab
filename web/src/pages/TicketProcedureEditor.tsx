@@ -232,10 +232,16 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
                 onChange={e => updatePolicy({ auto_questions: e.target.checked, max_questions: draft.policy.max_questions || 1 })} />
               Allow clarification sends after approval
             </label>
-            {draft.policy.auto_questions && <Field label="Maximum clarification attempts">
-              <input className="field" type="number" min={1} max={clarificationLimit} required value={draft.policy.max_questions}
-                onChange={e => updatePolicy({ max_questions: Number(e.target.value) })} />
-            </Field>}
+            {draft.policy.auto_questions && <>
+              <Field label="Maximum clarification attempts">
+                <input className="field" type="number" min={1} max={clarificationLimit} required value={draft.policy.max_questions}
+                  onChange={e => updatePolicy({ max_questions: Number(e.target.value) })} />
+              </Field>
+              <TicketConditionEditor key={`clarify-${selected}`}
+                connection={connection} source={source} label="Clarification condition" value={draft.policy.auto_question_condition ?? ""}
+                emptyHint="An empty condition allows clarifications when required evidence is missing."
+                onChange={value => updatePolicy({ auto_question_condition: value || undefined })} />
+            </>}
           </>}
         </fieldset>
 

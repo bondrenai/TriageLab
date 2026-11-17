@@ -155,7 +155,7 @@ func (f *Flow) validateProcedureSet(v ProcedureVersion) error {
 
 func (f *Flow) validateProcedure(p Procedure) error {
 	policy := p.Policy
-	expressions := []string{policy.MatchCondition, policy.AutoRunCondition}
+	expressions := []string{policy.MatchCondition, policy.AutoQuestionCondition, policy.AutoRunCondition}
 	for _, rule := range p.Evidence {
 		expressions = append(expressions, rule.RequiredWhen)
 	}

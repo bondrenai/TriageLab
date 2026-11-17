@@ -14,15 +14,16 @@ import (
 )
 
 type Policy struct {
-	Tag              string   `json:"tag"`
-	Priorities       []string `json:"priorities,omitempty"`
-	FieldID          int64    `json:"field_id,omitempty"`
-	FieldValue       string   `json:"field_value,omitempty"`
-	AutoQuestions    bool     `json:"auto_questions"`
-	MaxQuestions     int      `json:"max_questions"`
-	MatchCondition   string   `json:"match_condition,omitempty"`
-	AutoRunCondition string   `json:"auto_run_condition,omitempty"`
-	AutoRuns         bool     `json:"auto_runs,omitempty"`
+	Tag                   string   `json:"tag"`
+	Priorities            []string `json:"priorities,omitempty"`
+	FieldID               int64    `json:"field_id,omitempty"`
+	FieldValue            string   `json:"field_value,omitempty"`
+	AutoQuestions         bool     `json:"auto_questions"`
+	MaxQuestions          int      `json:"max_questions"`
+	MatchCondition        string   `json:"match_condition,omitempty"`
+	AutoQuestionCondition string   `json:"auto_question_condition,omitempty"`
+	AutoRunCondition      string   `json:"auto_run_condition,omitempty"`
+	AutoRuns              bool     `json:"auto_runs,omitempty"`
 	// AutoComments posts a completed run's investigation comment (or internal
 	// note) without further operator review. It requires the connection-level
 	// comment setting; without it the note stays with a human, who may edit
@@ -229,7 +230,7 @@ func gitLabOrigin(config Config) string {
 
 func (config Config) validate() error {
 	p := config.Policy
-	for _, expression := range []string{p.MatchCondition, p.AutoRunCondition} {
+	for _, expression := range []string{p.MatchCondition, p.AutoQuestionCondition, p.AutoRunCondition} {
 		if _, err := compileTicketCondition(expression); err != nil {
 			return err
 		}

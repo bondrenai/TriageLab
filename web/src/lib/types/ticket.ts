@@ -70,6 +70,7 @@ export interface TicketSettings {
     field_value?: string;
     auto_questions: boolean;
     max_questions: number;
+    auto_question_condition?: string;
     auto_runs?: boolean;
     auto_run_condition?: string;
     auto_comments?: boolean;
