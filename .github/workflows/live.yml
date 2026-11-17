@@ -2,8 +2,9 @@ name: Live verification
 
 # Builds a disposable kind cluster on the runner at the repository's pins and
 # exercises the real kagent/Substrate deployment: the sandbox boundary without
-# a model, then a model-backed investigation and pause/resume. The last two
-# call the model provider and incur charges; the schedule is the cost dial.
+# a model, then a model-backed investigation, pause/resume, in-flight steer,
+# and missing-orders demonstration. The model-backed checks call the model
+# provider and incur charges; the schedule is the cost dial.
 # The install opts into the pinned controller fork so the pause check
 # exercises durable retention.
 # Nothing here reaches a shared or production cluster. The kind and kagent CLI
@@ -19,6 +20,7 @@ on:
       - deploy/**
       - scripts/**
       - examples/config-bug/**
+      - examples/missing-orders/**
       - internal/agent/**
       - internal/investigation/**
       - internal/kagent/**
@@ -156,6 +158,18 @@ jobs:
         env:
           TRIAGELAB_REPORT_DIR: ${{ runner.temp }}/reports
         run: bash scripts/live-verify.sh pause
+      - name: Run live in-flight steering
+        id: steer
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TRIAGELAB_REPORT_DIR: ${{ runner.temp }}/reports
+        run: bash scripts/live-verify.sh steer
+      - name: Run the genuine missing-orders demonstration
+        id: demo
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TRIAGELAB_REPORT_DIR: ${{ runner.temp }}/reports
+        run: bash scripts/live-verify.sh demo
       - name: Summarize the checks
         if: always()
         env:
@@ -163,6 +177,8 @@ jobs:
           SANDBOX_OUTCOME: ${{ steps.sandbox.outcome }}
           INVESTIGATION_OUTCOME: ${{ steps.investigation.outcome }}
           PAUSE_OUTCOME: ${{ steps.pause.outcome }}
+          STEER_OUTCOME: ${{ steps.steer.outcome }}
+          DEMO_OUTCOME: ${{ steps.demo.outcome }}
         run: |
           {
             echo "### Live checks on $SANDBOX_CLASS"
@@ -171,6 +187,8 @@ jobs:
             echo "| Sandbox upload, egress denial, termination, deletion | no | ${SANDBOX_OUTCOME:-not run} |"
             echo "| Investigation | yes | ${INVESTIGATION_OUTCOME:-not run} |"
             echo "| Pause and resume | yes | ${PAUSE_OUTCOME:-not run} |"
+            echo "| In-flight steering | yes | ${STEER_OUTCOME:-not run} |"
+            echo "| Missing-orders demonstration | yes | ${DEMO_OUTCOME:-not run} |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Keep the reports
         if: always()
