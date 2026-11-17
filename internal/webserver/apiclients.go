@@ -227,9 +227,11 @@ func (s *Server) adminClientsRoute(w http.ResponseWriter, r *http.Request) {
 			id := strings.TrimSpace(input.ID)
 			secret, err := g.clients.Create(id, scopes, actorFrom(r.Context()).Username)
 			if err != nil {
+				s.recordAudit(actorFrom(r.Context()), "admin.client.create", id, "error", auditError(err))
 				writeClientError(w, err)
 				return
 			}
+			s.recordAudit(actorFrom(r.Context()), "admin.client.create", id, "ok", strings.Join(input.Scopes, ","))
 			jsonResponse(w, http.StatusOK, map[string]any{"clients": g.clients.Clients(), "scopes": auth.Scopes(),
 				"client_id": id, "client_secret": secret})
 		default:
@@ -247,12 +249,15 @@ func (s *Server) adminClientsRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	actor := actorFrom(r.Context())
 	if len(parts) == 2 && parts[1] == "secret" && r.Method == http.MethodPost {
 		secret, err := g.clients.RotateSecret(id)
 		if err != nil {
+			s.recordAudit(actor, "admin.client.secret", id, "error", auditError(err))
 			writeClientError(w, err)
 			return
 		}
+		s.recordAudit(actor, "admin.client.secret", id, "ok", "")
 		jsonResponse(w, http.StatusOK, map[string]any{"clients": g.clients.Clients(), "scopes": auth.Scopes(),
 			"client_id": id, "client_secret": secret})
 		return
@@ -270,28 +275,36 @@ func (s *Server) adminClientsRoute(w http.ResponseWriter, r *http.Request) {
 		if !decodeAuthInput(w, r, &input, 8192) {
 			return
 		}
+		var details []string
 		if input.Scopes != nil {
 			scopes, ok := parseAdminScopes(w, input.Scopes)
 			if !ok {
 				return
 			}
 			if err := g.clients.SetScopes(id, scopes); err != nil {
+				s.recordAudit(actor, "admin.client.update", id, "error", auditError(err))
 				writeClientError(w, err)
 				return
 			}
+			details = append(details, "scopes="+strings.Join(input.Scopes, ","))
 		}
 		if input.Disabled != nil {
 			if err := g.clients.SetDisabled(id, *input.Disabled); err != nil {
+				s.recordAudit(actor, "admin.client.update", id, "error", auditError(err))
 				writeClientError(w, err)
 				return
 			}
+			details = append(details, fmt.Sprintf("disabled=%t", *input.Disabled))
 		}
+		s.recordAudit(actor, "admin.client.update", id, "ok", strings.Join(details, " "))
 		jsonResponse(w, http.StatusOK, listing())
 	case http.MethodDelete:
 		if err := g.clients.Remove(id); err != nil {
+			s.recordAudit(actor, "admin.client.delete", id, "error", auditError(err))
 			writeClientError(w, err)
 			return
 		}
+		s.recordAudit(actor, "admin.client.delete", id, "ok", "")
 		jsonResponse(w, http.StatusOK, listing())
 	default:
 		fail(w, http.StatusMethodNotAllowed, "Method not allowed")

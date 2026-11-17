@@ -60,33 +60,36 @@ func (c *runningCase) notify() {
 
 // Server has one active investigation. Completed reports are read from disk.
 type Server struct {
-	ctx            context.Context
-	config         investigation.Config
-	backend        investigation.Backend
-	secrets        []string
-	directory      string
-	reports        *os.Root
-	assets         *os.Root
-	mu             sync.Mutex
-	activeID       string
-	active         *runningCase
-	actionErrors   map[string]string
-	closed         bool
-	cleaning       *runCleanup
-	cleanupFailure map[string]string
-	secretMu       sync.Mutex
-	ticketMu       sync.RWMutex
-	ticketConns    []*ticketConn
-	gitops         *gitopsSync
-	deployments    *kagent.DeploymentReader
-	runDeployments map[string]*kagent.DeploymentReader
-	resourceWrites bool
-	auth           *gate
-	mcp            *mcpAccess
-	chat           chatGenerator
-	chatClose      func()
-	chatActive     *chatJob
-	chatErrors     map[string]string
+	ctx             context.Context
+	config          investigation.Config
+	backend         investigation.Backend
+	secrets         []string
+	directory       string
+	reports         *os.Root
+	assets          *os.Root
+	mu              sync.Mutex
+	activeID        string
+	active          *runningCase
+	actionErrors    map[string]string
+	closed          bool
+	cleaning        *runCleanup
+	cleanupFailure  map[string]string
+	secretMu        sync.Mutex
+	auditMu         sync.Mutex
+	oauthMu         sync.Mutex
+	oauthInitiators map[string]oauthInitiator
+	ticketMu        sync.RWMutex
+	ticketConns     []*ticketConn
+	gitops          *gitopsSync
+	deployments     *kagent.DeploymentReader
+	runDeployments  map[string]*kagent.DeploymentReader
+	resourceWrites  bool
+	auth            *gate
+	mcp             *mcpAccess
+	chat            chatGenerator
+	chatClose       func()
+	chatActive      *chatJob
+	chatErrors      map[string]string
 }
 
 // secretList returns the current redaction list. Stored ticket credentials
@@ -607,7 +610,7 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 2 && parts[1] == "cleanup" && r.Method == http.MethodPost {
-		s.startCleanup(w, id)
+		s.startCleanup(w, r, id)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
@@ -619,6 +622,7 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		s.active.cancel()
 		s.mu.Unlock()
+		s.recordAudit(actorFrom(r.Context()), "run.cancel", id, "accepted", "")
 		jsonResponse(w, 202, map[string]string{"id": id})
 		return
 	}
@@ -946,6 +950,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 		return err
 	})
 	s.mu.Unlock()
+	s.recordAudit(auth.Identity{Username: actor, Via: trigger}, "run.start", c.ID, "accepted", "")
 	return nil
 }
 

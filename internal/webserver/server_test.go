@@ -252,8 +252,10 @@ func TestUploadKeepsRelativePathsAndUsesExistingInputValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("upload staging remains: %v", entries)
+	for _, entry := range entries {
+		if entry.Name() != ".auth" {
+			t.Fatalf("upload staging remains: %v", entries)
+		}
 	}
 }
 

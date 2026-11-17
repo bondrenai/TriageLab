@@ -178,3 +178,67 @@ func TestCELRoutingErrorDoesNotFallThrough(t *testing.T) {
 		t.Fatalf("routing error: %+v, %v", result, err)
 	}
 }
+
+func TestCELClarificationConditionAllowsHoldsAndInvalidatesApproval(t *testing.T) {
+	config := Config{Source: "github", Repository: "owner/repo", Policy: Policy{Tag: "reproduce", AutoQuestionCondition: `ticket.id`}}
+	if err := config.validate(); err == nil {
+		t.Fatal("configuration accepted nonboolean clarification CEL")
+	}
+	s := newGitHubWriteSource(false)
+	dir := filepath.Join(t.TempDir(), "cases")
+	config = githubWriteConfig()
+	config.Policy.AutoQuestions = true
+	config.Policy.MaxQuestions = 2
+	flow := openGitHubWriteFlow(t, s, dir, config)
+	version := flow.Procedure()
+	version.Procedure.Policy.AutoQuestions = true
+	version.Procedure.Policy.MaxQuestions = 2
+	version.Procedure.Policy.AutoQuestionCondition = `ticket.status ==`
+	if _, err := flow.SaveProcedure(version.Procedure, version.Revision); !errors.Is(err, ErrInvalidProcedure) {
+		t.Fatalf("invalid save: %v", err)
+	}
+
+	version.Procedure.Policy.AutoQuestionCondition = `!("hold-clarify" in ticket.tags)`
+	version, err := flow.SaveProcedure(version.Procedure, version.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := flow.Preview(t.Context(), 42)
+	if err != nil || preview.State != "ask" {
+		t.Fatalf("matching condition preview should enter ask state: %+v, %v", preview, err)
+	}
+	ready, err := flow.Track(t.Context(), 42, preview.Revision)
+	if err != nil || ready.State != "ask" {
+		t.Fatalf("matching condition should enter ask state: %+v, %v", ready, err)
+	}
+	sent, err := flow.Clarify(t.Context(), 42, ready.Revision)
+	if err != nil || sent.State != "waiting" || sent.ClarificationApproval == "" {
+		t.Fatalf("clarify failed: %+v, %v", sent, err)
+	}
+
+	// Simulate requester reply that supplies one item while omitting others, plus holding tag.
+	s.snapshot.Ticket.Tags = append(s.snapshot.Ticket.Tags, "hold-clarify")
+	addGitHubAuthorReply(s, 102, "Python version: 3.12.4")
+	held, err := flow.Refresh(t.Context(), 42)
+	if err != nil || held.State != "review" || !strings.Contains(held.Reason, "clarification condition did not match") {
+		t.Fatalf("non-matching condition should hold for review: %+v, %v", held, err)
+	}
+	if _, err := flow.Clarify(t.Context(), 42, held.Revision); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("expected ErrBlocked when held for review, got %v", err)
+	}
+
+	// Runtime evaluation error must fail closed in review state.
+	s.snapshot.Ticket.Tags = []string{"reproduce"}
+	version.Procedure.Policy.AutoQuestionCondition = `ticket.custom_fields["absent"] == true`
+	version, err = flow.SaveProcedure(version.Procedure, version.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errored, err := flow.Refresh(t.Context(), 42)
+	if err != nil || errored.State != "review" || !strings.Contains(errored.Reason, "clarification condition could not be evaluated") {
+		t.Fatalf("runtime failure should hold for review: %+v, %v", errored, err)
+	}
+	if errored.ClarificationApproval != "" {
+		t.Fatal("changing AutoQuestionCondition did not invalidate prior ClarificationApproval")
+	}
+}

@@ -170,3 +170,117 @@ func TestStoreRejectsBadNamesAndFiles(t *testing.T) {
 		t.Fatal("plaintext password field accepted")
 	}
 }
+
+func TestStoreReloadsExternalChangesAndSerializesConcurrentWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.json")
+	serverStore, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cliStore, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := serverStore.Create("alice", "password-123", RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	// Separate Store handle (simulating `triagelab user ...` CLI) observes alice,
+	// creates bob, and updates alice's role.
+	if accounts := cliStore.Accounts(); len(accounts) != 1 || accounts[0].Username != "alice" {
+		t.Fatalf("cli store did not see server create: %+v", accounts)
+	}
+	if err := cliStore.Create("bob", "password-456", RoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	if err := cliStore.SetRole("alice", RoleUser); err != nil {
+		t.Fatal(err)
+	}
+	if user, ok := serverStore.Authenticate("bob", "password-456"); !ok || user.Role != RoleViewer {
+		t.Fatalf("server store did not reload external create: %+v %v", user, ok)
+	}
+	if user, ok, err := serverStore.Lookup("alice"); err != nil || !ok || user.Role != RoleUser {
+		t.Fatalf("server store did not reload role change: %+v %v", user, ok)
+	}
+	// Concurrent write from serverStore preserves bob written by cliStore.
+	if err := serverStore.Create("carol", "password-789", RoleUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := cliStore.Lookup("carol"); err != nil || !ok {
+		t.Fatal("cli store did not observe concurrent create")
+	}
+	if accounts := cliStore.Accounts(); len(accounts) != 3 {
+		t.Fatalf("expected 3 preserved accounts across handles, got %+v", accounts)
+	}
+}
+
+func TestStoreReadsSymlinkedReadOnlyFileAndReportsReloadErrors(t *testing.T) {
+	// Secret and ConfigMap mounts expose files through ..data symlinks in a
+	// read-only directory. Reads need neither a lock file nor O_NOFOLLOW.
+	source := filepath.Join(t.TempDir(), "users.json")
+	writer, err := OpenStore(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Create("alice", "password-123", RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	mount := filepath.Join(t.TempDir(), "mount")
+	if err := os.Mkdir(mount, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(source, filepath.Join(mount, "users.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(mount, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(mount, 0o700) })
+	reader, err := OpenStore(filepath.Join(mount, "users.json"))
+	if err != nil {
+		t.Fatalf("read-only symlinked store refused: %v", err)
+	}
+	if _, ok := reader.Authenticate("alice", "password-123"); !ok {
+		t.Fatal("read-only symlinked store cannot authenticate")
+	}
+	if _, err := os.Stat(filepath.Join(mount, "users.json.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read created a lock file: %v", err)
+	}
+
+	// A file that becomes unreadable is an error, not a missing account.
+	if err := os.WriteFile(source, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := reader.Lookup("alice"); err == nil || ok {
+		t.Fatalf("broken file reported as ok=%v err=%v", ok, err)
+	}
+}
+
+func TestChangeAccountKeepsAnEnabledAdmin(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "users.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"alice", "bob"} {
+		if err := store.Create(name, "password-123", RoleAdmin); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Create("carol", "password-123", RoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	if err := store.ChangeAccount("alice", AccountChange{Disabled: &disabled, KeepEnabledAdmin: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ChangeAccount("bob", AccountChange{Remove: true, KeepEnabledAdmin: true}); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("removing the last admin: %v", err)
+	}
+	// Changes to non-admins are never refused by the guard.
+	if err := store.ChangeAccount("carol", AccountChange{Disabled: &disabled, KeepEnabledAdmin: true}); err != nil {
+		t.Fatal(err)
+	}
+	// The unguarded CLI path can still make any change.
+	if err := store.Remove("bob"); err != nil {
+		t.Fatal(err)
+	}
+}

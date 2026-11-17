@@ -339,6 +339,7 @@ func (s *Server) chatRoute(w http.ResponseWriter, r *http.Request, id string) {
 	jobRoot := root
 	root = nil // the job owns the open root and lock until its final durable write
 	go s.answerChat(ctx, job, jobRoot, lock, saved, history, input.Message, record)
+	s.recordAudit(identity, "run.chat.ask", id, "accepted", "")
 	jsonResponse(w, 202, report.Redact(chatView{chatRecord: record, MaxMessageBytes: resultchat.MaxMessageBytes, UnavailableReason: "An answer is being prepared."}, s.secretList()...))
 }
 

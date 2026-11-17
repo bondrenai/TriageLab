@@ -841,6 +841,17 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 		}
 		if p.Policy.AutoQuestions && len(c.Questions) < p.Policy.MaxQuestions &&
 			latestRequester.ID > 0 && latestPublic.ID == latestRequester.ID {
+			if p.Policy.AutoQuestionCondition != "" {
+				allowed, conditionErr := evaluateTicketCondition(ctx, p.Policy.AutoQuestionCondition, f.provider, t)
+				switch {
+				case conditionErr != nil:
+					c.State, c.Reason = "review", "The clarification condition could not be evaluated. Review the condition and ticket attributes."
+					return c, t, casefile.Case{}, nil
+				case !allowed:
+					c.State, c.Reason = "review", "Clarification is needed, but the clarification condition did not match. Review before contacting the requester."
+					return c, t, casefile.Case{}, nil
+				}
+			}
 			if findings := sanitizeOutput(c.Draft, secrets, outboundTerms(f.store.list(), id, s.Comments)); len(findings) > 0 {
 				c.State, c.Reason = "review", "The suggested clarification was held for review because "+strings.Join(findings, " and ")+"."
 				return c, t, casefile.Case{}, nil

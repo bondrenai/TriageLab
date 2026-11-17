@@ -105,14 +105,20 @@ func (s *Server) projectLifecycle(id string, saved map[string]any, active bool) 
 	}
 }
 
-func (s *Server) pauseRun(w http.ResponseWriter, _ *http.Request, id string) {
+func (s *Server) pauseRun(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.active == nil || s.activeID != id {
+		s.mu.Unlock()
 		fail(w, http.StatusConflict, "This investigation is not active")
 		return
 	}
-	if err := investigation.RequestPause(filepath.Join(s.directory, id)); err != nil {
+	err := investigation.RequestPause(filepath.Join(s.directory, id))
+	if err == nil {
+		s.active.notify()
+	}
+	s.mu.Unlock()
+	if err != nil {
+		s.recordAudit(actorFrom(r.Context()), "run.pause", id, "conflict", auditError(err))
 		if errors.Is(err, investigation.ErrRetentionUnsupported) {
 			fail(w, http.StatusConflict, "This kagent controller cannot retain a paused workspace. Let the investigation finish or stop it; pausing requires the TriageLab controller fork.")
 			return
@@ -120,7 +126,7 @@ func (s *Server) pauseRun(w http.ResponseWriter, _ *http.Request, id string) {
 		fail(w, http.StatusConflict, "The investigation cannot pause at this stage. Refresh its status and try again.")
 		return
 	}
-	s.active.notify()
+	s.recordAudit(actorFrom(r.Context()), "run.pause", id, "accepted", "")
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
 }
 
@@ -143,7 +149,8 @@ func (s *Server) steerRun(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Context().Err() != nil {
 		return
 	}
-	actor := actorFrom(r.Context()).Username
+	identity := actorFrom(r.Context())
+	actor := identity.Username
 	config := state.Config
 	config.TokenEnv = s.config.TokenEnv
 	stage := func(reserve func() error) error {
@@ -189,6 +196,7 @@ func (s *Server) steerRun(w http.ResponseWriter, r *http.Request, id string) {
 		err = stage(nil)
 	}
 	if err != nil {
+		s.recordAudit(identity, "run.steer", id, "conflict", auditError(err))
 		status := http.StatusConflict
 		if errors.Is(err, errWorkspaceClosed) {
 			status = http.StatusServiceUnavailable
@@ -196,6 +204,7 @@ func (s *Server) steerRun(w http.ResponseWriter, r *http.Request, id string) {
 		fail(w, status, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
+	s.recordAudit(identity, "run.steer", id, "accepted", fmt.Sprintf("round=%d", state.Round))
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
 }
 
@@ -223,7 +232,8 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 	if r.Context().Err() != nil {
 		return
 	}
-	actor := actorFrom(r.Context()).Username
+	identity := actorFrom(r.Context())
+	actor := identity.Username
 	config := state.Config
 	config.TokenEnv = s.config.TokenEnv
 	launch := func(reserve func() error) error {
@@ -248,6 +258,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 		err = launch(nil)
 	}
 	if err != nil {
+		s.recordAudit(identity, "run."+action, id, "conflict", auditError(err))
 		status := http.StatusConflict
 		if errors.Is(err, errWorkspaceClosed) {
 			status = http.StatusServiceUnavailable
@@ -255,6 +266,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 		fail(w, status, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
+	s.recordAudit(identity, "run."+action, id, "accepted", fmt.Sprintf("round=%d", state.Round))
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
 }
 

@@ -141,8 +141,10 @@ after seven days when checked. Waiting and drafting never allocate a sandbox
 or call a model.
 
 A procedure can start automatically when the evidence is ready. Set
-`policy.auto_run_condition` to a boolean CEL expression over ticket attributes
-to restrict automatic launches, such as `"reproduce" in ticket.tags`.
+`policy.auto_question_condition` to restrict when missing evidence can queue a
+clarification draft or follow-up send, and set `policy.auto_run_condition` to a
+boolean CEL expression over ticket attributes to restrict automatic launches, such
+as `"reproduce" in ticket.tags`.
 [Automatic ticket investigations](https://bondrenai.github.io/TriageLab/guides/workspace/#automatic-ticket-investigations).
 
 For the default review path, check the source references, file hashes, and run

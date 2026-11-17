@@ -275,21 +275,26 @@ confirms the deletion with a separate read. A probe that fails in an unrecorded
 way fails the test for review; it is not counted as a denial. With
 `TRIAGELAB_REPORT_DIR` set, it saves a record in the same shape as that file.
 
-`scripts/live-verify.sh sandbox|investigation|pause` runs one of the three
-opt-in checks against the kind deployment with its own loopback port-forward
-and one-hour caller token, for a VM without a standing port-forward.
+`scripts/live-verify.sh sandbox|investigation|pause|steer|demo` runs one of
+the five opt-in checks against the kind deployment with its own loopback
+port-forward and one-hour caller token, for a VM without a standing
+port-forward (`make test-sandbox-integration`, `make test-integration`,
+`make test-pause-integration`, `make test-steer-integration`, and
+`make test-demo-integration`). Offline, `make check` includes
+`TestMissingOrdersScorerMatchesRecordedDemo` to keep the recorded
+`examples/missing-orders` demonstration report aligned with the corpus scorer.
 
 ### Scheduled live verification
 
 The `Live verification` workflow (`.github/workflows/live.yml`) performs the
-fresh-cluster installation above on a GitHub-hosted runner and runs all three
+fresh-cluster installation above on a GitHub-hosted runner and runs all five
 checks through `scripts/live-verify.sh`. It runs daily, after pushes to `main`
-that change the deployment files, scripts, fixture, or the agent,
+that change the deployment files, scripts, fixtures, or the agent,
 investigation, and kagent packages, and on manual dispatch. Each check runs
 even when an earlier one failed. It needs the `OPENAI_API_KEY` repository
-secret. The investigation and pause/resume checks incur provider charges on
-every run, so the schedule is the cost control. Reports and the sandbox record
-are kept as a run artifact for seven days.
+secret. The model-backed checks (`investigation`, `pause`, `steer`, and `demo`)
+incur provider charges on every run, so the schedule is the cost control.
+Reports and the sandbox record are kept as a run artifact for seven days.
 
 A passing run shows that the pinned deployment still installs and behaves as
 recorded on that day's runner. It does not replace reviewing the upstream

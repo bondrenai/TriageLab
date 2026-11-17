@@ -129,6 +129,11 @@ with TriageLab's comment on that issue. This is what ran:
 
 The comment is a single code block, so on GitHub long lines scroll sideways.
 
+For a demonstration centered on the CEL policies — routing by condition,
+conditional evidence requirements, and gated automatic starts from the same
+repository — see the [CEL policy demo](cel-demo.md) and its assets in
+[`examples/cel-policies`](../examples/cel-policies/).
+
 ## If the run goes differently
 
 None of these happened in the three recorded runs, but model behavior varies.

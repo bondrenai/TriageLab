@@ -48,7 +48,7 @@ func (s *Server) readSavedReport(id string) (*investigation.Report, error) {
 // without a lifecycle journal. A cleanup of an older
 // run may proceed while a different investigation is active: it reads and
 // writes only its own report directory, and the active run owns its own.
-func (s *Server) startCleanup(w http.ResponseWriter, id string) {
+func (s *Server) startCleanup(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
 	switch {
 	case s.closed || s.ctx.Err() != nil:
@@ -142,5 +142,6 @@ func (s *Server) startCleanup(w http.ResponseWriter, id string) {
 			s.mu.Unlock()
 		}
 	}()
+	s.recordAudit(actorFrom(r.Context()), "run.cleanup", id, "accepted", "")
 	jsonResponse(w, http.StatusAccepted, map[string]string{"id": id})
 }

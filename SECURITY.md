@@ -146,9 +146,25 @@ reads the same shared report volume. Anyone who can reach the local port can
 attempt sign-in, so keep the port forward private; use an SSH tunnel for a
 remote VM, never a public proxy. The browser receives redacted reports, not
 the configured API token. Selected uploads use the same ingestion limits and
-credential screening as CLI inputs. There is no per-user action audit log
-yet, and a running server does not pick up CLI account changes (manage
-accounts in the UI or restart).
+credential screening as CLI inputs. Local account changes made through the CLI
+serialize with the server through an advisory lock file beside the user file
+and reload automatically on active cookie sessions (immediately reflecting role
+edits, disables, and removals). The last-enabled-admin check for web changes
+runs inside that lock. Reads need no lock and follow symlinks, so a read-only
+Secret or ConfigMap mount works for sign-in; changes then need the CLI against
+a writable copy. While the user file is unreadable (for example mid-edit),
+password sessions fail closed with 503 but are not ended.
+Security-relevant and state-changing actions (sign-in attempts, account and
+client changes, investigation lifecycle operations, and ticket/deployment edits)
+are appended to `<output>/.auth/audit.jsonl` (mode 0600, symlink-safe),
+readable by admins via `GET /api/auth/admin/audit`. Entries hold opaque IDs and
+fixed outcome labels: raw error text, ticket prose, and credentials are never
+written, and failed sign-ins name the account only when it exists, so a
+password typed into the username field is not logged. The log rotates to one
+previous generation (`audit.jsonl.1`) at 8 MiB. Because unauthenticated
+failed sign-ins append entries, anyone who reaches the port can push older
+entries out of the two generations; ship the file elsewhere if you need
+tamper-resistant retention.
 
 ### API clients (OAuth)
 

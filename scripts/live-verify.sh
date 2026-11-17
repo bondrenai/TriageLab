@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Run one opt-in live check against the disposable kind-triagelab deployment
 # that scripts/install-dev.sh installed. It opens its own loopback port-forward
-# and mints a one-hour caller token, then removes both. `investigation` and
-# `pause` call the model provider; `sandbox` does not. A TRIAGELAB_CONFIG, if
-# set, must keep the default loopback endpoint and TRIAGELAB_TOKEN variable.
+# and mints a one-hour caller token, then removes both. `investigation`,
+# `pause`, `steer`, and `demo` call the model provider; `sandbox` does not. A
+# TRIAGELAB_CONFIG, if set, must keep the default loopback endpoint and
+# TRIAGELAB_TOKEN variable.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ "$(uname -s)" != "Linux" ]]; then
@@ -14,8 +15,10 @@ case "${1:-}" in
   sandbox) target=test-sandbox-integration ;;
   investigation) target=test-integration ;;
   pause) target=test-pause-integration ;;
+  steer) target=test-steer-integration ;;
+  demo) target=test-demo-integration ;;
   *)
-    echo "Usage: $0 sandbox|investigation|pause" >&2
+    echo "Usage: $0 sandbox|investigation|pause|steer|demo" >&2
     exit 2
     ;;
 esac

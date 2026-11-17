@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
@@ -28,6 +29,9 @@ func (s *Server) zendeskAuthorize(w http.ResponseWriter, r *http.Request, conn *
 	case err != nil:
 		fail(w, 500, "Could not start Zendesk authorization")
 	default:
+		actor := actorFrom(r.Context())
+		s.rememberOAuthInitiator(conn.id+"."+browser, actor)
+		s.recordAudit(actor, "ticket.oauth.start", conn.id, "ok", "")
 		http.SetCookie(w, oauthCookie(conn.id+"."+browser, int(ticketflow.OAuthWindow/time.Second)))
 		jsonResponse(w, 200, map[string]string{"url": target})
 	}
@@ -54,10 +58,14 @@ func (s *Server) zendeskCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "Zendesk is not configured")
 		return
 	}
+	// The public callback has no session; attribute it to the admin whose
+	// browser started this flow.
+	initiator := s.takeOAuthInitiator(id + "." + browser)
 	err = conn.flow.FinishOAuth(r.Context(), r.Host, query.Get("state"), browser, query.Get("code"), query.Get("error") != "")
 	result := "connected"
 	switch {
 	case errors.Is(err, ticketflow.ErrOAuthCallback):
+		s.recordAudit(initiator, "ticket.oauth.finish", id, "denied", "invalid or expired authorization")
 		fail(w, 400, "Invalid or expired Zendesk authorization")
 		return
 	case errors.Is(err, ticketflow.ErrBusy):
@@ -68,6 +76,7 @@ func (s *Server) zendeskCallback(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		result = "failed"
 	}
+	s.recordAudit(initiator, "ticket.oauth.finish", id, result, "")
 	http.SetCookie(w, oauthCookie("", -1))
 	http.Redirect(w, r, "/tickets?zendesk="+result, http.StatusSeeOther)
 }
@@ -83,3 +92,43 @@ func splitOAuthCookie(cookie *http.Cookie) (id, browser string, err error) {
 	}
 	return id, browser, nil
 }
+
+type oauthInitiator struct {
+	identity auth.Identity
+	expires  time.Time
+}
+
+// rememberOAuthInitiator keeps the starting admin in memory for the OAuth
+// window, keyed by the connection and the browser-bound secret.
+func (s *Server) rememberOAuthInitiator(key string, identity auth.Identity) {
+	s.oauthMu.Lock()
+	defer s.oauthMu.Unlock()
+	now := time.Now()
+	if s.oauthInitiators == nil {
+		s.oauthInitiators = map[string]oauthInitiator{}
+	}
+	for k, v := range s.oauthInitiators {
+		if now.After(v.expires) {
+			delete(s.oauthInitiators, k)
+		}
+	}
+	if len(s.oauthInitiators) >= maxOAuthInitiators {
+		return
+	}
+	s.oauthInitiators[key] = oauthInitiator{identity: identity, expires: now.Add(ticketflow.OAuthWindow)}
+}
+
+// takeOAuthInitiator returns and forgets the identity that started a flow, or
+// an anonymous identity when it is unknown or expired.
+func (s *Server) takeOAuthInitiator(key string) auth.Identity {
+	s.oauthMu.Lock()
+	defer s.oauthMu.Unlock()
+	initiator, ok := s.oauthInitiators[key]
+	delete(s.oauthInitiators, key)
+	if !ok || time.Now().After(initiator.expires) {
+		return auth.Identity{}
+	}
+	return initiator.identity
+}
+
+const maxOAuthInitiators = 64
