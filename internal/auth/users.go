@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -19,6 +20,8 @@ import (
 var (
 	ErrUserNotFound = errors.New("user not found")
 	ErrUserExists   = errors.New("user already exists")
+	// ErrLastAdmin refuses a guarded change that would leave no enabled admin.
+	ErrLastAdmin = errors.New("the workspace must keep at least one enabled admin")
 )
 
 const (
@@ -54,11 +57,17 @@ func (u User) account() Account {
 }
 
 // Store keeps local accounts in one JSON file. All methods are safe for
-// concurrent use; writes are atomic renames within the same directory.
+// concurrent use across goroutines and processes. Writes replace the file by
+// atomic rename, so reads need no lock: they reload whenever the file changes
+// on disk and may follow symlinks (Secret and ConfigMap mounts use them).
+// Writers serialize read-modify-write cycles with an advisory lock beside the
+// file, which therefore needs a writable directory only for changes.
 type Store struct {
-	mu    sync.Mutex
-	path  string
-	users map[string]User
+	mu     sync.Mutex
+	path   string
+	users  map[string]User
+	info   os.FileInfo
+	loaded bool
 }
 
 type usersFile struct {
@@ -69,40 +78,101 @@ type usersFile struct {
 // save. A missing file yields an empty store.
 func OpenStore(path string) (*Store, error) {
 	store := &Store{path: path, users: map[string]User{}}
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return store, nil
-	}
-	if err != nil {
+	if err := store.reloadIfChangedLocked(); err != nil {
 		return nil, err
 	}
+	return store, nil
+}
+
+func decodeUsersFile(path string) (map[string]User, os.FileInfo, bool, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]User{}, nil, false, nil
+	}
+	if err != nil {
+		return nil, nil, false, err
+	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, false, fmt.Errorf("user file must be a regular file")
+	}
 	var data usersFile
 	d := json.NewDecoder(io.LimitReader(f, maxUsersFile+1))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&data); err != nil {
-		return nil, fmt.Errorf("user file: %w", err)
+		return nil, nil, false, fmt.Errorf("user file: %w", err)
 	}
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("user file must contain one JSON object")
+		return nil, nil, false, fmt.Errorf("user file must contain one JSON object")
 	}
 	if len(data.Users) > maxUsers {
-		return nil, fmt.Errorf("user file exceeds %d accounts", maxUsers)
+		return nil, nil, false, fmt.Errorf("user file exceeds %d accounts", maxUsers)
 	}
+	users := make(map[string]User, len(data.Users))
 	for _, user := range data.Users {
 		if !ValidUsername(user.Username) || !user.Role.Valid() {
-			return nil, fmt.Errorf("user file contains an invalid account entry")
+			return nil, nil, false, fmt.Errorf("user file contains an invalid account entry")
 		}
-		if _, duplicate := store.users[user.Username]; duplicate {
-			return nil, fmt.Errorf("user file contains duplicate account %q", user.Username)
+		if _, duplicate := users[user.Username]; duplicate {
+			return nil, nil, false, fmt.Errorf("user file contains duplicate account %q", user.Username)
 		}
 		if user.Password != "" && !VerifyPasswordFormat(user.Password) {
-			return nil, fmt.Errorf("user file contains an unreadable password hash")
+			return nil, nil, false, fmt.Errorf("user file contains an unreadable password hash")
 		}
-		store.users[user.Username] = user
+		users[user.Username] = user
 	}
-	return store, nil
+	return users, info, true, nil
+}
+
+// withWriteLock serializes read-modify-write cycles across processes.
+func (s *Store) withWriteLock(fn func() error) error {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+		return err
+	}
+	lockFile, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lockFile.Close()
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer func() { _ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) }()
+	return fn()
+}
+
+func (s *Store) reloadIfChangedLocked() error {
+	info, err := os.Stat(s.path)
+	if errors.Is(err, os.ErrNotExist) {
+		s.users = map[string]User{}
+		s.info = nil
+		s.loaded = false
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if s.loaded && s.info != nil && os.SameFile(s.info, info) &&
+		info.ModTime().Equal(s.info.ModTime()) && info.Size() == s.info.Size() {
+		return nil
+	}
+	return s.reloadLocked()
+}
+
+func (s *Store) reloadLocked() error {
+	users, loadedInfo, exists, err := decodeUsersFile(s.path)
+	if err != nil {
+		return err
+	}
+	s.users = users
+	s.info = loadedInfo
+	s.loaded = exists
+	return nil
 }
 
 // Path is the file backing the store.
@@ -133,13 +203,31 @@ func ValidPassword(password string) bool {
 		strings.IndexFunc(password, unicode.IsControl) < 0
 }
 
+// Lookup returns the current record for username, reloading from disk if the
+// store file changed. A non-nil error means the file could not be read, which
+// callers must not mistake for a removed account.
+func (s *Store) Lookup(username string) (User, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.reloadIfChangedLocked(); err != nil {
+		return User{}, false, err
+	}
+	user, ok := s.users[username]
+	return user, ok, nil
+}
+
 // Authenticate verifies a local password login. Missing accounts and wrong
 // passwords are indistinguishable to callers.
 func (s *Store) Authenticate(username, password string) (User, bool) {
 	s.mu.Lock()
-	user, ok := s.users[username]
+	err := s.reloadIfChangedLocked()
+	var user User
+	var ok bool
+	if err == nil {
+		user, ok = s.users[username]
+	}
 	s.mu.Unlock()
-	if !ok || user.Disabled || user.Password == "" {
+	if err != nil || !ok || user.Disabled || user.Password == "" {
 		return User{}, false
 	}
 	if !VerifyPassword(user.Password, password) {
@@ -169,15 +257,20 @@ func (s *Store) Create(username, password string, role Role) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.users[username]; exists {
-		return ErrUserExists
-	}
-	if len(s.users) >= maxUsers {
-		return fmt.Errorf("the user file holds at most %d accounts", maxUsers)
-	}
-	now := time.Now().UTC()
-	s.users[username] = User{Username: username, Role: role, Password: password, CreatedAt: now, UpdatedAt: now}
-	return s.saveLocked()
+	return s.withWriteLock(func() error {
+		if err := s.reloadLocked(); err != nil {
+			return err
+		}
+		if _, exists := s.users[username]; exists {
+			return ErrUserExists
+		}
+		if len(s.users) >= maxUsers {
+			return fmt.Errorf("the user file holds at most %d accounts", maxUsers)
+		}
+		now := time.Now().UTC()
+		s.users[username] = User{Username: username, Role: role, Password: password, CreatedAt: now, UpdatedAt: now}
+		return s.saveLocked()
+	})
 }
 
 // SetPassword replaces an account password, or clears local login when empty.
@@ -194,59 +287,96 @@ func (s *Store) SetPassword(username, password string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user, ok := s.users[username]
-	if !ok {
-		return ErrUserNotFound
-	}
-	user.Password, user.UpdatedAt = encoded, time.Now().UTC()
-	s.users[username] = user
-	return s.saveLocked()
+	return s.withWriteLock(func() error {
+		if err := s.reloadLocked(); err != nil {
+			return err
+		}
+		user, ok := s.users[username]
+		if !ok {
+			return ErrUserNotFound
+		}
+		user.Password, user.UpdatedAt = encoded, time.Now().UTC()
+		s.users[username] = user
+		return s.saveLocked()
+	})
 }
 
-// SetRole changes an account role.
-func (s *Store) SetRole(username string, role Role) error {
-	if !role.Valid() {
+// AccountChange describes one atomic update to an existing account.
+// KeepEnabledAdmin refuses the change with ErrLastAdmin when it would leave
+// no enabled admin; the check runs inside the cross-process write lock.
+type AccountChange struct {
+	Role             *Role
+	Disabled         *bool
+	Remove           bool
+	KeepEnabledAdmin bool
+}
+
+// ChangeAccount applies change to username as one locked read-modify-write.
+func (s *Store) ChangeAccount(username string, change AccountChange) error {
+	if change.Role != nil && !change.Role.Valid() {
 		return fmt.Errorf("role must be one of viewer, user, admin")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user, ok := s.users[username]
-	if !ok {
-		return ErrUserNotFound
-	}
-	user.Role, user.UpdatedAt = role, time.Now().UTC()
-	s.users[username] = user
-	return s.saveLocked()
+	return s.withWriteLock(func() error {
+		if err := s.reloadLocked(); err != nil {
+			return err
+		}
+		user, ok := s.users[username]
+		if !ok {
+			return ErrUserNotFound
+		}
+		wasAdmin := user.Role == RoleAdmin && !user.Disabled
+		if change.Role != nil {
+			user.Role = *change.Role
+		}
+		if change.Disabled != nil {
+			user.Disabled = *change.Disabled
+		}
+		stillAdmin := !change.Remove && user.Role == RoleAdmin && !user.Disabled
+		if change.KeepEnabledAdmin && wasAdmin && !stillAdmin && s.enabledAdminsLocked(username) == 0 {
+			return ErrLastAdmin
+		}
+		if change.Remove {
+			delete(s.users, username)
+		} else {
+			user.UpdatedAt = time.Now().UTC()
+			s.users[username] = user
+		}
+		return s.saveLocked()
+	})
+}
+
+// SetRole changes an account role.
+func (s *Store) SetRole(username string, role Role) error {
+	return s.ChangeAccount(username, AccountChange{Role: &role})
 }
 
 // SetDisabled enables or disables an account without deleting it.
 func (s *Store) SetDisabled(username string, disabled bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	user, ok := s.users[username]
-	if !ok {
-		return ErrUserNotFound
-	}
-	user.Disabled, user.UpdatedAt = disabled, time.Now().UTC()
-	s.users[username] = user
-	return s.saveLocked()
+	return s.ChangeAccount(username, AccountChange{Disabled: &disabled})
 }
 
 // Remove deletes an account.
 func (s *Store) Remove(username string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.users[username]; !ok {
-		return ErrUserNotFound
+	return s.ChangeAccount(username, AccountChange{Remove: true})
+}
+
+func (s *Store) enabledAdminsLocked(except string) int {
+	count := 0
+	for _, user := range s.users {
+		if user.Username != except && user.Role == RoleAdmin && !user.Disabled {
+			count++
+		}
 	}
-	delete(s.users, username)
-	return s.saveLocked()
+	return count
 }
 
 // Accounts lists accounts without hash material, ordered by name.
 func (s *Store) Accounts() []Account {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_ = s.reloadIfChangedLocked()
 	accounts := make([]Account, 0, len(s.users))
 	for _, user := range s.users {
 		accounts = append(accounts, user.account())
@@ -259,19 +389,17 @@ func (s *Store) Accounts() []Account {
 func (s *Store) CountEnabledAdmins() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	count := 0
-	for _, user := range s.users {
-		if user.Role == RoleAdmin && !user.Disabled {
-			count++
-		}
-	}
-	return count
+	_ = s.reloadIfChangedLocked()
+	return s.enabledAdminsLocked("")
 }
 
 // EnabledLogin reports whether any enabled account with a password exists.
 func (s *Store) EnabledLogin() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.reloadIfChangedLocked(); err != nil {
+		return false
+	}
 	for _, user := range s.users {
 		if !user.Disabled && user.Password != "" {
 			return true
@@ -290,7 +418,14 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	return writePrivateFile(s.path, append(content, '\n'))
+	if err := writePrivateFile(s.path, append(content, '\n')); err != nil {
+		return err
+	}
+	if info, err := os.Stat(s.path); err == nil {
+		s.info = info
+		s.loaded = true
+	}
+	return nil
 }
 
 // writePrivateFile atomically replaces path with owner-only content, creating

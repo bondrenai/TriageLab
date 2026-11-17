@@ -260,6 +260,7 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	s.replaceTicketConnection(id, conn)
 	conn.flow.Start(s.ctx)
+	s.recordAudit(actorFrom(r.Context()), "ticket.connection.create", id, "ok", record.Config.Provider())
 	jsonResponse(w, 201, map[string]string{"id": id})
 }
 
@@ -318,15 +319,17 @@ func (s *Server) updateConnection(w http.ResponseWriter, r *http.Request, id str
 	}
 	conn, err := s.openTicketConnection(record)
 	if err != nil {
+		s.recordAudit(actorFrom(r.Context()), "ticket.connection.update", id, "error", record.Config.Provider())
 		fail(w, 502, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
 		return
 	}
 	s.replaceTicketConnection(id, conn)
 	conn.flow.Start(s.ctx)
+	s.recordAudit(actorFrom(r.Context()), "ticket.connection.update", id, "ok", record.Config.Provider())
 	jsonResponse(w, 200, map[string]string{"id": id})
 }
 
-func (s *Server) deleteConnection(w http.ResponseWriter, _ *http.Request, id string) {
+func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request, id string) {
 	records, err := ticketflow.LoadConnections(s.ticketRoot())
 	if err != nil {
 		fail(w, 500, "Could not read the ticket connection registry")
@@ -356,6 +359,7 @@ func (s *Server) deleteConnection(w http.ResponseWriter, _ *http.Request, id str
 	if stateDir, dirErr := ticketflow.ConnectionStateDir(s.ticketRoot(), id); dirErr == nil {
 		_ = os.RemoveAll(stateDir)
 	}
+	s.recordAudit(actorFrom(r.Context()), "ticket.connection.delete", id, "ok", "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

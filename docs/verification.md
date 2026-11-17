@@ -1,5 +1,60 @@
 # Executed verification
 
+## Live verification, steer/demo harness, and boundary hardening — November 16, 2026
+
+- **GitHub Actions `Live verification` (`gvisor`) and local cluster.** Workflow
+  run `43721637152` (Nov 15, 2026) passed `sandbox`, `investigation`, and
+  `pause`. Run `43900382612` (Nov 16, 2026) and a local Docker Desktop Kind
+  deployment with controller `048e1016` passed `TestLiveSandboxBoundary`
+  (nested upload, DNS/HTTP egress denial, process termination, deletion).
+  Model-backed checks (`TestLiveInvestigation`, `TestLiveInvestigationPauseResume`)
+  failed with upstream HTTP 401 `Unauthorized` because `OPENAI_API_KEY` had
+  expired.
+- **Steer and `missing-orders` harness.** Added offline regression
+  `TestMissingOrdersScorerMatchesRecordedDemo` against
+  [missing-orders-demo.json](verification/missing-orders-demo.json), opt-in
+  `TestLiveMissingOrders` (`TRIAGELAB_DEMO_INTEGRATION=1` /
+  `make test-demo-integration`), and opt-in `TestLiveInvestigationSteer`
+  (`TRIAGELAB_STEER_INTEGRATION=1` / `make test-steer-integration`), wired into
+  `scripts/live-verify.sh` and `.github/workflows/live.yml`. Live model runs of
+  `TestLiveMissingOrders` and `TestLiveInvestigationSteer` remain unexecuted
+  until `OPENAI_API_KEY` is renewed.
+- **Boundary and auditability hardening.**
+  - `policy.auto_question_condition`: CEL clarification eligibility evaluated
+    fail-closed in `assessProcedure()`, exposed in CRDs and
+    `TicketProcedureEditor`, and covered by
+    `TestCELClarificationConditionAllowsHoldsAndInvalidatesApproval`.
+  - Live user-store reload: lock-free reads that reload on change and follow
+    symlinks (read-only Secret/ConfigMap mounts work), cross-process write
+    serialization through an advisory lock beside the user file, and the
+    last-enabled-admin check inside that lock (`Store.ChangeAccount`). Active
+    password sessions are re-verified on each request; an unreadable user file
+    fails requests closed with 503 without ending sessions. Tested under
+    `-race` (`TestStoreReloadsExternalChangesAndSerializesConcurrentWrites`,
+    `TestStoreReadsSymlinkedReadOnlyFileAndReportsReloadErrors`,
+    `TestChangeAccountKeepsAnEnabledAdmin`, `TestLastLocalAdminGuard`,
+    `TestLiveUserStoreReloadAffectsActiveSessions`,
+    `TestUnreadableUserStoreKeepsSessionsAndFailsClosed`).
+  - Action audit log: `0600` symlink-safe `<output>/.auth/audit.jsonl` with
+    one rotated generation at 8 MiB, fixed outcome labels instead of raw error
+    text, failed sign-ins naming only existing accounts, OAuth completions
+    attributed to the initiating admin, and redaction on write and read.
+    Exposed to admins via `GET /api/auth/admin/audit` and tested under `-race`
+    (`TestAuditLogRecordsRedactedActionsAndRequiresAdmin`,
+    `TestAuditLogRefusesSymlinksAndRedactsDynamicSecrets`,
+    `TestAuditLogOmitsUnknownLoginNamesAndRawErrors`,
+    `TestAuditLogRotatesAndSkipsOversizedLines`).
+- **Offline verification (`go1.27.4 darwin/arm64`, Node `v26.13.1`).**
+  - `make fmt && make check && make docs-check` passed (`gofmt`, `go vet ./...`,
+    all Go package tests, and CLI reference check).
+  - `go test -race` passed for `internal/auth`, `internal/webserver` (full
+    package, about ten minutes), and `internal/ticketflow`.
+  - `make check-ui`, `make build-ui`, and `make build-docs` passed (34 pages,
+    all internal links valid); `bash -n scripts/live-verify.sh` passed.
+  - Not run locally: `make chart-lint` (`helm` is not installed on this host),
+    `make race` for the remaining packages, and model-backed live integration checks
+    (blocked on `OPENAI_API_KEY`).
+
 ## Walkthrough video on the README and site — November 12, 2026
 
 The two-minute walkthrough of the missing-orders case is public on the

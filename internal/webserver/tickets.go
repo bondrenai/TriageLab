@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/ticketflow"
 )
 
@@ -129,6 +130,13 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		procedure, err := flow.SaveProcedures(input)
+		outcome := "ok"
+		detail := ""
+		if err != nil {
+			outcome = "error"
+			detail = auditError(err)
+		}
+		s.recordAudit(actorFrom(r.Context()), "ticket.procedure.save", conn.id, outcome, detail)
 		writeTicketResult(w, procedure, err)
 		return
 	}
@@ -169,6 +177,7 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	target := conn.id + "/" + strconv.FormatInt(id, 10)
 	switch parts[2] {
 	case "procedure-preview":
 		var input ticketflow.Procedure
@@ -187,6 +196,13 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		c, err := flow.ChooseRoute(r.Context(), id, input.Revision, input.Agent)
+		outcome := "ok"
+		detail := input.Agent
+		if err != nil {
+			outcome = "error"
+			detail = auditError(err)
+		}
+		s.recordAudit(actorFrom(r.Context()), "ticket.route", target, outcome, detail)
 		writeTicketResult(w, c, err)
 		return
 	}
@@ -218,6 +234,18 @@ func (s *Server) connectionCaseRoute(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail(w, 404, "Unknown ticket action")
 		return
+	}
+	if parts[2] != "preview" && parts[2] != "refresh" {
+		outcome := "ok"
+		detail := c.State
+		if c.RunID != "" {
+			detail = "run=" + c.RunID
+		}
+		if err != nil {
+			outcome = "error"
+			detail = auditError(err)
+		}
+		s.recordAudit(actorFrom(r.Context()), "ticket."+parts[2], target, outcome, detail)
 	}
 	writeTicketResult(w, c, err)
 }
@@ -302,6 +330,13 @@ func (s *Server) postTicketNote(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 	note, err := owner.flow.PostNote(r.Context(), id, saved, input.Plan, input.Body)
+	outcome := "ok"
+	detail := ""
+	if err != nil {
+		outcome = "error"
+		detail = auditError(err)
+	}
+	s.recordAudit(actorFrom(r.Context()), "ticket.note.post", id, outcome, detail)
 	writeTicketResult(w, note, err)
 }
 
@@ -315,7 +350,16 @@ func (s *Server) postAutomaticTicketNote(id string) {
 	}
 	for _, conn := range s.ticketConnections() {
 		if conn.flow.OwnsRun(id) {
-			conn.flow.PostAutomaticNote(s.ctx, id, saved)
+			result, err := conn.flow.PostAutomaticNote(s.ctx, id, saved)
+			if result == "skipped" {
+				// No post was attempted; a human reviews the preview.
+				return
+			}
+			outcome, detail := result, "connection="+conn.id
+			if err != nil {
+				outcome, detail = "error", auditError(err)+" connection="+conn.id
+			}
+			s.recordAudit(auth.Identity{Username: "ticket-policy", Via: "ticket"}, "ticket.note.auto", id, outcome, detail)
 			return
 		}
 	}

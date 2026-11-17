@@ -10,22 +10,30 @@
 - [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
       pod-projected API-token rotation. See [verification](docs/verification.md).
 
-- [ ] Start `examples/missing-orders` from the New investigation form and add
-      it to the scheduled live verification. A run started from a labelled
-      GitHub issue has been verified, including the posted comment. Since
-      2026-11-12 it is the main demonstration: the workspace's bundled
-      example, `make demo`, and the quickstart example, after three live runs
-      reproduced the loss, rejected the customer's theory, and verified a
-      correction. See
-      [verification](docs/verification.md) and the
-      [demonstration notes](docs/demo.md). Those runs used a local arm64
-      Docker Desktop cluster reached through a Linux container, a path that is
-      not documented or supported yet.
+- [ ] Start `examples/missing-orders` from the New investigation form and confirm it
+      in the scheduled live verification once `OPENAI_API_KEY` is renewed. The
+      offline scorer regression check (`TestMissingOrdersScorerMatchesRecordedDemo`),
+      `make test-demo-integration` (`TestLiveMissingOrders`), and
+      `make test-steer-integration` (`TestLiveInvestigationSteer`) are now wired
+      into `scripts/live-verify.sh` and `.github/workflows/live.yml`. A run
+      started from a labelled GitHub issue has been verified, including the
+      posted comment. Since 2026-11-12 it is the main demonstration: the
+      workspace's bundled example, `make demo`, and the quickstart example, after
+      three live runs reproduced the loss, rejected the customer's theory, and
+      verified a correction. See [verification](docs/verification.md) and the
+      [demonstration notes](docs/demo.md). Those runs used a local arm64 Docker
+      Desktop cluster reached through a Linux container, a path that is not
+      documented or supported yet.
 
 - [x] Verify CEL automatic launch against live Jira and kagent on the build VM.
       The same synthetic issue exercised a blocking and an allowing rule.
 - [ ] Pilot CEL procedure routing and conditional evidence with more ticket types.
-      Evaluate CEL for clarification eligibility under the existing send controls.
+      CEL clarification eligibility (`policy.auto_question_condition`, fail-closed
+      inside `assessProcedure()`, plus UI/CRD schema) is now implemented and
+      unit-tested; the demonstration script and its test-guarded procedure set
+      are in [docs/cel-demo.md](docs/cel-demo.md) and
+      [examples/cel-policies](examples/cel-policies/) (and published on the docs
+      site), while the live pilot run is still open.
 
 - [x] Add saved, evidence-linked results chat and an authenticated HTTP MCP
       surface for reading, starting, and steering investigations. Agentgateway
@@ -116,10 +124,12 @@
       notes in docs/ui.md). The browser login-UI round trip was driven for
       Keycloak by form automation; Zitadel's Login v2 web-component UI was
       completed headlessly through the documented Session API, and its
-      full-browser path remains manually unexercised. Still open: pilot the
-      account workflow (bootstrap, role changes, lockout recovery, shared
-      users-file limitation between CLI and a running server) and consider an
-      append-only action audit log before widening who may launch runs.
+      full-browser path remains manually unexercised. Implemented and
+      race-tested: live user-store reload across CLI and a running server with
+      advisory write locking and active-session revocation, plus a rotated,
+      redacted action audit log (`<output>/.auth/audit.jsonl` and
+      `GET /api/auth/admin/audit`). Still open: pilot the account workflow end to
+      end (bootstrap, role changes, lockout recovery).
 - [ ] Repeat telemetry verification with a **successful** model-backed
       investigation and live ticket actions (the 2026-11-09 collector check in
       docs/verification.md covered the failure path, HTTP routes, RPC metrics,
@@ -127,14 +137,13 @@
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
-- [ ] Run the scheduled `Live verification` workflow and record its first
-      results in docs/verification.md. It builds the disposable gVisor
-      deployment on a GitHub runner and runs the sandbox boundary check
-      (nested upload, DNS/HTTP egress denial, termination, deletion; no model),
-      the live investigation, and pause/resume. Drafted 2026-11-12 and not yet
-      executed: the 1.0.0 upgrade re-ran the demonstration, retention, and
-      pause/resume checks by hand, and DNS/HTTP egress denial and process
-      termination were last exercised on rc3.
+- [ ] Complete the expanded `Live verification` workflow on GitHub Actions
+      (`sandbox`, `investigation`, `pause`, `steer`, and `demo`) and record
+      passing results in docs/verification.md. On gVisor, run `43721637152`
+      (2026-11-15) passed `sandbox`, `investigation`, and `pause`; run
+      `43900382612` (2026-11-16) and local Docker Desktop container `048e1016`
+      passed `TestLiveSandboxBoundary`, while model-backed checks failed HTTP
+      401 `Unauthorized` until `OPENAI_API_KEY` is renewed.
       Then extend it to failure scenarios (connection loss, model errors, TTL
       expiry, cancellation), and exercise a declarative custom investigator
       and a BYO runtime with a reviewed external MCP tool on the pinned release.

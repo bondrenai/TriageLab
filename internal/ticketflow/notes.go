@@ -97,10 +97,20 @@ func (f *Flow) postNote(ctx context.Context, runID string, saved map[string]any,
 // the case's approved procedure policy allows posting without operator
 // review. The workspace calls it once a ticket-launched run settles. Skips
 // are not errors: the ready or blocked preview keeps a human in the loop.
-func (f *Flow) PostAutomaticNote(ctx context.Context, runID string, saved map[string]any) {
+// The result reports what happened for the workspace audit log: "skipped"
+// when the policy or state did not allow a post, otherwise the delivery
+// status ("posted", "unconfirmed", or "blocked").
+func (f *Flow) PostAutomaticNote(ctx context.Context, runID string, saved map[string]any) (string, error) {
 	ctx, finish := traced(ctx, "automatic_note")
-	_, err := f.postAutomaticNote(ctx, runID, saved)
+	preview, err := f.postAutomaticNote(ctx, runID, saved)
 	finish(err)
+	if err != nil {
+		return "", err
+	}
+	if preview.Status == "" {
+		return "skipped", nil
+	}
+	return preview.Status, nil
 }
 
 func (f *Flow) postAutomaticNote(ctx context.Context, runID string, saved map[string]any) (NotePreview, error) {

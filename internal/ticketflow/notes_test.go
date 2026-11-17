@@ -167,7 +167,9 @@ func TestAutomaticInvestigationNotePolicy(t *testing.T) {
 	id, saved := completedTicketReport(t, flow, f)
 	// Without the procedure policy flag the completed run keeps a human in
 	// the loop and nothing is posted automatically.
-	flow.PostAutomaticNote(t.Context(), id, saved)
+	if result, err := flow.PostAutomaticNote(t.Context(), id, saved); err != nil || result != "skipped" {
+		t.Fatalf("automatic note result %q, %v; want skipped", result, err)
+	}
 	if f.count() != 0 {
 		t.Fatalf("note was posted without the automatic policy: %d", f.count())
 	}
@@ -185,7 +187,9 @@ func TestAutomaticInvestigationNotePolicy(t *testing.T) {
 	if preview := flow.NotePreview(id, saved); preview == nil || !preview.Automatic {
 		t.Fatalf("policy decision was not reflected in the preview: %+v", preview)
 	}
-	flow.PostAutomaticNote(t.Context(), id, saved)
+	if result, err := flow.PostAutomaticNote(t.Context(), id, saved); err != nil || result != "posted" {
+		t.Fatalf("automatic note result %q, %v; want posted", result, err)
+	}
 	if f.count() != 1 {
 		t.Fatalf("policy-approved note was not posted automatically: %d", f.count())
 	}
@@ -194,7 +198,9 @@ func TestAutomaticInvestigationNotePolicy(t *testing.T) {
 	}
 	// Repeated completions, for example a later close operation, never post
 	// a second note for the same investigation.
-	flow.PostAutomaticNote(t.Context(), id, saved)
+	if result, err := flow.PostAutomaticNote(t.Context(), id, saved); err != nil || result != "skipped" {
+		t.Fatalf("automatic note result %q, %v; want skipped", result, err)
+	}
 	if f.count() != 1 {
 		t.Fatalf("automatic policy posted a second note: %d", f.count())
 	}

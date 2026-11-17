@@ -3,6 +3,7 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -218,24 +219,69 @@ func TestAccountManagementAPI(t *testing.T) {
 	}
 }
 
+// oidcSessionCookie starts a session for an identity-provider account, which
+// the local user store does not re-check.
+func oidcSessionCookie(t *testing.T, s *Server, identity auth.Identity) *http.Cookie {
+	t.Helper()
+	token, err := s.auth.sessions.Start(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return auth.SessionCookieFor(token, 3600)
+}
+
 func TestLastLocalAdminGuard(t *testing.T) {
 	s := newTestServer(t, nil)
-	ssoAdmin := auth.Identity{Username: "sso.admin", Role: auth.RoleAdmin}
-	// The sole local admin cannot be disabled or demoted by an admin whose
-	// account lives in the identity provider.
-	if err := s.guardAdminDisable(s.auth, ssoAdmin, "admin", true); err == nil {
-		t.Fatal("last local admin may be disabled")
+	ssoAdmin := auth.Identity{Username: "sso.admin", Role: auth.RoleAdmin, Via: "oidc"}
+	ssoCookie := oidcSessionCookie(t, s, ssoAdmin)
+	// The sole local admin cannot be disabled, demoted, or removed by an
+	// admin whose account lives in the identity provider.
+	for _, request := range []struct{ method, body string }{
+		{"PUT", `{"disabled":true}`},
+		{"PUT", `{"role":"viewer"}`},
+		{"DELETE", ""},
+	} {
+		if w := requestAs(s, ssoCookie, request.method, "/api/auth/admin/users/admin",
+			strings.NewReader(request.body)); w.Code != 409 {
+			t.Fatalf("last local admin %s %s: %d %s", request.method, request.body, w.Code, w.Body)
+		}
 	}
-	if err := s.guardAdminChange(s.auth, ssoAdmin, "admin", auth.RoleViewer); err == nil {
-		t.Fatal("last local admin may be demoted")
-	}
-	// With a second local admin both operations are allowed.
-	if w := requestAs(s, adminCookie(s), "POST", "/api/auth/admin/users",
+	// With a second local admin the change is allowed.
+	if w := requestAs(s, ssoCookie, "POST", "/api/auth/admin/users",
 		strings.NewReader(`{"username":"admin2","password":"password-123","role":"admin"}`)); w.Code != 200 {
 		t.Fatalf("second admin: %d %s", w.Code, w.Body)
 	}
-	if err := s.guardAdminDisable(s.auth, ssoAdmin, "admin", true); err != nil {
-		t.Fatalf("guard too strict with two admins: %v", err)
+	if w := requestAs(s, ssoCookie, "PUT", "/api/auth/admin/users/admin",
+		strings.NewReader(`{"disabled":true}`)); w.Code != 200 {
+		t.Fatalf("guard too strict with two admins: %d %s", w.Code, w.Body)
+	}
+	// Two handles on one file (web and CLI) racing to remove the remaining
+	// admins cannot both succeed: the check runs inside the write lock.
+	other, err := auth.OpenStore(s.auth.users.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.ChangeAccount("admin", auth.AccountChange{Disabled: new(false)}); err != nil {
+		t.Fatal(err)
+	}
+	viewer := auth.RoleViewer
+	errs := make(chan error, 2)
+	go func() {
+		errs <- s.auth.users.ChangeAccount("admin", auth.AccountChange{Role: &viewer, KeepEnabledAdmin: true})
+	}()
+	go func() {
+		errs <- other.ChangeAccount("admin2", auth.AccountChange{Role: &viewer, KeepEnabledAdmin: true})
+	}()
+	refused := 0
+	for range 2 {
+		if err := <-errs; errors.Is(err, auth.ErrLastAdmin) {
+			refused++
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if refused != 1 || s.auth.users.CountEnabledAdmins() != 1 {
+		t.Fatalf("refused %d, enabled admins %d", refused, s.auth.users.CountEnabledAdmins())
 	}
 }
 

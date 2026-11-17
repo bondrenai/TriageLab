@@ -52,6 +52,32 @@ func actorFrom(ctx context.Context) auth.Identity {
 	return identity
 }
 
+// currentSessionIdentity returns the active session identity, re-checking local
+// accounts so CLI or admin role changes, disables, and removals take effect on
+// running sessions immediately. An unreadable user file fails the request
+// closed with errUserStoreUnavailable but keeps the session, so a transient
+// error or a mid-edit file does not sign everybody out.
+func (s *Server) currentSessionIdentity(g *gate, token string) (auth.Identity, bool, error) {
+	identity, ok := g.sessions.Lookup(token)
+	if !ok {
+		return auth.Identity{}, false, nil
+	}
+	if identity.Via == "password" {
+		user, exists, err := g.users.Lookup(identity.Username)
+		if err != nil {
+			return auth.Identity{}, false, errUserStoreUnavailable
+		}
+		if !exists || user.Disabled {
+			g.sessions.End(token)
+			return auth.Identity{}, false, nil
+		}
+		identity.Role = user.Role
+	}
+	return identity, true, nil
+}
+
+var errUserStoreUnavailable = errors.New("the account store is temporarily unreadable")
+
 // authorize enforces session sign-in and the route's minimum role, or Bearer
 // authentication for an API client. It writes the response itself when access
 // is denied.
@@ -76,7 +102,11 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request, required auth
 		fail(w, http.StatusUnauthorized, "Sign in to use the workspace")
 		return false
 	}
-	identity, ok := g.sessions.Lookup(cookie.Value)
+	identity, ok, err := s.currentSessionIdentity(g, cookie.Value)
+	if err != nil {
+		fail(w, http.StatusServiceUnavailable, "The account store is unreadable; try again shortly")
+		return false
+	}
 	if !ok {
 		fail(w, http.StatusUnauthorized, "Sign in to use the workspace")
 		return false
@@ -147,6 +177,8 @@ func (s *Server) authRoute(w http.ResponseWriter, r *http.Request) bool {
 		s.oidcStart(w, r)
 	case r.URL.Path == "/api/auth/oidc/callback" && r.Method == http.MethodGet:
 		s.oidcCallback(w, r)
+	case r.URL.Path == "/api/auth/admin/audit":
+		s.adminAuditRoute(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/auth/admin/users"):
 		s.adminUsersRoute(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/auth/admin/clients"):
@@ -170,7 +202,12 @@ func (s *Server) sessionInfo(w http.ResponseWriter, r *http.Request) {
 	if g := s.auth; g != nil {
 		response.OIDCEnabled = g.oidc != nil
 		if cookie, err := r.Cookie(auth.SessionCookie); err == nil {
-			if identity, ok := g.sessions.Lookup(cookie.Value); ok {
+			identity, ok, err := s.currentSessionIdentity(g, cookie.Value)
+			if err != nil {
+				fail(w, http.StatusServiceUnavailable, "The account store is unreadable; try again shortly")
+				return
+			}
+			if ok {
 				response.Authenticated = true
 				response.Username = identity.Username
 				response.Role = string(identity.Role)
@@ -203,17 +240,34 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !g.limiter.Allowed(input.Username) {
+		s.recordAudit(auth.Identity{Via: "password"}, "auth.login", s.loginAuditTarget(g, input.Username), "locked", "rate limited")
 		fail(w, http.StatusTooManyRequests, "Too many failed sign-in attempts; wait before trying again")
 		return
 	}
 	user, ok := g.users.Authenticate(input.Username, input.Password)
 	if !ok {
 		g.limiter.RecordFailure(input.Username)
+		s.recordAudit(auth.Identity{Via: "password"}, "auth.login", s.loginAuditTarget(g, input.Username), "denied", "invalid credentials or disabled")
 		fail(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
 	g.limiter.RecordSuccess(input.Username)
-	s.startSession(w, auth.Identity{Username: user.Username, Role: user.Role, Via: "password"})
+	identity := auth.Identity{Username: user.Username, Role: user.Role, Via: "password"}
+	s.recordAudit(identity, "auth.login", user.Username, "ok", string(user.Role))
+	s.startSession(w, identity)
+}
+
+// loginAuditTarget names a failed login's account only when it exists. The
+// typed username is untrusted and is sometimes a password pasted into the
+// wrong field, so unknown names are never written to the audit log.
+func (s *Server) loginAuditTarget(g *gate, username string) string {
+	if !auth.ValidUsername(username) {
+		return "unknown-account"
+	}
+	if _, exists, err := g.users.Lookup(username); err != nil || !exists {
+		return "unknown-account"
+	}
+	return username
 }
 
 func (s *Server) startSession(w http.ResponseWriter, identity auth.Identity) {
@@ -229,6 +283,9 @@ func (s *Server) startSession(w http.ResponseWriter, identity auth.Identity) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(auth.SessionCookie); err == nil && s.auth != nil {
+		if identity, ok := s.auth.sessions.Lookup(cookie.Value); ok {
+			s.recordAudit(identity, "auth.logout", identity.Username, "ok", "")
+		}
 		s.auth.sessions.End(cookie.Value)
 	}
 	http.SetCookie(w, auth.SessionCookieFor("", -1))
@@ -263,11 +320,13 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	cookie, cookieErr := r.Cookie(oidcStateCookie)
 	state := query.Get("state")
 	if cookieErr != nil || state == "" || len(state) > 128 || cookie.Value != state || query.Get("code") == "" || len(query.Get("code")) > 2048 || len(r.URL.RawQuery) > 8192 {
+		s.recordAudit(auth.Identity{Via: "oidc"}, "auth.oidc.login", "", "denied", "invalid callback")
 		s.oidcFailure(w, r)
 		return
 	}
 	identity, err := s.auth.oidc.FinishLogin(r.Context(), os.Getenv, state, query.Get("code"))
 	if err != nil {
+		s.recordAudit(auth.Identity{Via: "oidc"}, "auth.oidc.login", "", "denied", "provider rejected login")
 		s.oidcFailure(w, r)
 		return
 	}
@@ -276,6 +335,7 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		s.oidcFailure(w, r)
 		return
 	}
+	s.recordAudit(identity, "auth.oidc.login", identity.Username, "ok", string(identity.Role))
 	http.SetCookie(w, &http.Cookie{Name: oidcStateCookie, Value: "", Path: "/api/auth/oidc/callback", MaxAge: -1})
 	http.SetCookie(w, auth.SessionCookieFor(token, int(auth.SessionLifetime/time.Second)))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -319,9 +379,15 @@ func (s *Server) adminUsersRoute(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err = g.users.Create(input.Username, input.Password, role); err != nil {
+				target := input.Username
+				if !auth.ValidUsername(target) {
+					target = "invalid-username"
+				}
+				s.recordAudit(actor, "admin.user.create", target, "error", auditError(err))
 				writeUserError(w, err)
 				return
 			}
+			s.recordAudit(actor, "admin.user.create", input.Username, "ok", string(role))
 			jsonResponse(w, http.StatusOK, map[string]any{"users": g.users.Accounts()})
 		default:
 			fail(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -346,9 +412,11 @@ func (s *Server) adminUsersRoute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := g.users.SetPassword(username, input.Password); err != nil {
+			s.recordAudit(actor, "admin.user.password", username, "error", auditError(err))
 			writeUserError(w, err)
 			return
 		}
+		s.recordAudit(actor, "admin.user.password", username, "ok", "")
 		jsonResponse(w, http.StatusOK, map[string]any{"users": g.users.Accounts()})
 		return
 	}
@@ -365,83 +433,62 @@ func (s *Server) adminUsersRoute(w http.ResponseWriter, r *http.Request) {
 		if !decodeAuthInput(w, r, &input, 2048) {
 			return
 		}
+		if username == actor.Username {
+			err := fmt.Errorf("%w: your own account is managed by another admin or the CLI", errAccountGuard)
+			s.recordAudit(actor, "admin.user.update", username, "conflict", auditError(err))
+			writeUserError(w, err)
+			return
+		}
+		change := auth.AccountChange{Disabled: input.Disabled, KeepEnabledAdmin: true}
+		var details []string
 		if input.Role != nil {
 			role, err := auth.ParseRole(*input.Role)
 			if err != nil {
 				fail(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			if err = s.guardAdminChange(g, actor, username, role); err != nil {
-				writeUserError(w, err)
-				return
-			}
-			if err = g.users.SetRole(username, role); err != nil {
-				writeUserError(w, err)
-				return
-			}
+			change.Role = &role
+			details = append(details, "role="+string(role))
 		}
 		if input.Disabled != nil {
-			if err := s.guardAdminDisable(g, actor, username, *input.Disabled); err != nil {
-				writeUserError(w, err)
-				return
-			}
-			if err := g.users.SetDisabled(username, *input.Disabled); err != nil {
-				writeUserError(w, err)
-				return
-			}
+			details = append(details, fmt.Sprintf("disabled=%t", *input.Disabled))
 		}
+		if err := g.users.ChangeAccount(username, change); err != nil {
+			s.recordAudit(actor, "admin.user.update", username, auditOutcome(err), auditError(err))
+			writeUserError(w, err)
+			return
+		}
+		s.recordAudit(actor, "admin.user.update", username, "ok", strings.Join(details, " "))
 		jsonResponse(w, http.StatusOK, map[string]any{"users": g.users.Accounts()})
 	case http.MethodDelete:
-		if err := s.guardAdminDisable(g, actor, username, true); err != nil {
+		if username == actor.Username {
+			err := fmt.Errorf("%w: your own account is managed by another admin or the CLI", errAccountGuard)
+			s.recordAudit(actor, "admin.user.delete", username, "conflict", auditError(err))
 			writeUserError(w, err)
 			return
 		}
-		if err := g.users.Remove(username); err != nil {
+		if err := g.users.ChangeAccount(username, auth.AccountChange{Remove: true, KeepEnabledAdmin: true}); err != nil {
+			s.recordAudit(actor, "admin.user.delete", username, auditOutcome(err), auditError(err))
 			writeUserError(w, err)
 			return
 		}
+		s.recordAudit(actor, "admin.user.delete", username, "ok", "")
 		jsonResponse(w, http.StatusOK, map[string]any{"users": g.users.Accounts()})
 	default:
 		fail(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
 }
 
-// guardAdminChange blocks role changes that would lock admins out of the
-// workspace: nobody edits their own role, and the last enabled admin cannot
-// be demoted.
 // errAccountGuard marks rejected account changes that would lock admins out.
+// The last-admin check itself runs inside the user store's write lock.
 var errAccountGuard = errors.New("account change refused")
 
-func (s *Server) guardAdminChange(g *gate, actor auth.Identity, username string, role auth.Role) error {
-	if username == actor.Username {
-		return fmt.Errorf("%w: your own role is managed by another admin or the CLI", errAccountGuard)
+// auditOutcome labels refused account changes as conflicts.
+func auditOutcome(err error) string {
+	if errors.Is(err, errAccountGuard) || errors.Is(err, auth.ErrLastAdmin) {
+		return "conflict"
 	}
-	if role != auth.RoleAdmin && s.lastAdmin(g, username) {
-		return fmt.Errorf("%w: the workspace must keep at least one enabled admin", errAccountGuard)
-	}
-	return nil
-}
-
-// guardAdminDisable blocks self-removal and losing the last enabled admin.
-func (s *Server) guardAdminDisable(g *gate, actor auth.Identity, username string, disabling bool) error {
-	if username == actor.Username {
-		return fmt.Errorf("%w: your own account is managed by another admin or the CLI", errAccountGuard)
-	}
-	if disabling && s.lastAdmin(g, username) {
-		return fmt.Errorf("%w: the workspace must keep at least one enabled admin", errAccountGuard)
-	}
-	return nil
-}
-
-// lastAdmin reports whether username is currently the only enabled admin
-// among local accounts. The CLI can always recover a locked-out workspace.
-func (s *Server) lastAdmin(g *gate, username string) bool {
-	for _, account := range g.users.Accounts() {
-		if account.Username != username && account.Role == auth.RoleAdmin && !account.Disabled {
-			return false
-		}
-	}
-	return true
+	return "error"
 }
 
 func decodeAuthInput(w http.ResponseWriter, r *http.Request, input any, limit int64) bool {
@@ -460,7 +507,7 @@ func writeUserError(w http.ResponseWriter, err error) {
 		fail(w, http.StatusNotFound, "Account not found")
 	case errors.Is(err, auth.ErrUserExists):
 		fail(w, http.StatusConflict, "An account with that name already exists")
-	case errors.Is(err, errAccountGuard):
+	case errors.Is(err, errAccountGuard), errors.Is(err, auth.ErrLastAdmin):
 		fail(w, http.StatusConflict, err.Error())
 	default:
 		fail(w, http.StatusBadRequest, err.Error())

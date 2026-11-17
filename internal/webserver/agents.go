@@ -95,6 +95,11 @@ func resourceDefinition[T any](s *Server, w http.ResponseWriter, r *http.Request
 			return
 		}
 		saved, err = s.deployments.Save(r.Context(), resource, manifest, encoded, revision)
+		if err == nil {
+			s.recordAudit(actorFrom(r.Context()), "kagent."+resource+".save", name(definition), "ok", "")
+		} else {
+			s.recordAudit(actorFrom(r.Context()), "kagent."+resource+".save", name(definition), "error", auditError(err))
+		}
 	default:
 		fail(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
