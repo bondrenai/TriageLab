@@ -17,8 +17,14 @@
   `make test-demo-integration`), and opt-in `TestLiveInvestigationSteer`
   (`TRIAGELAB_STEER_INTEGRATION=1` / `make test-steer-integration`), wired into
   `scripts/live-verify.sh` and `.github/workflows/live.yml`. Live model runs of
-  `TestLiveMissingOrders` and `TestLiveInvestigationSteer` remain unexecuted
-  until `OPENAI_API_KEY` is renewed.
+  `TestLiveMissingOrders` and `TestLiveInvestigationSteer` then passed live
+  (see below).
+- **GitHub Actions `Live verification` (`gvisor`), run `44002446483`
+  (Nov 17, 2026, branch `accounts-audit-live-verification`, renewed
+  `OPENAI_API_KEY`).** All five checks passed on a fresh kind cluster with the
+  pinned controller fork: `sandbox`, `investigation`, `pause`, `steer`, and
+  the `missing-orders` demonstration; the cluster was deleted afterwards. The
+  `microvm` class was not exercised in this run.
 - **Boundary and auditability hardening.**
   - `policy.auto_question_condition`: CEL clarification eligibility evaluated
     fail-closed in `assessProcedure()`, exposed in CRDs and

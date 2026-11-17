@@ -10,12 +10,12 @@
 - [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
       pod-projected API-token rotation. See [verification](docs/verification.md).
 
-- [ ] Start `examples/missing-orders` from the New investigation form and confirm it
-      in the scheduled live verification once `OPENAI_API_KEY` is renewed. The
+- [ ] Start `examples/missing-orders` from the New investigation form. The
       offline scorer regression check (`TestMissingOrdersScorerMatchesRecordedDemo`),
       `make test-demo-integration` (`TestLiveMissingOrders`), and
-      `make test-steer-integration` (`TestLiveInvestigationSteer`) are now wired
-      into `scripts/live-verify.sh` and `.github/workflows/live.yml`. A run
+      `make test-steer-integration` (`TestLiveInvestigationSteer`) are wired
+      into `scripts/live-verify.sh` and `.github/workflows/live.yml`; both
+      passed live in gVisor run `44002446483` (2026-11-17). A run
       started from a labelled GitHub issue has been verified, including the
       posted comment. Since 2026-11-12 it is the main demonstration: the
       workspace's bundled example, `make demo`, and the quickstart example, after
@@ -137,14 +137,10 @@
 - [ ] Harden capability boundaries: per-investigation sandbox-scoped credentials,
       enforce process-count/time admission server-side, and remove remaining
       investigator runtime file builtins when upstream supports it.
-- [ ] Complete the expanded `Live verification` workflow on GitHub Actions
-      (`sandbox`, `investigation`, `pause`, `steer`, and `demo`) and record
-      passing results in docs/verification.md. On gVisor, run `43721637152`
-      (2026-11-15) passed `sandbox`, `investigation`, and `pause`; run
-      `43900382612` (2026-11-16) and local Docker Desktop container `048e1016`
-      passed `TestLiveSandboxBoundary`, while model-backed checks failed HTTP
-      401 `Unauthorized` until `OPENAI_API_KEY` is renewed.
-      Then extend it to failure scenarios (connection loss, model errors, TTL
+- [ ] The expanded `Live verification` workflow (`sandbox`, `investigation`,
+      `pause`, `steer`, and `demo`) passed in full on gVisor in run
+      `44002446483` (2026-11-17; see docs/verification.md). Still open: a
+      `microvm` run, then failure scenarios (connection loss, model errors, TTL
       expiry, cancellation), and exercise a declarative custom investigator
       and a BYO runtime with a reviewed external MCP tool on the pinned release.
 - [ ] Add exact binary artifact export through upstream gRPC file transfer, with
