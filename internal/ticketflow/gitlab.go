@@ -379,7 +379,7 @@ func (g *gitlabSource) file(ctx context.Context, f attachment) ([]byte, error) {
 		return nil, errors.New("unsupported GitLab attachment location")
 	}
 	secret, name, ok := g.uploadParts(strings.TrimPrefix(u.Path, prefix))
-	if !ok || name != f.Name || !fileName.MatchString(reproductionName(f.Name)) ||
+	if !ok || name != f.Name || !supportedAttachmentName(reproductionName(f.Name)) ||
 		secretID(secret) != f.ID {
 		return nil, errors.New("unsupported GitLab attachment filename")
 	}

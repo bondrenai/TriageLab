@@ -107,8 +107,8 @@ questions without rewriting earlier rounds. When viewing a historical round,
 lifecycle controls still operate on the latest investigation. Downloads include
 all saved rounds; they do not include the private operational lifecycle record.
 
-The queue separates active work, investigations needing attention, and recent
-reports. A transient refresh failure keeps the last confirmed rows visible with
+The history separates active work, waiting runs, investigations needing
+attention, and recent reports. Search and filters help find saved runs. A transient refresh failure keeps the last confirmed rows visible with
 an explanation; an access denial hides the protected rows. Ticket handoff keeps
 the destination, audience, reviewed text, and confirmed or uncertain delivery
 visible. Reviewing a note does not confirm its conclusions.

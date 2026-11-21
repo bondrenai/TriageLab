@@ -59,6 +59,10 @@ func (s *Server) startCleanup(w http.ResponseWriter, r *http.Request, id string)
 		s.mu.Unlock()
 		fail(w, http.StatusConflict, "This investigation is still active; stop it and wait for its own cleanup")
 		return
+	case s.queuePositionLocked(id) > 0:
+		s.mu.Unlock()
+		fail(w, http.StatusConflict, "This investigation is waiting in the queue")
+		return
 	case s.cleaning != nil && s.cleaning.id == id:
 		s.mu.Unlock()
 		fail(w, http.StatusConflict, "Cleanup is already running for this investigation")
@@ -133,10 +137,9 @@ func (s *Server) startCleanup(w http.ResponseWriter, r *http.Request, id string)
 	}
 	go func() {
 		defer finish()
-		secrets := s.secretList()
-		runner := investigation.Investigator{Client: s.backend, Config: s.config, Secrets: secrets}
+		runner := investigation.Investigator{Client: s.backend, Config: s.config, SecretSource: s.secretList}
 		runner.Cleanup(ctx, saved)
-		if err := report.Write(dir, saved, secrets...); err != nil {
+		if err := report.Write(dir, saved, s.secretList()...); err != nil {
 			s.mu.Lock()
 			s.cleanupFailure = map[string]string{id: "Cleanup finished but the report could not be saved. Retry, or use the CLI cleanup command."}
 			s.mu.Unlock()

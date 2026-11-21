@@ -6,7 +6,7 @@ export const exampleReport: InvestigationReport = exampleJSON;
 export const getSettings = () => request<Settings>("/api/settings");
 export const listRuns = () => request<{ runs: RunSummary[] }>("/api/runs");
 export const getRun = (id: string) => request<InvestigationReport>(`/api/runs/${encodeURIComponent(id)}`);
-export const cancelRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+export const cancelRun = (id: string, queuedOnly: boolean) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cancel${queuedOnly ? "?queued=true" : ""}`, { method: "POST" });
 export const cleanupRun = (id: string) => request<{ id?: string }>(`/api/runs/${encodeURIComponent(id)}/cleanup`, { method: "POST" });
 
 export const pauseRun = (id: string) => request<{ id: string }>(`/api/runs/${encodeURIComponent(id)}/pause`, { method: "POST" });
@@ -45,10 +45,18 @@ export const postTicketNote = (id: string, plan: string, body?: string) =>
     body: JSON.stringify(body === undefined ? { plan } : { plan, body }),
   });
 
-export function createRun(input: { description: string; files: File[]; agent?: string; sandbox?: string; namespace?: string }) {
+import type { UploadEntry } from "./intake";
+
+export function createRun(input: { description: string; files: (File | UploadEntry)[]; agent?: string; sandbox?: string; namespace?: string }) {
   const body = new FormData();
   body.append("description", input.description);
-  for (const file of input.files) body.append("files", file, file.webkitRelativePath || file.name);
+  for (const item of input.files) {
+    if ("file" in item) {
+      body.append("files", item.file, item.path);
+    } else {
+      body.append("files", item, item.webkitRelativePath || item.name);
+    }
+  }
   const headers: Record<string, string> = {};
   if (input.agent) headers["X-TriageLab-Agent"] = input.agent;
   if (input.sandbox) headers["X-TriageLab-Sandbox"] = input.sandbox;

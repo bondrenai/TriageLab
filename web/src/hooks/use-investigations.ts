@@ -23,17 +23,17 @@ export function useRuns() {
     },
     retry: (failureCount, error) => !(error instanceof APIError && (error.status === 401 || error.status === 403)) && failureCount < 2,
     refetchInterval: query => query.state.error instanceof APIError && (query.state.error.status === 401 || query.state.error.status === 403)
-      ? false : query.state.data?.runs.some(run => run.active) ? 2_000 : 10_000,
+      ? false : query.state.data?.runs.some(run => run.active || run.queued) ? 2_000 : 10_000,
   });
 }
-export const useRun = (id: string) => useQuery({ queryKey: queryKeys.run(id), queryFn: () => getRun(id), enabled: Boolean(id), refetchInterval: query => query.state.data?.active || query.state.data?.cleanup_running ? 2_000 : false });
+export const useRun = (id: string) => useQuery({ queryKey: queryKeys.run(id), queryFn: () => getRun(id), enabled: Boolean(id), refetchInterval: query => query.state.data?.active || query.state.data?.queued || query.state.data?.cleanup_running ? 2_000 : false });
 export function useCreateRun() {
   const client = useQueryClient();
   return useMutation({ mutationFn: createRun, onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.runs }) });
 }
 export function useCancelRun(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: () => cancelRun(id), onSettled: () => refreshRun(client, id) });
+  return useMutation({ mutationFn: (queuedOnly?: boolean) => cancelRun(id, queuedOnly === true), onSettled: () => refreshRun(client, id) });
 }
 
 function refreshRun(client: ReturnType<typeof useQueryClient>, id: string) {

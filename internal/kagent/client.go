@@ -15,8 +15,11 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -33,6 +36,7 @@ const (
 	tasksExtension     = "io.modelcontextprotocol/tasks"
 	maxResponseBytes   = 12 << 20
 	maxTranscriptBytes = 16 << 20
+	maxTokenFileBytes  = 64 << 10
 )
 
 // Error is an upstream failure. Mutations are never automatically retried.
@@ -52,11 +56,15 @@ func protocolError(message string) error { return &Error{Kind: "protocol", Messa
 // is only an identity hint for development authentication, never an
 // authentication token.
 type Client struct {
-	endpoint string
-	user     string
-	token    string
-	version  string
-	http     *http.Client
+	endpoint    string
+	user        string
+	token       string
+	tokenFile   string
+	onToken     func(string)
+	tokenMu     sync.Mutex
+	cachedToken string
+	version     string
+	http        *http.Client
 }
 
 // Option adjusts New.
@@ -65,6 +73,8 @@ type Option func(*options)
 type options struct {
 	allowClusterHTTP bool
 	version          string
+	tokenFile        string
+	onToken          func(string)
 }
 
 // AllowClusterHTTP permits plain HTTP to in-cluster Kubernetes service
@@ -78,6 +88,17 @@ func AllowClusterHTTP() Option {
 // The composing command supplies it; without it the client announces "unknown".
 func ClientVersion(version string) Option {
 	return func(o *options) { o.version = version }
+}
+
+// TokenFile reloads the bearer token from path on demand, following symlinks
+// (as used by Kubernetes projected ServiceAccount token volumes). When onToken
+// is non-nil, it is called before a changed token is used so callers
+// can register rotated credentials for redaction.
+func TokenFile(path string, onToken func(string)) Option {
+	return func(o *options) {
+		o.tokenFile = path
+		o.onToken = onToken
+	}
 }
 
 // CheckEndpoint applies the endpoint policy shared by configuration validation
@@ -139,10 +160,64 @@ func New(endpoint, user, token string, timeout time.Duration, opts ...Option) (*
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	return &Client{endpoint: endpoint, user: user, token: token, version: o.version, http: &http.Client{
-		Timeout: timeout, Transport: transport,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	client := &Client{
+		endpoint:  endpoint,
+		user:      user,
+		token:     token,
+		tokenFile: o.tokenFile,
+		onToken:   o.onToken,
+		version:   o.version,
+		http: &http.Client{
+			Timeout: timeout, Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
+	if client.tokenFile != "" {
+		if _, err := client.currentToken(); err != nil {
+			return nil, err
+		}
+	}
+	return client, nil
+}
+
+// currentToken returns the static bearer token or reloads it from tokenFile.
+// Symlinks are followed so Kubernetes projected ServiceAccount token volumes
+// rotate seamlessly without restarting the process.
+func (c *Client) currentToken() (string, error) {
+	if c.tokenFile == "" {
+		return c.token, nil
+	}
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	info, err := os.Stat(c.tokenFile)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", &Error{Kind: "auth", Message: "kagent token file must be a readable regular file"}
+	}
+	f, err := os.OpenFile(c.tokenFile, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", &Error{Kind: "auth", Message: "could not read kagent token file"}
+	}
+	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxTokenFileBytes {
+		return "", &Error{Kind: "auth", Message: "kagent token file must be a regular file of at most 64 KiB"}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxTokenFileBytes+1))
+	if err != nil || len(data) > maxTokenFileBytes {
+		return "", &Error{Kind: "auth", Message: "kagent token file could not be read or exceeds 64 KiB"}
+	}
+	tok := strings.TrimRight(string(data), "\r\n")
+	if tok == "" || !printable(tok, false) {
+		return "", &Error{Kind: "auth", Message: "kagent token file must contain a nonempty printable token without whitespace"}
+	}
+	if tok != c.cachedToken {
+		// Register the credential before another request can use it.
+		if c.onToken != nil {
+			c.onToken(tok)
+		}
+		c.cachedToken = tok
+	}
+	return tok, nil
 }
 
 func printable(value string, allowSpace bool) bool {
@@ -213,8 +288,12 @@ func (c *Client) rpcCall(ctx context.Context, method string, params map[string]a
 	req.Header.Set("X-User-Id", c.user)
 	req.Header.Set("Mcp-Protocol-Version", MCPVersion)
 	req.Header.Set("Mcp-Method", method)
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	token, err := c.currentToken()
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	if method == "tools/call" {
 		req.Header.Set("Mcp-Name", fmt.Sprint(params["name"]))

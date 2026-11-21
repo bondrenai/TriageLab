@@ -17,6 +17,7 @@ import (
 
 	"github.com/bondrenai/TriageLab/internal/auth"
 	"github.com/bondrenai/TriageLab/internal/casefile"
+	"github.com/bondrenai/TriageLab/internal/investigation"
 	"github.com/bondrenai/TriageLab/internal/report"
 	"github.com/bondrenai/TriageLab/internal/resultchat"
 )
@@ -175,7 +176,9 @@ func TestMCPStartReturnsBeforeExecutionAndKeepsActorAndBusySlot(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	var startOnce, releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	s := newTestServer(t, testBackend{call: func(ctx context.Context, _ string, _ map[string]any) (map[string]any, error) {
+	cfg := investigation.DefaultConfig()
+	cfg.MaxQueuedRuns = 0
+	s := newTestServerWithConfig(t, cfg, testBackend{call: func(ctx context.Context, _ string, _ map[string]any) (map[string]any, error) {
 		startOnce.Do(func() { close(started) })
 		select {
 		case <-release:

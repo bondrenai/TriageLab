@@ -110,10 +110,10 @@ var flagName = regexp.MustCompile(`(?m)^  -(\S+)`)
 // Each subcommand accepts exactly its own options; shared names keep their defaults.
 func TestSubcommandsDefineOnlyTheirOwnFlags(t *testing.T) {
 	for command, want := range map[string][]string{
-		"investigate":    {"agent", "config", "description", "description-file", "file", "log", "namespace", "output", "repo", "telemetry"},
+		"investigate":    {"agent", "config", "description", "description-file", "dry-run", "exclude", "file", "include", "log", "namespace", "output", "repo", "telemetry"},
 		"serve":          {"allow-resource-writes", "assets", "auth", "chat", "clients", "config", "gitops", "listen", "mcp", "output", "status-context", "status-kubeconfig", "telemetry", "tickets", "users"},
 		"pause":          {"config", "report", "telemetry"},
-		"resume":         {"config", "description", "description-file", "file", "log", "repo", "report", "telemetry"},
+		"resume":         {"config", "description", "description-file", "exclude", "file", "include", "log", "repo", "report", "telemetry"},
 		"close":          {"config", "report", "telemetry"},
 		"doctor":         {"config", "telemetry"},
 		"cleanup":        {"config", "report", "telemetry"},
@@ -353,5 +353,26 @@ func TestUserCommandFlagsAndPositionalArgs(t *testing.T) {
 	}
 	if code, _, errout := runUser("", "remove", "--username", "alice"); code != 0 {
 		t.Fatalf("remove failed: %d %s", code, errout)
+	}
+}
+
+func TestInvestigateDryRunAndGlobsOffline(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "app.py"), []byte("print('ok')\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("ignore me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errout bytes.Buffer
+	code := run(context.Background(), []string{
+		"investigate", "--dry-run", "--description", "Check ingestion offline",
+		"--repo", repo, "--include", "*.py",
+	}, &out, &errout)
+	if code != 0 {
+		t.Fatalf("dry-run exit %d: %s", code, errout.String())
+	}
+	if !strings.Contains(out.String(), "Dry run passed") || !strings.Contains(out.String(), "app.py") || strings.Contains(out.String(), "notes.txt") {
+		t.Fatalf("unexpected dry-run output:\n%s", out.String())
 	}
 }

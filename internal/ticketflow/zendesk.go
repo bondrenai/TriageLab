@@ -56,10 +56,11 @@ type ticket struct {
 }
 
 type attachment struct {
-	ID   int64  `json:"id"`
-	Name string `json:"file_name"`
-	Size int64  `json:"size"`
-	URL  string `json:"content_url"`
+	ID     int64  `json:"id"`
+	Name   string `json:"file_name"`
+	Size   int64  `json:"size"`
+	URL    string `json:"content_url"`
+	Inline string `json:"-"`
 }
 
 type comment struct {

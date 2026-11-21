@@ -67,9 +67,14 @@ curl -H "Authorization: Bearer $TOKEN" \
   http://127.0.0.1:8080/api/runs
 ```
 
-The reply is `202 {"id":"<run-id>"}`. The workspace runs **one investigation
-at a time**; launching during an active run answers `409`, so retry later.
-Then poll the run until `status` is final and `active` is false:
+The reply is `202 {"id":"<run-id>"}`. The workspace runs one investigation at
+a time and accepts up to four waiting runs by default. A full queue returns
+`409`. Poll the run until its status is final. While the server manages it,
+the response has either `active: true` or `queued: true` with a
+one-based `queue_position`. To cancel only if it is still queued, send
+`POST /api/runs/<run-id>/cancel?queued=true`.
+
+Read the run and download its saved evidence with:
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/runs/$RUN_ID

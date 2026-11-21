@@ -46,6 +46,11 @@ func (testBackend) SandboxRetention(context.Context) (bool, error) {
 
 func newTestServer(t *testing.T, backend investigation.Backend) *Server {
 	t.Helper()
+	return newTestServerWithConfig(t, investigation.DefaultConfig(), backend)
+}
+
+func newTestServerWithConfig(t *testing.T, cfg investigation.Config, backend investigation.Backend) *Server {
+	t.Helper()
 	base := t.TempDir()
 	assets := filepath.Join(base, "assets")
 	if err := os.Mkdir(assets, 0o700); err != nil {
@@ -60,7 +65,7 @@ func newTestServer(t *testing.T, backend investigation.Backend) *Server {
 			return nil, fmt.Errorf("unexpected upstream")
 		}}
 	}
-	s, err := New(context.Background(), investigation.DefaultConfig(), filepath.Join(base, "reports"), assets, backend, "server-test-secret")
+	s, err := New(context.Background(), cfg, filepath.Join(base, "reports"), assets, backend, "server-test-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +274,9 @@ func TestRunSerializesWorkCancelsAndPersistsHistory(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}}
-	s := newTestServer(t, backend)
+	cfg := investigation.DefaultConfig()
+	cfg.MaxQueuedRuns = 0
+	s := newTestServerWithConfig(t, cfg, backend)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, formRequest(t, s, "The fixture fails", upload{"app.py", "raise Exception('fixture')"}))
 	if w.Code != 202 {

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -357,5 +359,77 @@ func TestCancellationUpstreamReference(t *testing.T) {
 	})
 	if err := client.CancelTask(context.Background(), "session", "task"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientTokenFileReloadAndRotation(t *testing.T) {
+	dir := t.TempDir()
+	target1 := filepath.Join(dir, "token-v1")
+	target2 := filepath.Join(dir, "token-v2")
+	link := filepath.Join(dir, "token")
+	if err := os.WriteFile(target1, []byte("first-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target2, []byte("second-token\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target1, link); err != nil {
+		t.Fatal(err)
+	}
+
+	var observedAuth []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observedAuth = append(observedAuth, r.Header.Get("Authorization"))
+		testResponse(w, testRequest(t, r), map[string]any{"structuredContent": map[string]any{"ok": true}})
+	}))
+	t.Cleanup(server.Close)
+
+	var seenTokens []string
+	client, err := New(server.URL+"/mcp", "investigator", "", time.Second, TokenFile(link, func(tok string) {
+		seenTokens = append(seenTokens, tok)
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+
+	if _, err := client.CallTool(context.Background(), "list_sandbox_templates", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CallTool(context.Background(), "list_sandbox_templates", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate Kubernetes projected token rotation via atomic symlink swap.
+	tmpLink := filepath.Join(dir, "token.next")
+	if err := os.Symlink(target2, tmpLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmpLink, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CallTool(context.Background(), "list_sandbox_templates", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	wantAuth := []string{"Bearer first-token", "Bearer first-token", "Bearer second-token"}
+	if !reflect.DeepEqual(observedAuth, wantAuth) {
+		t.Fatalf("auth headers=%v, want %v", observedAuth, wantAuth)
+	}
+	wantSeen := []string{"first-token", "second-token"}
+	if !reflect.DeepEqual(seenTokens, wantSeen) {
+		t.Fatalf("onToken callbacks=%v, want %v", seenTokens, wantSeen)
+	}
+
+	// Empty or whitespace-containing token file fails closed without leaking content.
+	badFile := filepath.Join(dir, "bad-token")
+	if err := os.WriteFile(badFile, []byte("bad token with space"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(server.URL+"/mcp", "investigator", "", time.Second, TokenFile(badFile, nil)); err == nil || strings.Contains(err.Error(), "bad token") {
+		t.Fatalf("invalid token file error: %v", err)
+	}
+	if _, err := New(server.URL+"/mcp", "investigator", "", time.Second, TokenFile(filepath.Join(dir, "missing"), nil)); err == nil {
+		t.Fatal("missing token file accepted")
 	}
 }

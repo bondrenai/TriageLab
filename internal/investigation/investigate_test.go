@@ -620,3 +620,24 @@ func TestExitedProcessNeedsAnIntegralExitCode(t *testing.T) {
 		})
 	}
 }
+
+func TestPersistRedactsCredentialsRotatedDuringRun(t *testing.T) {
+	const first = "first-custom-kagent-credential"
+	const rotated = "second-custom-kagent-credential"
+	secrets := []string{first}
+	runner := Investigator{SecretSource: func() []string { return secrets }}
+	secrets = append(secrets, rotated)
+	dir := t.TempDir()
+	if err := runner.persist(dir, &Report{Errors: []string{first, rotated}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"report.json", "report.md"} {
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(content), first) || strings.Contains(string(content), rotated) {
+			t.Fatalf("%s contains a credential", name)
+		}
+	}
+}

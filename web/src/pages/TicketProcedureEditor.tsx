@@ -212,7 +212,7 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
                 <input className="field" required maxLength={100} placeholder="trace.log or .log" value={rule.match}
                   onChange={e => updateEvidence(index, { match: e.target.value })} />
               </Field>
-              <p className="field-help">Supported file types: .py, .json, .txt, and .log.</p>
+              <p className="field-help">Supported file types: .py, .json, .yaml/.yml, .toml, .csv/.tsv, .xml, .ini/.conf/.cfg, .md, .go, .js/.ts/.jsx/.tsx, .rb, .rs, .java, .sql, .diff/.patch, .txt, and .log. Matching fenced Markdown code blocks in requester comments are also accepted when no file is attached.</p>
             </>}
             <label className="agent-tool-option">
               <input type="checkbox" checked={rule.required} onChange={e => updateEvidence(index, { required: e.target.checked, required_when: e.target.checked ? rule.required_when : undefined })} />

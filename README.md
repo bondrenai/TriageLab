@@ -331,8 +331,9 @@ same shell, start the server:
 ./bin/triagelab serve
 ```
 
-The server listens only on `127.0.0.1:8080` and runs one investigation at a
-time. From your laptop, open an SSH tunnel to the VM, then browse to
+The server listens only on `127.0.0.1:8080`. One investigation runs at a time,
+with up to four waiting in submission order by default. From your laptop,
+open an SSH tunnel to the VM, then browse to
 <http://127.0.0.1:8080>:
 
 ```bash

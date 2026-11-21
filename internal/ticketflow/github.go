@@ -233,7 +233,7 @@ func (g *githubSource) file(ctx context.Context, f attachment) ([]byte, error) {
 		return nil, errors.New("unsupported GitHub attachment location")
 	}
 	parts := githubFilePath.FindStringSubmatch(u.Path)
-	if len(parts) == 0 || parts[2] != f.Name || !fileName.MatchString(reproductionName(f.Name)) {
+	if len(parts) == 0 || parts[2] != f.Name || !supportedAttachmentName(reproductionName(f.Name)) {
 		return nil, errors.New("unsupported GitHub attachment filename")
 	}
 	res, err := g.download(ctx, u.String())

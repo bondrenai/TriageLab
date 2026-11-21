@@ -88,3 +88,26 @@ func TestConfigRejectsUnknownFieldsAndTrailingObjects(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigTokenFileAndMaxQueuedRuns(t *testing.T) {
+	c := DefaultConfig()
+	c.TokenEnv = ""
+	c.TokenFile = "/var/run/secrets/kagent/token"
+	c.MaxQueuedRuns = 8
+	if err := c.Validate(); err != nil {
+		t.Fatalf("valid token_file and max_queued_runs rejected: %v", err)
+	}
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.TokenEnv = ""; c.TokenFile = "" },
+		func(c *Config) { c.TokenFile = " /tmp/token " },
+		func(c *Config) { c.TokenFile = "/tmp/tok\nen" },
+		func(c *Config) { c.MaxQueuedRuns = -1 },
+		func(c *Config) { c.MaxQueuedRuns = 17 },
+	} {
+		bad := DefaultConfig()
+		mutate(&bad)
+		if err := bad.Validate(); err == nil {
+			t.Fatalf("invalid config accepted: %+v", bad)
+		}
+	}
+}

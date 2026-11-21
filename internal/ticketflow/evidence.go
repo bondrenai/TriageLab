@@ -4,10 +4,53 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/bondrenai/TriageLab/internal/casefile"
 )
+
+var supportedAttachmentExtensions = []string{
+	".py", ".json", ".log", ".txt",
+	".yaml", ".yml", ".toml", ".csv", ".tsv", ".xml", ".ini", ".conf", ".cfg", ".md",
+	".go", ".js", ".ts", ".jsx", ".tsx", ".rb", ".rs", ".java", ".sql", ".diff", ".patch",
+}
+
+var attachmentStem = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}$`)
+
+func supportedAttachmentName(name string) bool {
+	ext := path.Ext(name)
+	return slices.Contains(supportedAttachmentExtensions, ext) &&
+		attachmentStem.MatchString(strings.TrimSuffix(name, ext))
+}
+
+var codeFenceExtensions = map[string]string{
+	"py": ".py", "python": ".py", "python3": ".py",
+	"json": ".json", "jsonc": ".json",
+	"log": ".log",
+	"txt": ".txt", "text": ".txt", "plaintext": ".txt",
+	"yaml": ".yaml", "yml": ".yml",
+	"toml": ".toml",
+	"csv":  ".csv", "tsv": ".tsv",
+	"xml": ".xml",
+	"ini": ".ini", "conf": ".conf", "cfg": ".cfg",
+	"md": ".md", "markdown": ".md",
+	"go": ".go", "golang": ".go",
+	"js": ".js", "javascript": ".js",
+	"ts": ".ts", "typescript": ".ts",
+	"jsx": ".jsx", "tsx": ".tsx",
+	"rb": ".rb", "ruby": ".rb",
+	"rs": ".rs", "rust": ".rs",
+	"java":  ".java",
+	"sql":   ".sql",
+	"diff":  ".diff",
+	"patch": ".patch",
+}
+
+const maxInlineCodeBlocksPerComment = 8
 
 type EvidenceRule struct {
 	Kind         string `json:"kind"`
@@ -80,7 +123,7 @@ func (rules EvidenceRules) valid(validText func(string, int) bool) bool {
 				}
 			}
 		case "attachment":
-			if rule.Pattern != "" || (!fileName.MatchString(rule.Match) && !slices.Contains([]string{".py", ".json", ".txt", ".log"}, rule.Match)) {
+			if rule.Pattern != "" || (!supportedAttachmentName(rule.Match) && !slices.Contains(supportedAttachmentExtensions, rule.Match)) {
 				return false
 			}
 		default:
@@ -109,9 +152,130 @@ type evidenceFile struct {
 	commentURL string
 }
 
+// extractCodeBlocks parses Markdown fenced code blocks from a requester reply
+// into bounded inline attachments. Only blocks with an explicit supported
+// filename or a recognized language tag are returned.
+func extractCodeBlocks(body string) []attachment {
+	if !strings.Contains(body, "```") && !strings.Contains(body, "~~~") {
+		return nil
+	}
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	var blocks []attachment
+	usedNames := make(map[string]bool)
+	inFence := false
+	var fenceChar byte
+	fenceLen := 0
+	var blockName string
+	var indent int
+	var oversized bool
+	var content strings.Builder
+
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		padding := len(line) - len(trimmed)
+		if !inFence {
+			if padding > 3 || len(trimmed) < 3 || (trimmed[0] != '`' && trimmed[0] != '~') {
+				continue
+			}
+			ch := trimmed[0]
+			n := 0
+			for n < len(trimmed) && trimmed[n] == ch {
+				n++
+			}
+			if n < 3 {
+				continue
+			}
+			info := strings.TrimSpace(trimmed[n:])
+			// Backtick info strings cannot contain backticks per CommonMark.
+			if ch == '`' && strings.ContainsRune(info, '`') {
+				continue
+			}
+			inFence = true
+			fenceChar = ch
+			fenceLen = n
+			indent = padding
+			oversized = false
+			blockName = resolveCodeBlockName(info, len(blocks)+1, usedNames)
+			content.Reset()
+			continue
+		}
+		if padding <= 3 && len(trimmed) >= fenceLen && trimmed[0] == fenceChar {
+			n := 0
+			for n < len(trimmed) && trimmed[n] == fenceChar {
+				n++
+			}
+			if n >= fenceLen && strings.TrimSpace(trimmed[n:]) == "" {
+				inFence = false
+				text := content.String()
+				if blockName != "" && !oversized && strings.TrimSpace(text) != "" {
+					usedNames[blockName] = true
+					blocks = append(blocks, attachment{
+						Name:   blockName,
+						Size:   int64(len(text)),
+						Inline: text,
+					})
+					if len(blocks) == maxInlineCodeBlocksPerComment {
+						return blocks
+					}
+				}
+				continue
+			}
+		}
+		if blockName != "" && !oversized {
+			line = line[min(indent, padding):]
+			oversized = len(line)+1 > casefile.MaxFileBytes-content.Len()
+			if !oversized {
+				content.WriteString(line)
+				content.WriteByte('\n')
+			}
+		}
+	}
+	return blocks
+}
+
+func resolveCodeBlockName(info string, index int, used map[string]bool) string {
+	if info == "" {
+		return ""
+	}
+	fields := strings.Fields(info)
+	// First check for explicit filename=..., file=..., title=..., then a bare supported filename.
+	for _, field := range fields {
+		key, value, _ := strings.Cut(field, "=")
+		switch strings.ToLower(key) {
+		case "filename", "file", "title", "name":
+			name := reproductionName(strings.Trim(value, `"'`))
+			if supportedAttachmentName(name) && !used[name] {
+				return name
+			}
+			return ""
+		}
+	}
+	name := reproductionName(fields[0])
+	if supportedAttachmentName(name) {
+		if !used[name] {
+			return name
+		}
+		return ""
+	}
+	lang := strings.ToLower(strings.TrimLeft(fields[0], "."))
+	ext, ok := codeFenceExtensions[lang]
+	if !ok {
+		return ""
+	}
+	for n := index; n < index+maxInlineCodeBlocksPerComment+1; n++ {
+		name := fmt.Sprintf("snippet-%d%s", n, ext)
+		if !used[name] {
+			return name
+		}
+	}
+	return ""
+}
+
 // The first matching required attachment rule anchors the evidence bundle.
 // Another rule may supply files from a separate requester reply if the
 // selected bundle lacks its match. Older versions of the bundle are ignored.
+// Real uploaded attachments always take precedence; inline Markdown code blocks
+// fill in only when no uploaded attachment satisfies a rule.
 func (rules EvidenceRules) selectFiles(replies []comment) []evidenceFile {
 	var primary *EvidenceRule
 	var files []evidenceFile
@@ -137,21 +301,50 @@ func (rules EvidenceRules) selectFiles(replies []comment) []evidenceFile {
 			break
 		}
 	}
-	if primary == nil {
-		return nil
+	if primary != nil {
+		for _, r := range rules {
+			if r.Kind != "attachment" || slices.ContainsFunc(files, func(f evidenceFile) bool { return r.matchesFile(f.attachment) }) {
+				continue
+			}
+			for _, m := range slices.Backward(replies) {
+				if slices.ContainsFunc(m.Files, primary.matchesFile) {
+					continue
+				}
+				found := false
+				for _, a := range m.Files {
+					if r.matchesFile(a) {
+						files = append(files, evidenceFile{a, m.ID, m.URL})
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
+	}
+	// Fall back to inline Markdown fenced code blocks for any attachment rule
+	// that was not satisfied by an uploaded file.
+	inlineByReply := make(map[int][]attachment)
+	seenNames := make(map[string]bool, len(files))
+	for _, f := range files {
+		seenNames[reproductionName(f.Name)] = true
 	}
 	for _, r := range rules {
 		if r.Kind != "attachment" || slices.ContainsFunc(files, func(f evidenceFile) bool { return r.matchesFile(f.attachment) }) {
 			continue
 		}
-		for _, m := range slices.Backward(replies) {
-			if slices.ContainsFunc(m.Files, primary.matchesFile) {
-				continue
+		for index, m := range slices.Backward(replies) {
+			blocks, parsed := inlineByReply[index]
+			if !parsed {
+				blocks = extractCodeBlocks(m.Body)
+				inlineByReply[index] = blocks
 			}
 			found := false
-			for _, a := range m.Files {
-				if r.matchesFile(a) {
-					files = append(files, evidenceFile{a, m.ID, m.URL})
+			for _, b := range blocks {
+				if r.matchesFile(b) && !seenNames[reproductionName(b.Name)] {
+					files = append(files, evidenceFile{b, m.ID, m.URL})
+					seenNames[reproductionName(b.Name)] = true
 					found = true
 				}
 			}

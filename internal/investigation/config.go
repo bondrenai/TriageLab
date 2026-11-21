@@ -18,10 +18,12 @@ type Config struct {
 	Template             string              `json:"template"`
 	UserID               string              `json:"user_id"`
 	TokenEnv             string              `json:"token_env"`
+	TokenFile            string              `json:"token_file,omitempty"`
 	InvestigationTimeout int                 `json:"investigation_timeout"`
 	ProcessTimeout       int                 `json:"process_timeout"`
 	SandboxTTL           int                 `json:"sandbox_ttl"`
 	MaxExperiments       int                 `json:"max_experiments"`
+	MaxQueuedRuns        int                 `json:"max_queued_runs"`
 	PollInterval         int                 `json:"poll_interval"`
 	RequestTimeout       int                 `json:"request_timeout"`
 	MaxOutputBytes       int                 `json:"max_output_bytes"`
@@ -45,7 +47,7 @@ func DefaultConfig() Config {
 	return Config{
 		Endpoint: "http://127.0.0.1:8083/mcp", Namespace: "kagent", Agent: "triagelab-investigator",
 		Template: "triagelab-python", UserID: "triagelab@localhost", TokenEnv: "TRIAGELAB_TOKEN",
-		InvestigationTimeout: 600, ProcessTimeout: 60, SandboxTTL: 900, MaxExperiments: 8,
+		InvestigationTimeout: 600, ProcessTimeout: 60, SandboxTTL: 900, MaxExperiments: 8, MaxQueuedRuns: 4,
 		PollInterval: 2, RequestTimeout: 20, MaxOutputBytes: 1 << 20,
 	}
 }
@@ -72,10 +74,21 @@ func LoadConfig(path string) (Config, error) {
 }
 
 func (c Config) Validate() error {
-	for name, value := range map[string]string{"endpoint": c.Endpoint, "namespace": c.Namespace, "agent": c.Agent, "template": c.Template, "user_id": c.UserID, "token_env": c.TokenEnv} {
+	for name, value := range map[string]string{"endpoint": c.Endpoint, "namespace": c.Namespace, "agent": c.Agent, "template": c.Template, "user_id": c.UserID} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s must be nonempty", name)
 		}
+	}
+	if strings.TrimSpace(c.TokenEnv) == "" && strings.TrimSpace(c.TokenFile) == "" {
+		return fmt.Errorf("token_env or token_file must be nonempty")
+	}
+	if c.TokenFile != "" {
+		if strings.TrimSpace(c.TokenFile) != c.TokenFile || len(c.TokenFile) > 4096 || strings.ContainsAny(c.TokenFile, "\x00\r\n") {
+			return fmt.Errorf("token_file must be a valid file path without surrounding whitespace or control characters")
+		}
+	}
+	if c.MaxQueuedRuns < 0 || c.MaxQueuedRuns > 16 {
+		return fmt.Errorf("max_queued_runs must be between 0 and 16")
 	}
 	if len(c.ManualAgents) > 32 {
 		return fmt.Errorf("configure at most 32 manual agents")

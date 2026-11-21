@@ -14,11 +14,13 @@ One JSON object, decoded with unknown fields rejected. Omitted fields take the d
 | `agent` | string | triagelab-investigator | kagent agent invoked as the investigator. |
 | `template` | string | triagelab-python | Standalone sandbox template used for the run's sandbox. |
 | `user_id` | string | triagelab@localhost | kagent user identity that owns sessions and sandboxes. |
-| `token_env` | string | TRIAGELAB_TOKEN | Environment variable holding the kagent invocation token; the token itself never goes in the file. |
+| `token_env` | string | TRIAGELAB_TOKEN | Environment variable holding the kagent invocation token; the token itself never goes in the file. Optional when token_file is set. |
+| `token_file` | string | (none) | Optional file path holding the kagent invocation token, read before each request (for example from a Kubernetes projected ServiceAccount token volume). Takes precedence over token_env when set. |
 | `investigation_timeout` | integer | 600 | Budget per active investigation round in seconds (at most 3000). Resume starts a fresh round with the saved limit. |
 | `process_timeout` | integer | 60 | Per-process watchdog in seconds; cannot exceed investigation_timeout. |
 | `sandbox_ttl` | integer | 900 | Active sandbox TTL in seconds; must cover the investigation plus request and cleanup budgets (at most 3600). The pinned fork retains a fully suspended sandbox and refreshes this bounded TTL once on resume. |
 | `max_experiments` | integer | 8 | Client-side cap on recorded experiments (at most 32). A watchdog observed between polls, not admission control. |
+| `max_queued_runs` | integer | 4 | Maximum waiting workspace runs (0 to 16), dispatched in submission order. At 0, concurrent submissions return HTTP 409. The queue is in memory and waiting runs do not survive a restart. |
 | `poll_interval` | integer | 2 | Seconds between task-history polls (at most 10). |
 | `request_timeout` | integer | 20 | Per HTTP request timeout in seconds (at most 60). |
 | `max_output_bytes` | integer | 1048576 | Cap on captured process output per read (at most 4 MiB). |

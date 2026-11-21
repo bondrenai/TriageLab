@@ -9,6 +9,8 @@ export function reproductionLabel(outcome: string) {
 }
 
 function executionState(report: InvestigationReport): { label: string; hue: StampHue } {
+  if (report.queued) return { label: "Queued", hue: "blue" };
+  if (report.status === "canceled") return { label: "Canceled", hue: "gray" };
   if (!report.active && report.lifecycle?.phase === "invoking") return { label: "Continuation uncertain", hue: "amber" };
   if (["pausing", "resuming", "closing"].includes(report.status)) return { label: report.status, hue: report.active ? "blue" : "amber" };
   if (report.active) return { label: report.status === "queued" ? "Queued" : "Investigating", hue: "blue" };
@@ -26,11 +28,13 @@ export function ReportStatusBand({ latest, report, reproductionEvidence }: { lat
   const execution = executionState(latest);
   const deleted = latest.cleanup?.sandbox_deleted === true && latest.cleanup?.session_deleted === true;
   const retained = hasRetainedWorkspace(latest);
-  const resource = deleted ? "Deleted" : retained ? "Retained" : latest.active ? "Managed by active run" : latest.status === "paused" ? "Retention unconfirmed" : "Cleanup unconfirmed";
-  const resourceHint = deleted ? "Sandbox and session deletion confirmed." : retained ? "Workspace and conversation remain until resumed or closed." : latest.active ? "Completion or closing attempts cleanup." : latest.status === "paused" ? "Review the saved record and lifecycle messages before continuing." : "Review the run messages and saved cleanup record.";
+  const awaitingExecution = latest.queued || latest.status === "canceled";
+  const resource = awaitingExecution ? "Not created" : deleted ? "Deleted" : retained ? "Retained" : latest.active ? "Managed by active run" : latest.status === "paused" ? "Retention unconfirmed" : "Cleanup unconfirmed";
+  const resourceHint = awaitingExecution ? "No sandbox or session was created." : deleted ? "Sandbox and session deletion confirmed." : retained ? "Workspace and conversation remain until resumed or closed." : latest.active ? "Completion or closing attempts cleanup." : latest.status === "paused" ? "Review the saved record and lifecycle messages before continuing." : "Review the run messages and saved cleanup record.";
+  const reproduction = awaitingExecution ? "No experiment evidence" : reproductionLabel(report.outcome);
   return <section className="plate report-status-band" aria-label="Investigation state">
     <div><h2>Execution · current</h2><Stamp hue={execution.hue}>{execution.label}</Stamp><p>Round {latest.round ?? 1}</p></div>
-    <div><h2>Reproduction · round {report.round ?? 1}</h2><Stamp hue={report.outcome === "reproduced" ? "green" : "amber"}>{reproductionLabel(report.outcome)}</Stamp><p>Scoped to the recorded sandbox experiments.</p>{reproductionEvidence}</div>
+    <div><h2>Reproduction · round {report.round ?? 1}</h2><Stamp hue={report.outcome === "reproduced" ? "green" : "amber"}>{reproduction}</Stamp><p>Scoped to the recorded sandbox experiments.</p>{reproductionEvidence}</div>
     <div><h2>Resources · current</h2><strong>{resource}</strong><p>{resourceHint}</p></div>
   </section>;
 }

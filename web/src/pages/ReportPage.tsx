@@ -45,6 +45,7 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
   const steerRef = useRef<HTMLDivElement>(null);
   const analysis = report.analysis;
   const active = Boolean(latest.active);
+  const queued = Boolean(latest.queued);
   const liveWatch = active && !historical;
   const [now, setNow] = useState(() => Date.now());
   const attachments = report.case?.attachments ?? [];
@@ -163,13 +164,18 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
     </div>)}</div></Panel>
   );
 
-  const roundElapsed = liveWatch
+  const unstarted = queued || latest.status === "canceled";
+  const roundElapsed = unstarted ? "Not recorded" : liveWatch
     ? liveElapsed(latest.round_started_at ?? latest.started_at, undefined, now)
     : report.finished_at
       ? elapsed(report.round_started_at ?? report.started_at, report.finished_at)
       : !historical && latest.status === "paused"
         ? "Paused"
         : "Not recorded";
+
+  const originalIssuePanel = (
+    <Panel title="Original issue"><div className="panel-body">{report.case?.description ? <MarkdownBlocks className="original-issue" tabIndex={0} role="region" aria-label="Original issue description" text={report.case.description} /> : <div className="original-issue" tabIndex={0} role="region" aria-label="Original issue description">Original case unavailable; review the saved round reports.</div>}</div></Panel>
+  );
 
   return <>
     <PageTitle title={example ? "The eleven missing orders" : caseTitle(latest.case?.description ?? "Investigation")} entity back="Investigations"
@@ -179,6 +185,8 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
           {lifecycle?.can_steer && !showSteer && <Button variant="primary" onClick={openSteerPanel}><Compass size={14} aria-hidden="true" />Steer investigator</Button>}
           {lifecycle?.can_pause && <Button onClick={() => pause.mutate()} disabled={pause.isPending}><Pause size={14} aria-hidden="true" />{pause.isPending ? "Requesting pause…" : "Pause investigation"}</Button>}
           <Button onClick={() => setConfirmCancel(true)} disabled={cancel.isPending || latest.status === "closing"}><Square size={14} aria-hidden="true" />Stop investigation</Button>
+        </> : queued ? <>
+          <Button onClick={() => cancel.mutate(true)} disabled={cancel.isPending}><Square size={14} aria-hidden="true" />{cancel.isPending ? "Cancelling…" : "Cancel queued run"}</Button>
         </> : <>
           {lifecycle?.can_resume && !showResume && !showSteer && <Button variant="primary" onClick={() => setShowResume(true)}>{resumeLabel}</Button>}
           {lifecycle?.can_close && <Button onClick={() => setConfirmClose(true)}>Close investigation</Button>}
@@ -204,12 +212,14 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
     {showResume && !active && lifecycle?.can_resume && <div className="report-resume"><ResumePanel report={latest} onCancel={() => setShowResume(false)} onStarted={() => { setShowResume(false); selectRound(null); }} /></div>}
     {confirmClose && !active && lifecycle?.can_close && <div className="notice" role="alert"><strong>Close this investigation?</strong><p>This deletes the investigation’s remaining sandbox and investigator session. Saved reports remain available, but this investigation cannot be resumed afterward.</p><div className="button-row"><Button disabled={close.isPending} onClick={() => { void close.mutateAsync({ round: lifecycle.round, settings: lifecycle.resume_settings }).then(() => setConfirmClose(false)).catch(() => {}); }}>{close.isPending ? "Closing…" : "Close and delete resources"}</Button><Button variant="ghost" disabled={close.isPending} onClick={() => setConfirmClose(false)}>Keep investigation</Button></div></div>}
     {messages.length > 0 && <ErrorPlate title="This run needs attention" error={[...new Set(messages)].join("\n")} />}
-    {!active && (latest.status === "running" || latest.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence and {lifecycle?.can_close ? "close the investigation to clean up its execution resources." : !lifecycle && latest.cleanup ? "retry cleanup under Current resource cleanup if resources may still be present." : "use the CLI cleanup command if resources are still present."}</p></div>}
+    {latest.status === "canceled" && <div className="notice"><strong>Canceled before execution.</strong></div>}
+    {queued && <div className="notice" role="status"><strong>Queued for execution{latest.queue_position ? ` · position #${latest.queue_position}` : ""}.</strong><p>This investigation will start automatically when the active run finishes. No sandbox or session has been created yet.</p></div>}
+    {!active && !queued && (latest.status === "running" || latest.status === "queued") && <div className="notice"><strong>This investigation was interrupted.</strong><p>The server is no longer managing this run. Inspect its saved evidence and {lifecycle?.can_close ? "close the investigation to clean up its execution resources." : !lifecycle && latest.cleanup ? "retry cleanup under Current resource cleanup if resources may still be present." : "use the CLI cleanup command if resources are still present."}</p></div>}
     {(report.warnings?.length ?? 0) > 0 && <div className="notice"><strong>Round {round} notes</strong><ul>{report.warnings?.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
     <RoundHistory latest={latest} selectedRound={selectedRound} onSelect={selectRound} />
     <div className="report-layout">
       <div className="section-stack">
-        {liveWatch ? <>
+        {unstarted ? originalIssuePanel : liveWatch ? <>
           {Boolean(analysis?.summary) && briefPanel}
           <LiveWatchPanel
             report={latest}
@@ -237,13 +247,13 @@ function Report({ report: latest, example }: { report: InvestigationReport; exam
         <Panel title={`Round ${round} record`}><div className="panel-body"><dl className="ledger">
           {report.agent && <div><dt>Agent</dt><dd className="mono run-agent-name">{report.agent.namespace}/{report.agent.name}</dd></div>}
           {report.sandbox_template && <div><dt>Sandbox</dt><dd className="mono">{report.sandbox_template}</dd></div>}
-          <div><dt>{report.round_started_at ? "Round started" : "Started"}</dt><dd><time dateTime={report.round_started_at ?? report.started_at}>{formatDate(report.round_started_at ?? report.started_at)}</time></dd></div>
+          <div><dt>{unstarted ? "Submitted" : report.round_started_at ? "Round started" : "Started"}</dt><dd><time dateTime={report.round_started_at ?? report.started_at}>{formatDate(report.round_started_at ?? report.started_at)}</time></dd></div>
           <div><dt>Duration</dt><dd className="mono">{roundElapsed}</dd></div>
           <div><dt>Experiments</dt><dd className="mono">{experiments.length}</dd></div><div><dt>Original files</dt><dd className="mono">{attachments.length}</dd></div>
-        </dl><div className="cleanup-record"><h3>Current resource cleanup</h3>{cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : retained ? <p>Workspace and conversation retained until resumed or closed.</p> : active ? <p>Resources remain while work is active. Completion or closing attempts cleanup.</p> : latest.status === "paused" ? <p>Workspace retention is unconfirmed. Review the saved record and lifecycle messages.</p> : <p>Cleanup is not confirmed. Review the saved report and run messages.</p>}{!example && !active && !retained && !lifecycle && latest.cleanup && <CleanupControl report={latest} done={cleanupDone} canRetry={canRun} />}</div>
+        </dl><div className="cleanup-record"><h3>Current resource cleanup</h3>{unstarted ? <p>No sandbox or session was created for this run.</p> : cleanupDone ? <p className="cleanup-success"><Check size={16} aria-hidden="true" />Sandbox and session deleted</p> : retained ? <p>Workspace and conversation retained until resumed or closed.</p> : active ? <p>Resources remain while work is active. Completion or closing attempts cleanup.</p> : latest.status === "paused" ? <p>Workspace retention is unconfirmed. Review the saved record and lifecycle messages.</p> : <p>Cleanup is not confirmed. Review the saved report and run messages.</p>}{!example && !active && !retained && !lifecycle && latest.cleanup && <CleanupControl report={latest} done={cleanupDone} canRetry={canRun} />}</div>
           {!example && <div className="report-downloads"><h3>Download investigation</h3>{(latest.rounds?.length ?? 0) > 0 && <p className="field-help">Downloads include all rounds.</p>}<a className="button button-secondary" href={reportURL(latest.run_id, "json")} download><ArrowDownToLine size={15} aria-hidden="true" />JSON</a><a className="button button-secondary" href={reportURL(latest.run_id, "md")} download><ArrowDownToLine size={15} aria-hidden="true" />Markdown</a></div>}
         </div></Panel>
-        <Panel title="Original issue"><div className="panel-body">{report.case?.description ? <MarkdownBlocks className="original-issue" tabIndex={0} role="region" aria-label="Original issue description" text={report.case.description} /> : <div className="original-issue" tabIndex={0} role="region" aria-label="Original issue description">Original case unavailable; review the saved round reports.</div>}</div></Panel>
+        {!unstarted && originalIssuePanel}
         {report.continuation && <Panel title={`Round ${round} input`}><div className="panel-body"><MarkdownBlocks className="original-issue" tabIndex={0} role="region" aria-label={`Additional information for round ${round}`} text={report.continuation.description} />{additionalFiles.length > 0 && <ul className="attachment-list">{additionalFiles.map(file => <li key={file.path}><File size={15} aria-hidden="true" /><div><span>{file.path}</span><span className="annotation quiet">{fileSize(file.size_bytes)}</span></div></li>)}</ul>}</div></Panel>}
         <Panel title="Case files" aside={<span className="annotation quiet">{attachments.length}</span>}><div className="panel-body">{attachments.length ? <ul className="attachment-list">{attachments.map(file => <li key={file.path}><File size={15} aria-hidden="true" /><div><span>{file.path}</span><span className="annotation quiet">{fileSize(file.size_bytes)}</span></div></li>)}</ul> : <p className="quiet">No files were supplied.</p>}</div></Panel>
       </aside>

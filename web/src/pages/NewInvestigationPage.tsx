@@ -1,11 +1,12 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { File, FlaskConical, Paperclip, X } from "lucide-react";
+import { File, FlaskConical, FolderOpen, Paperclip, X } from "lucide-react";
 import { Button, ButtonLink, ErrorPlate, Loading, PageTitle, Panel, Textarea } from "../components/ui";
 import { useDeploymentStatus } from "../hooks/use-agents";
 import { useCreateRun, useRuns, useSettings } from "../hooks/use-investigations";
 import { useSession } from "../hooks/use-auth";
 import { roleAtLeast } from "../lib/auth";
+import { prepareFolderSelection, type UploadEntry } from "../lib/intake";
 import { fileSize } from "../lib/investigations";
 
 export function NewInvestigationPage() {
@@ -28,14 +29,21 @@ function NewInvestigationForm() {
   const create = useCreateRun();
   const navigate = useNavigate();
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const [agent, setAgent] = useState("");
   const [sandbox, setSandbox] = useState("");
   const [namespace, setNamespace] = useState("");
   const [description, setDescription] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<UploadEntry[]>([]);
   const [fileError, setFileError] = useState("");
+  const [skippedNote, setSkippedNote] = useState("");
+  const [dragging, setDragging] = useState(false);
   const [descriptionError, setDescriptionError] = useState("");
   const busy = runs.data?.runs.find(run => run.active);
+  const queuedCount = runs.data?.runs.filter(run => run.queued).length ?? 0;
+  const maxQueuedRuns = settings.data?.max_queued_runs ?? 0;
+  const canQueue = Boolean(busy) && maxQueuedRuns > 0 && queuedCount < maxQueuedRuns;
+  const blockedByBusy = Boolean(busy) && !canQueue;
   const configuredAgents = settings.data?.manual_agents ?? [];
   const agentOptions = new Map(configuredAgents.map(name => [name, "ready"]));
   if (savedAgentsEnabled) {
@@ -60,25 +68,45 @@ function NewInvestigationForm() {
   const selectedAgent = agent === "" ? undefined : deployments.data?.resources.find(item => item.name === agent);
   const attachedTools = agent === "" ? [] : selectedAgent?.manual_tools ?? [];
 
-  function addFiles(selected: FileList | null) {
+  function addFiles(selected: FileList | File[] | null, fromFolder = false) {
     if (!selected || !settings.data) return;
-    const next = [...files];
-    for (const file of Array.from(selected)) {
-      const previous = next.findIndex(item => item.name === file.name);
-      if (previous >= 0) next[previous] = file; else next.push(file);
+    const rawList = Array.isArray(selected) ? selected : Array.from(selected);
+    const { accepted, skippedIgnored } = prepareFolderSelection(rawList, fromFolder);
+    const nextByPath = new Map(files.map(entry => [entry.path, entry]));
+    for (const entry of accepted) {
+      nextByPath.set(entry.path, { file: entry.item, path: entry.path });
     }
+    const next = [...nextByPath.values()];
     const limits = settings.data;
-    const oversized = next.find(file => file.size > limits.max_file_bytes);
-    if (oversized) setFileError(`${oversized.name} is larger than ${fileSize(limits.max_file_bytes)}.`);
+    const oversized = next.find(entry => entry.file.size > limits.max_file_bytes);
+    if (oversized) setFileError(`${oversized.path} is larger than ${fileSize(limits.max_file_bytes)}.`);
     else if (next.length > limits.max_files) setFileError(`Choose no more than ${limits.max_files} files.`);
-    else if (next.reduce((total, file) => total + file.size, 0) > limits.max_total_bytes) setFileError(`Keep the combined files under ${fileSize(limits.max_total_bytes)}.`);
-    else { setFiles(next); setFileError(""); }
+    else if (next.reduce((total, entry) => total + entry.file.size, 0) > limits.max_total_bytes) setFileError(`Keep the combined files under ${fileSize(limits.max_total_bytes)}.`);
+    else {
+      setFiles(next);
+      setFileError("");
+      setSkippedNote(skippedIgnored > 0 ? `Skipped ${skippedIgnored} file${skippedIgnored === 1 ? "" : "s"} in ignored directories (.git, node_modules, build, etc.).` : "");
+    }
     if (input.current) input.current.value = "";
+    if (folderInput.current) folderInput.current.value = "";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    if (create.isPending) return;
+    if (Array.from(event.dataTransfer.items).some(item => item.webkitGetAsEntry?.()?.isDirectory)) {
+      setFileError("Use Choose folder to add a folder.");
+      return;
+    }
+    if (event.dataTransfer.files.length > 0) {
+      addFiles(event.dataTransfer.files, false);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (selectedUnavailable || selectedSandboxUnavailable || selectedNamespaceUnavailable) return;
+    if (selectedUnavailable || selectedSandboxUnavailable || selectedNamespaceUnavailable || blockedByBusy) return;
     if (!description.trim()) { setDescriptionError("Describe the issue before starting an investigation."); document.getElementById("description")?.focus(); return; }
     if (settings.data && new TextEncoder().encode(description.trim()).length > settings.data.max_description_bytes) {
       setDescriptionError(`Keep the description under ${fileSize(settings.data.max_description_bytes)}.`);
@@ -92,11 +120,17 @@ function NewInvestigationForm() {
     } catch { /* The mutation error is rendered beside the form. */ }
   }
 
+  const submitLabel = create.isPending ? (canQueue ? "Queueing…" : "Starting…") : (canQueue ? "Queue investigation" : "Start investigation");
+
   return <>
-    <PageTitle title="New investigation" back="Investigations" description="Give the investigator a clear starting point." action={<Button form="new-investigation" type="submit" variant="primary" disabled={!settings.data || create.isPending || Boolean(busy) || selectedUnavailable || selectedSandboxUnavailable || selectedNamespaceUnavailable} title={busy ? "An investigation is already running" : undefined}><FlaskConical size={16} aria-hidden="true" />{create.isPending ? "Starting…" : "Start investigation"}</Button>} />
+    <PageTitle title="New investigation" back="Investigations" description="Give the investigator a clear starting point." action={<Button form="new-investigation" type="submit" variant="primary" disabled={!settings.data || create.isPending || blockedByBusy || selectedUnavailable || selectedSandboxUnavailable || selectedNamespaceUnavailable} title={blockedByBusy ? (maxQueuedRuns > 0 ? "The investigation queue is full" : "An investigation is already running") : undefined}><FlaskConical size={16} aria-hidden="true" />{submitLabel}</Button>} />
     {settings.isPending ? <Loading label="Loading investigation limits…" /> : settings.isError ? <ErrorPlate title="The workspace is unavailable" error={settings.error} action={<Button onClick={() => void settings.refetch()}>Try again</Button>} /> : <div className="intake-layout">
       <form id="new-investigation" onSubmit={submit} className="section-stack">
-        {busy && <div className="notice"><strong>An investigation is already running.</strong><p>This workspace runs one investigation at a time.</p><ButtonLink to={`/runs/${busy.id}`}>View running investigation</ButtonLink></div>}
+        {busy && <div className="notice">
+          <strong>{canQueue ? "An investigation is currently running." : maxQueuedRuns > 0 ? "The investigation queue is full." : "An investigation is already running."}</strong>
+          <p>{canQueue ? `New submissions will be queued (${queuedCount} of ${maxQueuedRuns} slots used) and run in order.` : maxQueuedRuns > 0 ? `Wait for a slot to open (${queuedCount} of ${maxQueuedRuns} queued) before submitting another case.` : "This workspace runs one investigation at a time."}</p>
+          <ButtonLink to={`/runs/${busy.id}`}>View running investigation</ButtonLink>
+        </div>}
         {create.isError && <ErrorPlate title="Investigation could not start" error={create.error} />}
         <Panel title="Investigator"><div className="panel-body">
           {agentOptions.size > 0 || agent ? <>
@@ -144,7 +178,12 @@ function NewInvestigationForm() {
           </>}
         </div></Panel>
         <Panel title="Describe the issue"><div className="panel-body"><label className="field-label" htmlFor="description">What happened?</label><p className="field-help" id="description-help">Include what you expected, what actually happened, and how to trigger the problem.</p><Textarea id="description" value={description} onChange={event => { setDescription(event.target.value); setDescriptionError(""); }} aria-describedby={`description-help${descriptionError ? " description-error" : ""}`} aria-invalid={Boolean(descriptionError)} placeholder="Our client times out after a configuration change. We expected a five-second timeout, but every request fails…" rows={9} maxLength={65536} disabled={create.isPending} />{descriptionError && <p className="field-error" id="description-error">{descriptionError}</p>}<p className="field-help below-field">Include commands as context. They will only be executed inside the investigation sandbox.</p></div></Panel>
-        <Panel title="Supporting files" aside={<span className="quiet text-meta">Optional</span>}><div className="panel-body"><p className="field-help" id="files-help">Add source files, configuration, or logs that help reproduce the issue. Remove credentials and customer data first.</p><input className="sr-only" ref={input} id="files" aria-label="Supporting files" type="file" multiple onChange={event => addFiles(event.target.files)} tabIndex={-1} disabled={create.isPending} /><Button type="button" onClick={() => input.current?.click()} disabled={create.isPending} aria-describedby="files-help file-limits"><Paperclip size={16} aria-hidden="true" />Choose files</Button><span className="file-limits" id="file-limits">{fileSize(settings.data.max_file_bytes)} per file / {fileSize(settings.data.max_total_bytes)} total</span>{fileError && <p className="field-error" role="alert">{fileError}</p>}{files.length > 0 && <ul className="file-list">{files.map(file => <li key={file.name}><File size={16} aria-hidden="true" /><span>{file.name}</span><span className="annotation quiet">{fileSize(file.size)}</span><Button variant="ghost" type="button" aria-label={`Remove ${file.name}`} disabled={create.isPending} onClick={() => setFiles(files.filter(item => item !== file))}><X size={15} aria-hidden="true" /></Button></li>)}</ul>}</div></Panel>
+        <Panel title="Supporting files" aside={<span className="quiet text-meta">Optional</span>}><div
+          className={dragging ? "panel-body file-dropzone dragging" : "panel-body file-dropzone"}
+          onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); if (!create.isPending) setDragging(true); } }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+        ><p className="field-help" id="files-help">Add source files, a reproduction folder, configuration, or logs. Remove credentials and customer data first.</p><input className="sr-only" ref={input} id="files" aria-label="Supporting files" type="file" multiple onChange={event => addFiles(event.target.files, false)} tabIndex={-1} disabled={create.isPending} /><input className="sr-only" ref={folderInput} id="folder" aria-label="Supporting folder" type="file" multiple {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={event => addFiles(event.target.files, true)} tabIndex={-1} disabled={create.isPending} /><div className="button-row"><Button type="button" onClick={() => input.current?.click()} disabled={create.isPending} aria-describedby="files-help file-limits"><Paperclip size={16} aria-hidden="true" />Choose files</Button><Button type="button" onClick={() => folderInput.current?.click()} disabled={create.isPending} aria-describedby="files-help file-limits"><FolderOpen size={16} aria-hidden="true" />Choose folder</Button><span className="file-limits" id="file-limits">{fileSize(settings.data.max_file_bytes)} per file / {fileSize(settings.data.max_total_bytes)} total</span></div>{skippedNote && <p className="field-help below-field" role="status">{skippedNote}</p>}{fileError && <p className="field-error" role="alert">{fileError}</p>}{files.length > 0 && <ul className="file-list">{files.map(entry => <li key={entry.path}><File size={16} aria-hidden="true" /><span className="mono">{entry.path}</span><span className="annotation quiet">{fileSize(entry.file.size)}</span><Button variant="ghost" type="button" aria-label={`Remove ${entry.path}`} disabled={create.isPending} onClick={() => setFiles(files.filter(item => item.path !== entry.path))}><X size={15} aria-hidden="true" /></Button></li>)}</ul>}</div></Panel>
       </form>
       <aside className="intake-aside"><h2>From issue to evidence</h2><ol className="process-list"><li><span>1</span><div><h3>Prepare a sandbox</h3><p>Your files go into a temporary, isolated environment.</p></div></li><li><span>2</span><div><h3>Run the investigation</h3><p>The agent tests hypotheses and records process output.</p></div></li><li><span>3</span><div><h3>Review the result</h3><p>Inspect the experiments, conclusions, and anything still unknown.</p></div></li></ol><div className="intake-limits"><h3>Run limits</h3><dl><div><dt>Investigation</dt><dd>{Math.round(settings.data.timeout_seconds / 60)} min</dd></div><div><dt>Experiments</dt><dd>{settings.data.max_experiments} max</dd></div></dl><p>Cleanup is attempted after every run. The report shows its result.</p><p>Runs use your configured model and sandbox. Provider charges may apply.</p></div></aside>
     </div>}

@@ -373,7 +373,7 @@ func (j *jiraSource) attachments(files []jiraAttachmentMeta) []attachment {
 	seen := make(map[string]bool, len(files))
 	for _, f := range files {
 		if f.ID.value() == 0 || f.Size <= 0 || f.Size > casefile.MaxFileBytes || seen[string(f.ID)] ||
-			!fileName.MatchString(reproductionName(f.Filename)) {
+			!supportedAttachmentName(reproductionName(f.Filename)) {
 			continue
 		}
 		seen[string(f.ID)] = true
@@ -415,7 +415,7 @@ func (j *jiraSource) file(ctx context.Context, f attachment) ([]byte, error) {
 	u, err := url.Parse(f.URL)
 	if err != nil || u.Scheme+"://"+u.Host != j.origin || u.User != nil || u.Fragment != "" || u.RawPath != "" ||
 		u.RawQuery != "" || u.ForceQuery || !jiraAttachmentPath.MatchString(u.Path) ||
-		f.Name == "" || !fileName.MatchString(reproductionName(f.Name)) {
+		f.Name == "" || !supportedAttachmentName(reproductionName(f.Name)) {
 		return nil, errors.New("unsupported Jira attachment location")
 	}
 	parts := jiraAttachmentPath.FindStringSubmatch(u.Path)

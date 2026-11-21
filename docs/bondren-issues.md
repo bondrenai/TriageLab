@@ -102,8 +102,8 @@ Actual: The deadline expires after five milliseconds.
 ```
 
 Attach sanitized files that meet the procedure's attachment rules to the
-requester's messages. Supported files are `.py`, `.json`, `.txt`, and
-`.log`. Bondren inspects attachments before they are downloadable; only
+requester's messages. See the [workspace guide](../docs-site/src/content/docs/guides/workspace.mdx#ticket-evidence-files)
+for supported file types. Bondren inspects attachments before they are downloadable; only
 attachments reported as `clean` are imported — pending, rejected, or
 unavailable files stay at the source and count as missing evidence.
 TriageLab restores `.py.txt`-style double suffixes. Names must be unique

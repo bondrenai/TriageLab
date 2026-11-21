@@ -807,6 +807,8 @@ func (i *Investigator) validateSaved(state State) error {
 	}
 	current, saved := i.Config, state.Config
 	current.TokenEnv, saved.TokenEnv = "", ""
+	current.TokenFile, saved.TokenFile = "", ""
+	current.MaxQueuedRuns, saved.MaxQueuedRuns = 0, 0
 	current.Version, saved.Version = "", ""
 	current.ManualAgents, saved.ManualAgents = nil, nil
 	if !reflect.DeepEqual(current, saved) || !slices.Equal(i.AdditionalTools, state.AdditionalTools) {

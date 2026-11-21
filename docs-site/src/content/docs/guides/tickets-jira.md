@@ -85,12 +85,12 @@ issues and comments restricted to a role or group never supply evidence. For
 the starter checklist the requester provides `Python version:`, `Expected:`,
 and `Actual:` lines. Descriptions and comment bodies are Atlassian Document
 Format; the connector renders their text and collapses formatting, mentions,
-inline media, and tables to plain text. At most four sanitized files (`.py`,
-`.json`, `.txt`, `.log`) of 1 MiB each enter a run; attachments download
+inline media, and tables to plain text. At most four sanitized files of 1 MiB each enter a run; attachments download
 through the authorized Jira content endpoint, whose single signed redirect to
 Atlassian's media host is followed without the site credential and fails
 closed on an unexpected shape. Review source references and hashes before
-approval.
+approval. See [ticket evidence files](/TriageLab/guides/workspace/#ticket-evidence-files)
+for accepted files and inline code blocks.
 
 With `auto_questions: true`, review the requester, label policy, and exact
 draft before **Approve and send clarification**; on Jira Service Management

@@ -107,8 +107,8 @@ Actual: The deadline expires after five milliseconds.
 ```
 
 Attach sanitized files that meet the procedure's attachment rules to the
-issue description or a note as Markdown uploads. Supported files are
-`.py`, `.json`, `.txt`, and `.log`. Uploads download through the
+issue description or a note as Markdown uploads. See the [workspace guide](../docs-site/src/content/docs/guides/workspace.mdx#ticket-evidence-files)
+for supported file types. Uploads download through the
 authorized project uploads endpoint on the configured origin — the token
 never travels anywhere else, and an unexpected response shape fails
 closed and requires review. Instances older than GitLab 17.4 do not serve

@@ -19,7 +19,10 @@ triagelab investigate [options]
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
 | `--description` | (none) | local issue description |
 | `--description-file` | (none) | UTF-8 issue description file |
+| `--dry-run` | false | validate and print the case files that would be ingested without contacting kagent |
+| `--exclude` | (repeatable) | glob pattern excluding repository files or directories from ingestion (repeatable) |
 | `--file` | (repeatable) | attachment (repeatable) |
+| `--include` | (repeatable) | glob pattern restricting repository files to ingest (repeatable) |
 | `--log` | (repeatable) | log file (repeatable) |
 | `--namespace` | (none) | namespace configured under run_namespaces (default: the configured namespace) |
 | `--output` | reports | parent directory for private reports |
@@ -53,7 +56,9 @@ triagelab resume --report <report.json> --description <new-information> [options
 | `--config` | (none) | JSON configuration (default: built-in localhost settings) |
 | `--description` | (none) | local issue description |
 | `--description-file` | (none) | UTF-8 issue description file |
+| `--exclude` | (repeatable) | glob pattern excluding repository files or directories from ingestion (repeatable) |
 | `--file` | (repeatable) | attachment (repeatable) |
+| `--include` | (repeatable) | glob pattern restricting repository files to ingest (repeatable) |
 | `--log` | (repeatable) | log file (repeatable) |
 | `--repo` | (none) | small local repository or fixture directory |
 | `--report` | (none) | saved report.json for pause, resume, close, or cleanup |

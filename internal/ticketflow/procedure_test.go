@@ -282,3 +282,111 @@ func TestProcedureCommentPolicyRequiresConnectionSetting(t *testing.T) {
 		t.Fatalf("approval did not record the automatic comment policy: %+v %v", c, err)
 	}
 }
+
+func TestExpandedAttachmentExtensionsAndMarkdownCodeBlocks(t *testing.T) {
+	f := newFixture(t)
+	dir := filepath.Join(t.TempDir(), "state")
+	flow := openTestFlow(t, dir, f, false)
+	ctx := t.Context()
+
+	version := flow.Procedure()
+	p := version.Procedure
+	p.Evidence = EvidenceRules{
+		{Kind: "attachment", Match: ".yaml", Required: true, Question: "Attach or paste the YAML config (.yaml)."},
+		{Kind: "attachment", Match: ".go", Required: true, Question: "Attach or paste the Go reproducer (.go)."},
+	}
+	if _, err := flow.SaveProcedure(p, version.Revision); err != nil {
+		t.Fatalf("expanded extensions rejected: %v", err)
+	}
+
+	// Requester pastes fenced Markdown code blocks instead of uploading files.
+	f.mu.Lock()
+	f.comments = append(f.comments, comment{
+		ID: 12, Author: 10, Public: true,
+		Body: "Here is the config and repro:\n```yaml title=\"settings.yaml\"\ntimeout: 5ms\n```\n```go\npackage main\nfunc main() {}\n```\n",
+	})
+	f.mu.Unlock()
+
+	c, err := flow.Preview(ctx, 42)
+	if err != nil || c.State != "approval" || len(c.Files) != 2 {
+		t.Fatalf("inline code blocks did not satisfy evidence rules: %+v, %v", c, err)
+	}
+	var names []string
+	for _, file := range c.Files {
+		names = append(names, file.Path)
+	}
+	if !slices.Contains(names, "settings.yaml") || !slices.Contains(names, "snippet-2.go") {
+		t.Fatalf("unexpected inline filenames: %v", names)
+	}
+
+	// Track & approve verifies inline code block provenance and contents.
+	c, err = flow.Track(ctx, 42, c.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = flow.Approve(ctx, 42, c.Plan, func(input casefile.Case, _ RunTarget, reserve func() error) error {
+		joined := strings.Join(input.Evidence, "\n")
+		if !strings.Contains(joined, "settings.yaml (inline code block) from Zendesk public requester comment 12") {
+			t.Fatalf("missing inline code block provenance: %s", joined)
+		}
+		return reserve()
+	})
+	if err != nil {
+		t.Fatalf("approve with inline code blocks failed: %v", err)
+	}
+
+	// Real uploaded attachments still take precedence over inline code blocks.
+	f2 := newFixture(t)
+	flow2 := openTestFlow(t, filepath.Join(t.TempDir(), "state2"), f2, false)
+	v2 := flow2.Procedure()
+	v2.Procedure.Evidence = EvidenceRules{
+		{Kind: "attachment", Match: ".yaml", Required: true, Question: "Attach or paste the YAML config."},
+	}
+	if _, err := flow2.SaveProcedure(v2.Procedure, v2.Revision); err != nil {
+		t.Fatal(err)
+	}
+	f2.mu.Lock()
+	f2.comments = append(f2.comments, comment{
+		ID: 20, Author: 10, Public: true,
+		Body: "```yaml filename=inline.yaml\nmode: inline\n```",
+		Files: []attachment{
+			{ID: 99, Name: "uploaded.yaml", URL: f2.server.URL + "/attachments/app.py", Size: int64(len(f2.contents))},
+		},
+	})
+	f2.mu.Unlock()
+	c2, err := flow2.Preview(ctx, 42)
+	if err != nil || c2.State != "approval" || len(c2.Files) != 1 || c2.Files[0].Path != "uploaded.yaml" {
+		t.Fatalf("uploaded attachment did not take precedence over inline block: %+v, %v", c2, err)
+	}
+
+	// Secret content inside an inline code block is still refused by ingestion.
+	f3 := newFixture(t)
+	flow3 := openTestFlow(t, filepath.Join(t.TempDir(), "state3"), f3, false)
+	v3 := flow3.Procedure()
+	v3.Procedure.Evidence = EvidenceRules{
+		{Kind: "attachment", Match: ".yaml", Required: true, Question: "Attach or paste the YAML config."},
+	}
+	if _, err := flow3.SaveProcedure(v3.Procedure, v3.Revision); err != nil {
+		t.Fatal(err)
+	}
+	f3.mu.Lock()
+	f3.comments = append(f3.comments, comment{
+		ID: 30, Author: 10, Public: true,
+		Body: "```yaml\ntoken: ghp_" + strings.Repeat("A", 36) + "\n```",
+	})
+	f3.mu.Unlock()
+	c3, err := flow3.Preview(ctx, 42)
+	if err != nil || c3.State != "review" {
+		t.Fatalf("secret in inline code block was not held for review: %+v, %v", c3, err)
+	}
+}
+
+func TestCodeFenceRespectsExplicitNameAndIndentation(t *testing.T) {
+	body := "    ```yaml filename=indent.yaml\n    a: b\n    ```\n" +
+		"```yaml filename=.env\nsecret: invalid\n```\n" +
+		"  ~~~yaml filename=config.yaml\n  key: value\n    nested: value\n  ~~~\n"
+	blocks := extractCodeBlocks(body)
+	if len(blocks) != 1 || blocks[0].Name != "config.yaml" || blocks[0].Inline != "key: value\n  nested: value\n" {
+		t.Fatalf("unexpected inline blocks: %+v", blocks)
+	}
+}

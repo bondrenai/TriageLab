@@ -13,6 +13,7 @@ export interface Settings {
   max_files: number;
   max_experiments: number;
   timeout_seconds: number;
+  max_queued_runs?: number;
 }
 
 export interface RunSummary {
@@ -24,8 +25,10 @@ export interface RunSummary {
   finished_at?: string;
   experiment_count: number;
   active: boolean;
+  queued?: boolean;
+  queue_position?: number;
   round: number;
-  resource_state: "active" | "retained" | "deleted" | "unconfirmed";
+  resource_state: "active" | "queued" | "retained" | "deleted" | "not_created" | "unconfirmed";
   attention?: { reason: string; action: string };
 }
 
@@ -91,6 +94,8 @@ export interface InvestigationReport {
   started_at: string;
   finished_at?: string;
   active?: boolean;
+  queued?: boolean;
+  queue_position?: number;
   cleanup_running?: boolean;
   cleanup_error?: string;
   progress?: string[];

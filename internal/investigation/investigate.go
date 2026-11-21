@@ -47,8 +47,10 @@ type Investigator struct {
 	Trigger string
 	// Actor records who started the run in the report provenance; it is
 	// empty for CLI runs and "client:<id>" for an API client.
-	Actor           string
-	Secrets         []string
+	Actor   string
+	Secrets []string
+	// SecretSource supplies credentials that may rotate during the run.
+	SecretSource    func() []string
 	AdditionalTools []string
 	// ExpectedRound binds a reviewed Resume or Close request to the round
 	// admitted under the lifecycle lock. Zero allows an unbound direct call.
@@ -95,13 +97,22 @@ func wait(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// CurrentSecrets returns the redaction inputs for the current operation.
+func (i *Investigator) CurrentSecrets() []string {
+	if i.SecretSource == nil {
+		return i.Secrets
+	}
+	return append(slices.Clone(i.Secrets), i.SecretSource()...)
+}
+
 func (i *Investigator) progress(ctx context.Context, s string) {
 	if i.Progress != nil {
 		i.Progress(s)
 	}
 	// Messages are TriageLab-authored, but redact anyway so telemetry can
 	// never echo a credential that reached a phase message.
-	message, _ := report.Redacted(s, i.Secrets...)
+	message, _ := report.Redacted(s, i.CurrentSecrets()...)
 	telemetry.Logger().InfoContext(ctx, message)
 }
 func (i *Investigator) call(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
@@ -187,7 +198,7 @@ func (i *Investigator) persist(dir string, r *Report) error {
 	if err := checkReportSize(r); err != nil {
 		return err
 	}
-	return report.Write(dir, r, i.Secrets...)
+	return report.Write(dir, r, i.CurrentSecrets()...)
 }
 
 // Run retains resources only after a durable pause intent; other exits attempt cleanup.

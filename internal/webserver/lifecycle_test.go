@@ -299,7 +299,9 @@ func TestResumeUsesRetainedSandboxAndReservesActiveSlot(t *testing.T) {
 		}
 		return nil, fmt.Errorf("fixture restore unavailable")
 	}}
-	s := newTestServer(t, backend)
+	cfg := investigation.DefaultConfig()
+	cfg.MaxQueuedRuns = 0
+	s := newTestServerWithConfig(t, cfg, backend)
 	state := retainedState(s)
 	saveRetainedRun(t, s, state)
 	w := httptest.NewRecorder()

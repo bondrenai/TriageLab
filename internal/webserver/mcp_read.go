@@ -79,10 +79,11 @@ func (s *Server) mcpGet(_ context.Context, input mcpGetInput) (any, error) {
 	}
 	s.mu.Lock()
 	active := s.activeID == input.RunID && s.active != nil
+	queuePos := s.queuePositionLocked(input.RunID)
 	actionError := s.actionErrors[input.RunID]
 	s.mu.Unlock()
 	s.projectLifecycle(input.RunID, saved, active)
-	summary := summarizeRun(input.RunID, saved, active, actionError != "")
+	summary := summarizeRun(input.RunID, saved, active, queuePos, actionError != "")
 	summary.Description = mcpPreview(summary.Description, 2048)
 	analysis, _ := saved["analysis"].(map[string]any)
 	modelSummary, _ := analysis["summary"].(string)

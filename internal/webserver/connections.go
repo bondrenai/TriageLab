@@ -81,10 +81,11 @@ func (s *Server) openTicketConnection(record ticketflow.Connection) (*ticketConn
 	if err != nil {
 		return nil, err
 	}
-	flow, err := ticketflow.Open(config, stateDir, s.config, s.secretList()...)
+	flow, err := ticketflow.Open(config, stateDir, s.config)
 	if err != nil {
 		return nil, err
 	}
+	flow.SecretSource = s.secretList
 	flow.ResolveTarget = s.resolveTicketTarget
 	if config.Policy.AutoRuns {
 		flow.AutoLaunch = s.launchTicketAs("ticket policy")

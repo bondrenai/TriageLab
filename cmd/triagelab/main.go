@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,6 +68,9 @@ type runOptions struct {
 	runNamespace        string
 	files               stringsFlag
 	logs                stringsFlag
+	includes            stringsFlag
+	excludes            stringsFlag
+	dryRun              bool
 }
 
 // registerRunFlags declares the flags of investigate, serve, doctor, or
@@ -85,6 +90,9 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.runNamespace, "namespace", "", "namespace configured under run_namespaces (default: the configured namespace)")
 		flags.Var(&opts.files, "file", "attachment (repeatable)")
 		flags.Var(&opts.logs, "log", "log file (repeatable)")
+		flags.Var(&opts.includes, "include", "glob pattern restricting repository files to ingest (repeatable)")
+		flags.Var(&opts.excludes, "exclude", "glob pattern excluding repository files or directories from ingestion (repeatable)")
+		flags.BoolVar(&opts.dryRun, "dry-run", false, "validate and print the case files that would be ingested without contacting kagent")
 	case "serve":
 		flags.StringVar(&opts.output, "output", "reports", "parent directory for private reports")
 		flags.StringVar(&opts.listen, "listen", "127.0.0.1:8080", "loopback address for the private web UI")
@@ -108,6 +116,8 @@ func registerRunFlags(flags *flag.FlagSet, command string) *runOptions {
 		flags.StringVar(&opts.repo, "repo", "", "small local repository or fixture directory")
 		flags.Var(&opts.files, "file", "attachment (repeatable)")
 		flags.Var(&opts.logs, "log", "log file (repeatable)")
+		flags.Var(&opts.includes, "include", "glob pattern restricting repository files to ingest (repeatable)")
+		flags.Var(&opts.excludes, "exclude", "glob pattern excluding repository files or directories from ingestion (repeatable)")
 	}
 	return opts
 }
@@ -230,6 +240,38 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	if !parseFlags(flags, args, errout) {
 		return 2
 	}
+	config, err := investigation.LoadConfig(opts.configPath)
+	if err != nil {
+		fmt.Fprintln(errout, err)
+		return 2
+	}
+	config.Version = version
+	if command == "investigate" && opts.dryRun {
+		if _, _, err := config.SelectManualAgent(opts.manualAgent); err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		if opts.runNamespace != "" && !config.AllowsNamespace(opts.runNamespace) {
+			fmt.Fprintln(errout, "Choose a namespace configured under run_namespaces or the workspace default")
+			return 2
+		}
+		c, err := ingestRunOptions(opts)
+		if err != nil {
+			fmt.Fprintln(errout, err)
+			return 2
+		}
+		totalBytes := 0
+		for _, a := range c.Attachments {
+			totalBytes += a.SizeBytes
+		}
+		fmt.Fprintf(out, "Dry run passed (no sandbox or model calls made).\n")
+		fmt.Fprintf(out, "Description: %d bytes\n", len(c.Description))
+		fmt.Fprintf(out, "Attachments: %d file(s), %d bytes total\n", len(c.Attachments), totalBytes)
+		for _, a := range c.Attachments {
+			fmt.Fprintf(out, "  %s (%d bytes, sha256:%s)\n", a.Path, a.SizeBytes, a.SHA256[:12])
+		}
+		return 0
+	}
 	if opts.telemetryPath != "" {
 		telemetryConfig, err := telemetry.LoadConfig(opts.telemetryPath)
 		if err != nil {
@@ -251,15 +293,35 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			}
 		}()
 	}
-	config, err := investigation.LoadConfig(opts.configPath)
-	if err != nil {
-		fmt.Fprintln(errout, err)
-		return 2
-	}
-	config.Version = version
-	// The token is read from the configured environment variable, never a flag.
-	token := os.Getenv(config.TokenEnv)
+	// The token comes from token_file (reloaded on rotation) or the configured
+	// environment variable, never from a CLI flag.
+	var (
+		tokenMu        sync.Mutex
+		tokenSecrets   []string
+		workspaceRef   *webserver.Server
+		registerSecret = func(tok string) {
+			if tok == "" {
+				return
+			}
+			tokenMu.Lock()
+			if !slices.Contains(tokenSecrets, tok) {
+				tokenSecrets = append(tokenSecrets, tok)
+			}
+			ws := workspaceRef
+			tokenMu.Unlock()
+			if ws != nil {
+				ws.AddSecret(tok)
+			}
+		}
+	)
+	token := ""
 	clientOpts := []kagent.Option{kagent.ClientVersion(version)}
+	if config.TokenFile != "" {
+		clientOpts = append(clientOpts, kagent.TokenFile(config.TokenFile, registerSecret))
+	} else {
+		token = os.Getenv(config.TokenEnv)
+		registerSecret(token)
+	}
 	if config.AllowClusterHTTP {
 		clientOpts = append(clientOpts, kagent.AllowClusterHTTP())
 	}
@@ -269,7 +331,12 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		return 2
 	}
 	defer client.Close()
-	runner := investigation.Investigator{Client: client, Config: config, Trigger: "cli", Secrets: []string{token}, Progress: func(s string) { fmt.Fprintln(out, s) }}
+	currentSecrets := func() []string {
+		tokenMu.Lock()
+		defer tokenMu.Unlock()
+		return append([]string(nil), tokenSecrets...)
+	}
+	runner := investigation.Investigator{Client: client, Config: config, Trigger: "cli", SecretSource: currentSecrets, Progress: func(s string) { fmt.Fprintln(out, s) }}
 	ctx, commandSpan := otel.Tracer("github.com/bondrenai/TriageLab/cmd/triagelab").Start(ctx, "triagelab "+command)
 	defer func() {
 		commandSpan.SetAttributes(attribute.Int("exit_code", exitCode))
@@ -282,11 +349,17 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 	case "pause", "resume", "close":
 		return runSavedInvestigation(ctx, command, opts, &runner, out, errout)
 	case "serve":
-		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, token)
+		workspace, err := webserver.New(ctx, config, opts.output, opts.assets, client, currentSecrets()...)
 		if err != nil {
 			fmt.Fprintln(errout, err)
 			return 2
 		}
+		tokenMu.Lock()
+		workspaceRef = workspace
+		for _, secret := range tokenSecrets {
+			workspace.AddSecret(secret)
+		}
+		tokenMu.Unlock()
 		if err := enableSignIn(ctx, workspace, opts.authConfigPath, resolveUsersPath(opts.output, opts.usersPath), opts.listen); err != nil {
 			_ = workspace.Close(ctx)
 			fmt.Fprintln(errout, err)
@@ -370,7 +443,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			}
 		}
 		if err = webserver.Serve(ctx, opts.listen, workspace, out); err != nil {
-			fmt.Fprintln(errout, report.Redact(err.Error(), token))
+			fmt.Fprintln(errout, report.Redact(err.Error(), currentSecrets()...))
 			return 4
 		}
 		return 0
@@ -379,12 +452,12 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		defer cancel()
 		_, err = client.CallTool(probe, "list_sandbox_templates", map[string]any{"namespace": config.Namespace})
 		if err != nil {
-			fmt.Fprintln(errout, err)
+			fmt.Fprintln(errout, report.Redact(err.Error(), currentSecrets()...))
 			return 4
 		}
 		retention, err := client.SandboxRetention(probe)
 		if err != nil {
-			fmt.Fprintln(errout, err)
+			fmt.Fprintln(errout, report.Redact(err.Error(), currentSecrets()...))
 			return 4
 		}
 		capability := "this release controller does not retain suspended sandboxes, so pause and resume are unavailable"
@@ -419,7 +492,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return 2
 		}
 		result, runErr := runner.Run(ctx, c, dir)
-		return printInvestigationResult(result, runErr, dir, out, errout, token)
+		return printInvestigationResult(result, runErr, dir, out, errout, currentSecrets()...)
 	case "cleanup":
 		if opts.reportPath == "" {
 			fmt.Fprintln(errout, "cleanup requires --report <report.json>")
@@ -431,7 +504,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 			return runSavedInvestigation(ctx, "close", opts, &runner, out, errout)
 		}
 		if err != nil {
-			fmt.Fprintln(errout, report.Redact(err.Error(), token))
+			fmt.Fprintln(errout, report.Redact(err.Error(), currentSecrets()...))
 			return 4
 		}
 		defer unlock()
@@ -467,7 +540,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) (exitCode in
 		cleanupCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		runner.Cleanup(cleanupCtx, saved)
-		if err = report.Write(dir, saved, token); err != nil {
+		if err = report.Write(dir, saved, currentSecrets()...); err != nil {
 			fmt.Fprintln(errout, err)
 			return 4
 		}

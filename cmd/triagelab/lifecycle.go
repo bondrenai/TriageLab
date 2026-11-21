@@ -29,7 +29,13 @@ func ingestRunOptions(opts *runOptions) (casefile.Case, error) {
 		}
 		description = string(data)
 	}
-	return casefile.Ingest(description, opts.repo, opts.files, opts.logs)
+	if opts.repo == "" && (len(opts.includes) != 0 || len(opts.excludes) != 0) {
+		return casefile.Case{}, fmt.Errorf("--include and --exclude require --repo")
+	}
+	return casefile.IngestWithOptions(description, opts.repo, opts.files, opts.logs, casefile.IngestOptions{
+		Include: opts.includes,
+		Exclude: opts.excludes,
+	})
 }
 
 func runSavedInvestigation(ctx context.Context, command string, opts *runOptions, runner *investigation.Investigator, out, errout io.Writer) int {
@@ -44,7 +50,7 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 	}
 	state, err := investigation.LoadState(dir)
 	if err != nil {
-		fmt.Fprintln(errout, "Cannot load the private investigation lifecycle record:", report.Redact(err.Error(), runner.Secrets...))
+		fmt.Fprintln(errout, "Cannot load the private investigation lifecycle record:", report.Redact(err.Error(), runner.CurrentSecrets()...))
 		return 2
 	}
 	current := runner.Config
@@ -60,7 +66,7 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 	runner.ExpectedPhase = state.Phase
 	if command == "pause" {
 		if err := investigation.RequestPause(dir); err != nil {
-			fmt.Fprintln(errout, report.Redact(err.Error(), runner.Secrets...))
+			fmt.Fprintln(errout, report.Redact(err.Error(), runner.CurrentSecrets()...))
 			return 4
 		}
 		fmt.Fprintln(out, "Pause requested. The report will say paused after evidence collection and sandbox suspension finish.")
@@ -85,7 +91,7 @@ func runSavedInvestigation(ctx context.Context, command string, opts *runOptions
 			return 0
 		}
 	}
-	return printInvestigationResult(result, err, dir, out, errout, runner.Secrets...)
+	return printInvestigationResult(result, err, dir, out, errout, runner.CurrentSecrets()...)
 }
 
 func printInvestigationResult(result *investigation.Report, runErr error, dir string, out, errout io.Writer, secrets ...string) int {

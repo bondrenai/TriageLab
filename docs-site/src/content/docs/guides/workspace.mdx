@@ -41,6 +41,16 @@ set `TRIAGELAB_TOKEN` in the server's environment before starting it. Neither
 that token nor the model key belongs in browser configuration. Model and cloud
 usage can incur charges even though TriageLab is free.
 
+## Ticket evidence files
+
+Attachment rules accept UTF-8 source, configuration, logs, and other text files.
+The procedure editor lists the supported extensions. For a rule that matches
+an extension, the requester can also paste a fenced code block in a Markdown reply with a language
+tag such as `python` or `yaml`. For a rule that matches a specific filename,
+include a hint such as `filename=settings.yaml` in the opening fence. Uploaded
+files take precedence. The report attributes inline evidence to the requester
+message it came from. Each run can include up to four files of 1 MiB each.
+
 ## Automatic ticket investigations
 
 Ticket cases default to **Approve and start investigation**. To let a matching
@@ -186,9 +196,16 @@ HTTP MCP. [Start investigations from a policy workflow](/TriageLab/guides/chat-m
 
 ## Operate it
 
-- The server accepts **one investigation at a time**. Closing a tab leaves a
-  run going; use **Cancel** to stop it.
-- Server shutdown cancels active work and allows bounded cleanup. After an
+- One investigation runs at a time. By default, up to four others can wait
+  in submission order. Set `max_queued_runs` to any value from 0 to 16 in the
+  [workspace configuration](/TriageLab/reference/configuration/).
+- Use **Choose folder** to upload a reproduction directory with its relative
+  paths. Build and dependency directories such as `node_modules` and
+  `dist` are skipped. The same file count and size limits apply to folders.
+- Closing a tab leaves active and queued work running. Use **Stop
+  investigation** on an active run or **Cancel queued run** on a waiting run.
+  The queue lives in memory. Server shutdown cancels waiting runs and allows
+  bounded cleanup of active work. After an
   abrupt crash, use **Close investigation** for runs with a lifecycle journal.
   Older reports offer **Retry cleanup** to users and admins when resources
   may remain. You can also use `triagelab cleanup --report`.

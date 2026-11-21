@@ -198,8 +198,9 @@ func (s *Server) reconcileGitOps(ctx context.Context) error {
 				}
 				if prepareErr == nil {
 					var flow *ticketflow.Flow
-					flow, prepareErr = ticketflow.OpenManaged(config, dir, s.config, version, append(s.secretList(), token)...)
+					flow, prepareErr = ticketflow.OpenManaged(config, dir, s.config, version, token)
 					if prepareErr == nil {
+						flow.SecretSource = s.secretList
 						flow.ResolveTarget = s.resolveTicketTarget
 						if config.Policy.AutoRuns {
 							flow.AutoLaunch = s.launchTicketAs("ticket policy")

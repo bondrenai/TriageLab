@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -48,6 +49,16 @@ type runningCase struct {
 	progress []string
 }
 
+type queuedOperation struct {
+	id        string
+	config    investigation.Config
+	tools     []string
+	actor     string
+	trigger   string
+	message   string
+	operation func(context.Context, *investigation.Investigator) error
+}
+
 func (c *runningCase) notify() {
 	if c == nil || c.wake == nil {
 		return
@@ -58,7 +69,8 @@ func (c *runningCase) notify() {
 	}
 }
 
-// Server has one active investigation. Completed reports are read from disk.
+// Server runs one active investigation at a time and can hold a bounded FIFO
+// queue when max_queued_runs is configured. Completed reports are read from disk.
 type Server struct {
 	ctx             context.Context
 	config          investigation.Config
@@ -70,6 +82,7 @@ type Server struct {
 	mu              sync.Mutex
 	activeID        string
 	active          *runningCase
+	queue           []*queuedOperation
 	actionErrors    map[string]string
 	closed          bool
 	cleaning        *runCleanup
@@ -106,8 +119,46 @@ func (s *Server) addSecret(value string) {
 		return
 	}
 	s.secretMu.Lock()
+	for _, existing := range s.secrets {
+		if existing == value {
+			s.secretMu.Unlock()
+			return
+		}
+	}
 	s.secrets = append(s.secrets, value)
 	s.secretMu.Unlock()
+}
+
+// AddSecret registers a credential for runtime report and log redaction.
+// Used when kagent tokens rotate from a token file.
+func (s *Server) AddSecret(value string) {
+	s.addSecret(value)
+}
+
+func (s *Server) queuePositionLocked(id string) int {
+	for i, item := range s.queue {
+		if item.id == id {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// cancelQueuedReport records that the investigator never started this run.
+func (s *Server) cancelQueuedReport(id string) error {
+	saved, err := s.readSavedReport(id)
+	if err != nil {
+		return err
+	}
+	if saved.Status != investigation.StatusQueued && saved.Status != investigation.StatusCanceled {
+		return errors.New("run is no longer waiting to start")
+	}
+	if saved.Status == investigation.StatusQueued {
+		saved.Status = investigation.StatusCanceled
+		finished := time.Now().UTC()
+		saved.FinishedAt = &finished
+	}
+	return report.Write(filepath.Join(s.directory, id), saved, s.secretList()...)
 }
 
 // New requires a built UI and a backend; it does not contact the model or cluster.
@@ -160,6 +211,8 @@ func (s *Server) Close(ctx context.Context) error {
 	if active != nil {
 		active.cancel()
 	}
+	queued := s.queue
+	s.queue = nil
 	cleaning := s.cleaning
 	if cleaning != nil {
 		cleaning.cancel()
@@ -169,6 +222,12 @@ func (s *Server) Close(ctx context.Context) error {
 		chat.cancel()
 	}
 	s.mu.Unlock()
+	var queueErr error
+	for _, item := range queued {
+		if err := s.cancelQueuedReport(item.id); err != nil {
+			queueErr = errors.Join(queueErr, fmt.Errorf("could not save cancellation of queued run %s: %w", item.id, err))
+		}
+	}
 	if s.gitops != nil {
 		s.gitops.cancel()
 		select {
@@ -205,7 +264,7 @@ func (s *Server) Close(ctx context.Context) error {
 	for _, conn := range s.ticketConnections() {
 		ticketErr = errors.Join(ticketErr, conn.flow.Close())
 	}
-	return errors.Join(ticketErr, s.reports.Close(), s.assets.Close())
+	return errors.Join(queueErr, ticketErr, s.reports.Close(), s.assets.Close())
 }
 
 // Serve runs a loopback-only HTTP server and waits for investigation cleanup on shutdown.
@@ -422,7 +481,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/settings" && r.Method == http.MethodGet {
-		jsonResponse(w, http.StatusOK, map[string]any{"agent": s.config.Agent, "sandbox_template": s.config.Template, "namespace": s.config.Namespace, "run_namespaces": s.runNamespaceNames(), "resource_writes": s.resourceWrites, "manual_agents": s.manualAgentNames(), "max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout})
+		jsonResponse(w, http.StatusOK, map[string]any{"agent": s.config.Agent, "sandbox_template": s.config.Template, "namespace": s.config.Namespace, "run_namespaces": s.runNamespaceNames(), "resource_writes": s.resourceWrites, "manual_agents": s.manualAgentNames(), "max_file_bytes": casefile.MaxFileBytes, "max_total_bytes": casefile.MaxTotalBytes, "max_files": casefile.MaxFiles, "max_description_bytes": casefile.MaxDescriptionBytes, "max_experiments": s.config.MaxExperiments, "timeout_seconds": s.config.InvestigationTimeout, "max_queued_runs": s.config.MaxQueuedRuns})
 		return
 	}
 	if r.URL.Path == "/api/runs" {
@@ -558,6 +617,10 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	activeID := s.activeID
+	queuePositions := make(map[string]int, len(s.queue))
+	for i, item := range s.queue {
+		queuePositions[item.id] = i + 1
+	}
 	failedActions := make(map[string]bool, len(s.actionErrors))
 	for id := range s.actionErrors {
 		failedActions[id] = true
@@ -578,7 +641,7 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s.projectLifecycle(entry.Name(), saved, entry.Name() == activeID)
-		runs = append(runs, summarizeRun(entry.Name(), saved, entry.Name() == activeID, failedActions[entry.Name()]))
+		runs = append(runs, summarizeRun(entry.Name(), saved, entry.Name() == activeID, queuePositions[entry.Name()], failedActions[entry.Name()]))
 	}
 	sort.Slice(runs, func(i, j int) bool { return runs[i].StartedAt > runs[j].StartedAt })
 	jsonResponse(w, 200, map[string]any{"runs": runs})
@@ -618,15 +681,33 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
 		s.mu.Lock()
-		if s.activeID != id || s.active == nil {
+		if s.activeID == id && s.active != nil {
+			if r.URL.Query().Get("queued") == "true" {
+				s.mu.Unlock()
+				fail(w, http.StatusConflict, "This investigation has already started")
+				return
+			}
+			s.active.cancel()
 			s.mu.Unlock()
-			fail(w, 409, "This investigation is not active")
+			s.recordAudit(actorFrom(r.Context()), "run.cancel", id, "accepted", "")
+			jsonResponse(w, 202, map[string]string{"id": id})
 			return
 		}
-		s.active.cancel()
+		if pos := s.queuePositionLocked(id); pos > 0 {
+			s.queue = slices.Delete(s.queue, pos-1, pos)
+			err := s.cancelQueuedReport(id)
+			s.mu.Unlock()
+			if err != nil {
+				s.recordAudit(actorFrom(r.Context()), "run.cancel", id, "failed", "could not save queued cancellation")
+				fail(w, http.StatusInternalServerError, "The run was removed from the queue, but its cancellation could not be saved")
+				return
+			}
+			s.recordAudit(actorFrom(r.Context()), "run.cancel", id, "accepted", "queued")
+			jsonResponse(w, 202, map[string]string{"id": id})
+			return
+		}
 		s.mu.Unlock()
-		s.recordAudit(actorFrom(r.Context()), "run.cancel", id, "accepted", "")
-		jsonResponse(w, 202, map[string]string{"id": id})
+		fail(w, 409, "This investigation is not active")
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -648,6 +729,11 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	saved["active"] = s.activeID == id
+	queuePos := s.queuePositionLocked(id)
+	if queuePos > 0 {
+		saved["queued"] = true
+		saved["queue_position"] = queuePos
+	}
 	saved["cleanup_running"] = s.cleaning != nil && s.cleaning.id == id
 	if message := s.cleanupFailure[id]; message != "" {
 		saved["cleanup_error"] = message
@@ -659,10 +745,12 @@ func (s *Server) runRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.activeID == id && s.active != nil {
 		saved["progress"] = append([]string{}, s.active.progress...)
+	} else if queuePos > 0 {
+		saved["progress"] = []string{fmt.Sprintf("Queued for execution (position %d)", queuePos)}
 	}
 	s.mu.Unlock()
 	s.projectLifecycle(id, saved, saved["active"] == true)
-	if saved["active"] == false {
+	if saved["active"] == false && saved["queued"] != true {
 		for _, conn := range s.ticketConnections() {
 			if note := conn.flow.NotePreview(id, saved); note != nil {
 				saved["ticket_note"] = note
@@ -801,14 +889,14 @@ func (s *Server) ingestUpload(w http.ResponseWriter, r *http.Request) (casefile.
 
 func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
-	busy, closed := s.active != nil, s.closed
+	busy, closed := s.active != nil && len(s.queue) >= s.config.MaxQueuedRuns, s.closed
 	s.mu.Unlock()
 	if closed {
 		fail(w, 503, "The workspace is shutting down")
 		return
 	}
 	if busy {
-		fail(w, 409, "An investigation is already running")
+		s.writeLaunchError(w, ticketflow.ErrBusy)
 		return
 	}
 	var namespace string
@@ -887,7 +975,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 		trigger = "mcp"
 	}
 	if err := s.launchRun(c, nil, config, extraTools, actor.Username, trigger); err != nil {
-		writeLaunchError(w, err)
+		s.writeLaunchError(w, err)
 		return
 	}
 	jsonResponse(w, 202, map[string]string{"id": c.ID})
@@ -896,10 +984,14 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 var errWorkspaceClosed = errors.New("the workspace is shutting down")
 var errRunStore = errors.New("could not save the initial report")
 
-func writeLaunchError(w http.ResponseWriter, err error) {
+func (s *Server) writeLaunchError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ticketflow.ErrBusy):
-		fail(w, 409, "An investigation is already running")
+		if s.config.MaxQueuedRuns > 0 {
+			fail(w, 409, "The investigation queue is full")
+		} else {
+			fail(w, 409, "An investigation is already running")
+		}
 	case errors.Is(err, errWorkspaceClosed):
 		fail(w, 503, err.Error())
 	default:
@@ -925,7 +1017,7 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 		s.mu.Unlock()
 		return errWorkspaceClosed
 	}
-	if s.active != nil {
+	if s.active != nil && len(s.queue) >= s.config.MaxQueuedRuns {
 		s.mu.Unlock()
 		return ticketflow.ErrBusy
 	}
@@ -948,12 +1040,28 @@ func (s *Server) launchRun(c casefile.Case, reserve func() error, config investi
 			return err
 		}
 	}
-	s.startOperationLocked(c.ID, config, extraTools, actor, trigger, "Investigation queued", func(ctx context.Context, runner *investigation.Investigator) error {
+	op := func(ctx context.Context, runner *investigation.Investigator) error {
 		_, err := runner.Run(ctx, c, dir)
 		return err
+	}
+	if s.active == nil {
+		s.startOperationLocked(c.ID, config, extraTools, actor, trigger, "Investigation queued", op)
+		s.mu.Unlock()
+		s.recordAudit(auth.Identity{Username: actor, Via: trigger}, "run.start", c.ID, "accepted", "")
+		return nil
+	}
+	s.queue = append(s.queue, &queuedOperation{
+		id:        c.ID,
+		config:    config,
+		tools:     append([]string(nil), extraTools...),
+		actor:     actor,
+		trigger:   trigger,
+		message:   "Investigation queued",
+		operation: op,
 	})
+	pos := len(s.queue)
 	s.mu.Unlock()
-	s.recordAudit(auth.Identity{Username: actor, Via: trigger}, "run.start", c.ID, "accepted", "")
+	s.recordAudit(auth.Identity{Username: actor, Via: trigger}, "run.queue", c.ID, "accepted", fmt.Sprintf("position=%d", pos))
 	return nil
 }
 

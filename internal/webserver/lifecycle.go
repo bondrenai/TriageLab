@@ -152,7 +152,7 @@ func (s *Server) steerRun(w http.ResponseWriter, r *http.Request, id string) {
 	identity := actorFrom(r.Context())
 	actor := identity.Username
 	config := state.Config
-	config.TokenEnv = s.config.TokenEnv
+	config.TokenEnv, config.TokenFile = s.config.TokenEnv, s.config.TokenFile
 	stage := func(reserve func() error) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -235,7 +235,7 @@ func (s *Server) continueRun(w http.ResponseWriter, r *http.Request, id, action 
 	identity := actorFrom(r.Context())
 	actor := identity.Username
 	config := state.Config
-	config.TokenEnv = s.config.TokenEnv
+	config.TokenEnv, config.TokenFile = s.config.TokenEnv, s.config.TokenFile
 	launch := func(reserve func() error) error {
 		return s.launchContinuation(id, state, config, added, actor, action, reserve)
 	}
@@ -322,7 +322,7 @@ func (s *Server) startOperationLocked(id string, config investigation.Config, to
 	s.activeID, s.active = id, active
 	go func() {
 		defer cancel()
-		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, Secrets: s.secretList(), Actor: actor, Trigger: trigger, Wake: active.wake, Progress: func(message string) {
+		runner := investigation.Investigator{Client: s.backend, Config: config, AdditionalTools: tools, SecretSource: s.secretList, Actor: actor, Trigger: trigger, Wake: active.wake, Progress: func(message string) {
 			safe := fmt.Sprint(report.Redact(message, s.secretList()...))
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -343,6 +343,12 @@ func (s *Server) startOperationLocked(id string, config investigation.Config, to
 		s.mu.Lock()
 		s.activeID, s.active = "", nil
 		close(active.done)
+		if !s.closed && s.ctx.Err() == nil && len(s.queue) > 0 {
+			next := s.queue[0]
+			s.queue[0] = nil
+			s.queue = s.queue[1:]
+			s.startOperationLocked(next.id, next.config, next.tools, next.actor, next.trigger, next.message, next.operation)
+		}
 		s.mu.Unlock()
 		if trigger == "ticket" {
 			// The procedure policy may post the investigation comment
