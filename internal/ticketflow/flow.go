@@ -35,7 +35,6 @@ var (
 	ErrNotFound = errors.New("ticket case not found")
 	ErrBlocked  = errors.New("ticket is not ready for this action")
 	ErrStorage  = errors.New("ticket state could not be saved; restart the service before trying again")
-	fileName    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,100}\.(py|json|log|txt)$`)
 )
 
 type Fact struct {
@@ -111,13 +110,15 @@ type Settings struct {
 }
 
 type Flow struct {
-	source         source
-	provider       string
-	oauth          *zendeskOAuth
-	store          *store
-	settings       Settings
-	runtime        investigation.Config
-	secrets        []string
+	source   source
+	provider string
+	oauth    *zendeskOAuth
+	store    *store
+	settings Settings
+	runtime  investigation.Config
+	secrets  []string
+	// SecretSource is set before the flow starts reading or polling tickets.
+	SecretSource   func() []string
 	op             sync.Mutex
 	broken         bool
 	closed         bool
@@ -294,10 +295,14 @@ func (f *Flow) finishOAuth(ctx context.Context, host, state, browser, code strin
 }
 
 func (f *Flow) currentSecrets() []string {
-	if f.oauth == nil {
-		return f.secrets
+	secrets := f.secrets
+	if f.SecretSource != nil {
+		secrets = append(slices.Clone(secrets), f.SecretSource()...)
 	}
-	return append(slices.Clone(f.secrets), f.oauth.secrets()...)
+	if f.oauth != nil {
+		secrets = append(slices.Clone(secrets), f.oauth.secrets()...)
+	}
+	return secrets
 }
 
 func newFlow(config Config, source source, store *store, runtime investigation.Config, secrets []string) *Flow {
@@ -872,6 +877,10 @@ func (f *Flow) assessProcedure(ctx context.Context, id int64, previous Case, ver
 	for _, fsrc := range selectedFiles {
 		files = append(files, fsrc.attachment)
 		name := reproductionName(fsrc.Name)
+		if fsrc.Inline != "" {
+			fileEvidence = append(fileEvidence, name+" (inline code block) from "+f.commentReference(strconv.FormatInt(fsrc.commentID, 10), fsrc.commentURL))
+			continue
+		}
 		fileEvidence = append(fileEvidence, name+" from "+f.commentReference(strconv.FormatInt(fsrc.commentID, 10), fsrc.commentURL))
 		if f.provider == "github" || f.provider == "gitlab" {
 			fileEvidence = append(fileEvidence, name+" attached at "+fsrc.URL)
@@ -1006,16 +1015,25 @@ func (f *Flow) prepare(ctx context.Context, title string, lines []string, files 
 		}
 		// GitHub, GitLab, and Linear attachments do not state a size before
 		// download.
-		unknownSize := (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && a.Size == -1
-		if !fileName.MatchString(name) || (!unknownSize && a.Size <= 0) || a.Size > casefile.MaxFileBytes || seen[name] {
-			return casefile.Case{}, errors.New("Attachments must be unique .py, .json, .txt or .log files, each at most 1 MiB.")
+		unknownSize := a.Inline == "" && (f.provider == "github" || f.provider == "gitlab" || f.provider == "linear") && a.Size == -1
+		if !supportedAttachmentName(name) || (!unknownSize && a.Size <= 0) || a.Size > casefile.MaxFileBytes || seen[name] {
+			return casefile.Case{}, errors.New("Attachments must be unique supported text or code files, each at most 1 MiB.")
 		}
 		seen[name] = true
 	}
 	for _, a := range files {
-		data, err := f.source.file(ctx, a)
-		if err != nil || len(data) == 0 || len(data) > casefile.MaxFileBytes || (f.provider == "github" && (!utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0)) {
-			return casefile.Case{}, errors.New("Could not verify the attached reproduction files. Review the attachments at the source.")
+		var data []byte
+		var err error
+		if a.Inline != "" {
+			data = []byte(a.Inline)
+			if len(data) == 0 || len(data) > casefile.MaxFileBytes || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+				return casefile.Case{}, errors.New("Could not verify the inline code block evidence. Review the comment at the source.")
+			}
+		} else {
+			data, err = f.source.file(ctx, a)
+			if err != nil || len(data) == 0 || len(data) > casefile.MaxFileBytes || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+				return casefile.Case{}, errors.New("Could not verify the attached reproduction files. Review the attachments at the source.")
+			}
 		}
 		if f.hasSecret(data) {
 			return casefile.Case{}, errors.New("An attachment contains a configured credential.")

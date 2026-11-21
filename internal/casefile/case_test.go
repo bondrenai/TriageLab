@@ -390,6 +390,51 @@ func TestDuplicatesAndUnsafeNamesRefused(t *testing.T) {
 	}
 }
 
+func TestIngestIncludeExcludeGlobs(t *testing.T) {
+	directory := temporary(t)
+	put(t, filepath.Join(directory, "src", "app.py"), []byte("print('hi')\n"))
+	put(t, filepath.Join(directory, "src", "sub", "helper.py"), []byte("x = 1\n"))
+	put(t, filepath.Join(directory, "config.json"), []byte(`{"ok":true}`))
+	put(t, filepath.Join(directory, "fixtures", "huge.bin"), make([]byte, MaxFileBytes+10))
+
+	// Excluding the oversized fixtures directory allows ingestion to succeed.
+	got, err := IngestWithOptions("bug", directory, nil, nil, IngestOptions{
+		Include: []string{"src/**/*.py", "*.json"},
+		Exclude: []string{"fixtures"},
+	})
+	if err != nil {
+		t.Fatalf("filtered ingest failed: %v", err)
+	}
+	var paths []string
+	for _, a := range got.Attachments {
+		paths = append(paths, a.Path)
+	}
+	want := []string{"config.json", "src/app.py", "src/sub/helper.py"}
+	if fmt.Sprint(paths) != fmt.Sprint(want) {
+		t.Fatalf("paths=%v, want %v", paths, want)
+	}
+
+	// Include cannot bypass credential filename protection.
+	put(t, filepath.Join(directory, ".env"), []byte("SECRET=1"))
+	if _, err := IngestWithOptions("bug", directory, nil, nil, IngestOptions{
+		Include: []string{".env"},
+		Exclude: []string{"fixtures"},
+	}); err == nil {
+		t.Fatal("include glob bypassed credential file refusal")
+	}
+
+	// Invalid patterns are rejected.
+	for _, opts := range []IngestOptions{
+		{Include: []string{"../escape"}},
+		{Exclude: []string{"/abs/path"}},
+		{Include: []string{"["}},
+	} {
+		if _, err := IngestWithOptions("bug", directory, nil, nil, opts); err == nil {
+			t.Fatalf("accepted invalid glob options: %+v", opts)
+		}
+	}
+}
+
 func TestDeterministicFixture(t *testing.T) {
 	// This verifies only the fixture, not kagent or sandbox integration.
 	python, err := exec.LookPath("python3")

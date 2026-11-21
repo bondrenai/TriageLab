@@ -84,11 +84,12 @@ visible notes and the issue description; system notes and internal notes
 never supply evidence. For the starter checklist the requester provides
 `Python version:`, `Expected:`, and `Actual:` lines. Descriptions and
 note bodies are Markdown and stay inert imported data. At most four
-sanitized files (`.py`, `.json`, `.txt`, `.log`) of 1 MiB each enter a
+sanitized files of 1 MiB each enter a
 run; Markdown uploads download through the authorized project uploads
 endpoint on the configured origin, which fails closed on an unexpected
 shape and requires GitLab 17.4 or newer. Review source references and
-hashes before approval.
+hashes before approval. See [ticket evidence files](/TriageLab/guides/workspace/#ticket-evidence-files)
+for accepted files and inline code blocks.
 
 With `auto_questions: true`, review the requester, label policy, and
 exact draft before **Approve and send clarification**; the note is

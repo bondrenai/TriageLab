@@ -66,11 +66,12 @@ carry the configured label.
 The procedure takes configured facts and files from the issue author's
 original body and subsequent comments; other participants' replies do not
 supply evidence. For the starter checklist the author provides
-`Python version:`, `Expected:`, and `Actual:` lines. Supported files are
-`.py`, `.json`, `.txt`, and `.log` uploaded as standard GitHub Markdown
-attachment links (append `.txt` if GitHub rejects an extension — TriageLab
-restores it). At most four files of 1 MiB each enter a run; review source
-references and SHA-256 hashes before approval.
+`Python version:`, `Expected:`, and `Actual:` lines. Upload evidence as standard
+GitHub Markdown attachment links. The names `app.py.txt` and
+`config.json.txt` are restored to `app.py` and `config.json` for the sandbox.
+Review source references and SHA-256 hashes before approval.
+See [ticket evidence files](/TriageLab/guides/workspace/#ticket-evidence-files)
+for accepted files and inline code blocks.
 
 With `auto_questions: true`, review the author, label policy, and exact draft
 before **Approve and send clarification**; comments are visible to everyone

@@ -118,7 +118,8 @@ Actual: The deadline expires after five milliseconds.
 ```
 
 Attach only the sanitized files needed for the procedure in public requester
-replies. Supported types are `.py`, `.json`, `.txt`, and `.log`. If Zendesk rejects a
+replies. See the [workspace guide](../docs-site/src/content/docs/guides/workspace.mdx#ticket-evidence-files)
+for supported file types. If Zendesk rejects a
 script or config extension, append `.txt` to the filename, as in `app.py.txt`
 or `config.json.txt`. TriageLab removes that suffix for the sandbox and rejects
 files that resolve to the same name. For a disposable ticket,

@@ -400,7 +400,7 @@ func (b *bondrenSource) attachments(issueUUID string, files []bondrenAttachment)
 	seen := make(map[string]bool, len(files))
 	for _, f := range files {
 		if f.InspectionState != "clean" || bondrenID(f.ID) == 0 || f.ByteSize <= 0 ||
-			f.ByteSize > casefile.MaxFileBytes || seen[f.ID] || !fileName.MatchString(reproductionName(f.Filename)) {
+			f.ByteSize > casefile.MaxFileBytes || seen[f.ID] || !supportedAttachmentName(reproductionName(f.Filename)) {
 			continue
 		}
 		seen[f.ID] = true
@@ -441,7 +441,7 @@ func (b *bondrenSource) file(ctx context.Context, f attachment) ([]byte, error) 
 	u, err := url.Parse(f.URL)
 	if err != nil || u.Scheme+"://"+u.Host != b.origin || u.User != nil || u.Fragment != "" || u.RawPath != "" ||
 		u.RawQuery != "" || u.ForceQuery || !bondrenAttachmentPath.MatchString(u.Path) ||
-		f.Name == "" || !fileName.MatchString(reproductionName(f.Name)) {
+		f.Name == "" || !supportedAttachmentName(reproductionName(f.Name)) {
 		return nil, errors.New("unsupported Bondren attachment location")
 	}
 	// Unlike public issue trackers, Bondren authorizes attachment downloads

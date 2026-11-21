@@ -10,7 +10,10 @@
 - [ ] Pilot these alpha CRDs with Argo CD or Flux; verify synchronization and
       pod-projected API-token rotation. See [verification](docs/verification.md).
 
-- [ ] Start `examples/missing-orders` from the New investigation form. The
+- [x] Support folder upload, history filtering, a bounded workspace run queue,
+      and CLI repository filtering with an offline intake check.
+- [ ] Verify a folder upload of `examples/missing-orders` from the New investigation
+      form through a live run. The
       offline scorer regression check (`TestMissingOrdersScorerMatchesRecordedDemo`),
       `make test-demo-integration` (`TestLiveMissingOrders`), and
       `make test-steer-integration` (`TestLiveInvestigationSteer`) are wired

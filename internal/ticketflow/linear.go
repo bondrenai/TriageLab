@@ -337,7 +337,7 @@ func linearAttachments(body string) []attachment {
 			// Upload links carry the original file name as the link text.
 			name = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(match[1], "!"), "["), "]")
 		}
-		if !fileName.MatchString(reproductionName(name)) {
+		if !supportedAttachmentName(reproductionName(name)) {
 			continue
 		}
 		seen[u.String()] = true
@@ -356,7 +356,7 @@ func (l *linearSource) file(ctx context.Context, f attachment) ([]byte, error) {
 	}
 	parts := linearUploadPath.FindStringSubmatch(u.Path)
 	if parts == nil || (parts[2] != "" && parts[2] != f.Name) || f.Name == "" ||
-		!fileName.MatchString(reproductionName(f.Name)) {
+		!supportedAttachmentName(reproductionName(f.Name)) {
 		return nil, errors.New("unsupported Linear attachment filename")
 	}
 	// Signed upload URLs already grant access; the request carries neither the

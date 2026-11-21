@@ -70,8 +70,9 @@ The procedure takes configured facts and files from the issue author's
 original description and subsequent comments; other participants' replies do
 not supply evidence. For the starter checklist the author provides
 `Python version:`, `Expected:`, and `Actual:` lines. At most four sanitized
-files (`.py`, `.json`, `.txt`, `.log`) of 1 MiB each enter a run; review
-source references and hashes before approval.
+files of 1 MiB each enter a run; review
+source references and hashes before approval. See [ticket evidence files](/TriageLab/guides/workspace/#ticket-evidence-files)
+for accepted files and inline code blocks.
 
 With `auto_questions: true`, review the author, label policy, and exact draft
 before **Approve and send clarification**; comments are visible to everyone

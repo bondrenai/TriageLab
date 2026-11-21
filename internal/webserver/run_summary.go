@@ -3,6 +3,8 @@ package webserver
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/bondrenai/TriageLab/internal/investigation"
 )
 
 type runAttention struct {
@@ -19,6 +21,8 @@ type runSummary struct {
 	FinishedAt      string        `json:"finished_at,omitempty"`
 	ExperimentCount int           `json:"experiment_count"`
 	Active          bool          `json:"active"`
+	Queued          bool          `json:"queued,omitempty"`
+	QueuePosition   int           `json:"queue_position,omitempty"`
 	Round           int           `json:"round"`
 	ResourceState   string        `json:"resource_state"`
 	Attention       *runAttention `json:"attention,omitempty"`
@@ -27,7 +31,7 @@ type runSummary struct {
 // summarizeRun exposes operational facts without copying model conclusions,
 // blocking-question text, credentials, or private lifecycle settings into the queue.
 // projectLifecycle must run first so saved in-flight statuses reflect the journal.
-func summarizeRun(id string, saved map[string]any, active, actionFailed bool) runSummary {
+func summarizeRun(id string, saved map[string]any, active bool, queuePos int, actionFailed bool) runSummary {
 	c, _ := saved["case"].(map[string]any)
 	description, _ := c["description"].(string)
 	status, _ := saved["status"].(string)
@@ -37,6 +41,7 @@ func summarizeRun(id string, saved map[string]any, active, actionFailed bool) ru
 	experiments, _ := saved["experiments"].([]any)
 	result := runSummary{ID: id, Description: description, Status: status, Outcome: outcome,
 		StartedAt: started, FinishedAt: finished, ExperimentCount: len(experiments), Active: active,
+		Queued: queuePos > 0, QueuePosition: queuePos,
 		Round: 1, ResourceState: "unconfirmed"}
 	if number, ok := saved["round"].(json.Number); ok {
 		if round, err := number.Int64(); err == nil && round >= 1 && round <= 32 {
@@ -60,12 +65,16 @@ func summarizeRun(id string, saved map[string]any, active, actionFailed bool) ru
 	switch {
 	case active:
 		result.ResourceState = "active"
+	case queuePos > 0:
+		result.ResourceState = "queued"
+	case status == string(investigation.StatusCanceled):
+		result.ResourceState = "not_created"
 	case lifecycle.Phase == "paused":
 		result.ResourceState = "retained"
 	case cleanup["sandbox_deleted"] == true && cleanup["session_deleted"] == true:
 		result.ResourceState = "deleted"
 	}
-	if active {
+	if active || queuePos > 0 || status == string(investigation.StatusCanceled) {
 		return result
 	}
 	attention := func(reason, action string) {

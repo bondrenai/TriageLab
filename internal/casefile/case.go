@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	MaxFileBytes        = 1 << 20
-	MaxTotalBytes       = 4 << 20
-	MaxFiles            = 64
-	MaxDescriptionBytes = 64 << 10
-	maxDirectories      = 1024
-	maxDirectoryDepth   = 32
+	MaxFileBytes         = 1 << 20
+	MaxTotalBytes        = 4 << 20
+	MaxFiles             = 64
+	MaxDescriptionBytes  = 64 << 10
+	maxDirectories       = 1024
+	maxRepositoryEntries = 100_000
+	maxDirectoryDepth    = 32
 )
 
 // Attachment retains bytes for upload but includes only its inventory in reports.
@@ -255,9 +256,102 @@ func readFile(root *os.Root, relative string) ([]byte, error) {
 	return content, nil
 }
 
+// IngestOptions narrows repository ingestion with operator-supplied glob patterns.
+// All selected files pass the standard filename and content safety checks.
+type IngestOptions struct {
+	Include []string
+	Exclude []string
+}
+
 // Ingest reads bounded inputs. Repository paths are preserved; separately supplied
 // files/logs go under files/ and logs/. Nothing is run or evaluated on the host.
 func Ingest(description, repo string, files, logs []string) (Case, error) {
+	return IngestWithOptions(description, repo, files, logs, IngestOptions{})
+}
+
+func validateGlobPatterns(label string, patterns []string) ([]string, error) {
+	cleaned := make([]string, 0, len(patterns))
+	for _, raw := range patterns {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			return nil, fmt.Errorf("%s pattern must be nonempty", label)
+		}
+		if strings.Contains(p, `\`) || strings.IndexFunc(p, unicode.IsControl) >= 0 {
+			return nil, fmt.Errorf("invalid %s pattern: %s", label, raw)
+		}
+		p = strings.TrimPrefix(path.Clean(p), "./")
+		if p == ".." || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/") {
+			return nil, fmt.Errorf("invalid %s pattern: %s", label, raw)
+		}
+		for _, segment := range strings.Split(p, "/") {
+			if segment == "**" {
+				continue
+			}
+			if _, err := path.Match(segment, ""); err != nil {
+				return nil, fmt.Errorf("invalid %s pattern %q: %w", label, raw, err)
+			}
+		}
+		cleaned = append(cleaned, p)
+	}
+	return cleaned, nil
+}
+
+// matchGlob matches a slash-separated relative path against a validated glob
+// pattern supporting path.Match wildcards and "**" across path segments.
+// Patterns without "/" match against either the full path or the basename.
+func matchGlob(pattern, relPath string) bool {
+	if !strings.Contains(pattern, "/") {
+		ok, _ := path.Match(pattern, path.Base(relPath))
+		if ok {
+			return true
+		}
+	}
+	return matchSegments(strings.Split(pattern, "/"), strings.Split(relPath, "/"))
+}
+
+func matchSegments(pattern, segments []string) bool {
+	// Track the path prefixes matched after each pattern segment. A recursive
+	// wildcard can extend a match by one segment without backtracking.
+	matched := make([]bool, len(segments)+1)
+	matched[0] = true
+	for _, part := range pattern {
+		if part == "**" {
+			for i := 1; i < len(matched); i++ {
+				matched[i] = matched[i] || matched[i-1]
+			}
+			continue
+		}
+		for i := len(segments); i > 0; i-- {
+			matched[i] = false
+			if matched[i-1] {
+				matched[i], _ = path.Match(part, segments[i-1])
+			}
+		}
+		matched[0] = false
+	}
+	return matched[len(segments)]
+}
+
+func matchesAnyGlob(patterns []string, relPath string) bool {
+	for _, p := range patterns {
+		if matchGlob(p, relPath) {
+			return true
+		}
+	}
+	return false
+}
+
+// IngestWithOptions reads bounded inputs with optional include/exclude glob filtering
+// applied to repository paths.
+func IngestWithOptions(description, repo string, files, logs []string, opts IngestOptions) (Case, error) {
+	includes, err := validateGlobPatterns("include", opts.Include)
+	if err != nil {
+		return Case{}, err
+	}
+	excludes, err := validateGlobPatterns("exclude", opts.Exclude)
+	if err != nil {
+		return Case{}, err
+	}
 	if strings.TrimSpace(description) == "" {
 		return Case{}, fmt.Errorf("a nonempty problem description is required")
 	}
@@ -310,10 +404,14 @@ func Ingest(description, repo string, files, logs []string) (Case, error) {
 		}
 		defer root.Close()
 		result.Environment["repository_name"] = filepath.Base(filepath.Clean(repo))
-		directories := 0
+		directories, entries := 0, 0
 		err = fs.WalkDir(root.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return fmt.Errorf("cannot enumerate input repository")
+			}
+			entries++
+			if entries > maxRepositoryEntries {
+				return fmt.Errorf("repository exceeds %d entries; exclude large directories or pick a smaller root", maxRepositoryEntries)
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
 				return fmt.Errorf("symlinks are not accepted: %s", entry.Name())
@@ -322,13 +420,19 @@ func Ingest(description, repo string, files, logs []string) (Case, error) {
 				if credentialDirectories[strings.ToLower(entry.Name())] {
 					return fmt.Errorf("potential credential directory refused: %s", entry.Name())
 				}
-				if relative != "." && excludedDirectories[entry.Name()] {
+				if relative != "." && (excludedDirectories[entry.Name()] || matchesAnyGlob(excludes, relative)) {
 					return fs.SkipDir
 				}
 				directories++
 				if directories > maxDirectories || strings.Count(relative, "/") > maxDirectoryDepth {
 					return fmt.Errorf("repository exceeds directory traversal limits")
 				}
+				return nil
+			}
+			if matchesAnyGlob(excludes, relative) {
+				return nil
+			}
+			if len(includes) > 0 && !matchesAnyGlob(includes, relative) {
 				return nil
 			}
 			return add(root, relative, relative)

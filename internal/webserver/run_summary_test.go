@@ -45,7 +45,7 @@ func TestRunSummaryAttention(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			saved := map[string]any{"status": test.status, "lifecycle": test.lifecycle, "cleanup": test.cleanup,
 				"analysis": map[string]any{"missing_information": test.questions}}
-			got := summarizeRun(retainedRunID, saved, test.active, test.failed)
+			got := summarizeRun(retainedRunID, saved, test.active, 0, test.failed)
 			if got.ResourceState != test.resources || got.Active != test.active {
 				t.Fatalf("wrong operational state: %+v", got)
 			}

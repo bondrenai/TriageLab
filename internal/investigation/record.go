@@ -28,7 +28,9 @@ type Status string
 
 const (
 	// StatusQueued is saved by the workspace before the investigator starts.
-	StatusQueued      Status = "queued"
+	StatusQueued Status = "queued"
+	// StatusCanceled records a queued run stopped before execution began.
+	StatusCanceled    Status = "canceled"
 	StatusRunning     Status = "running"
 	StatusPausing     Status = "pausing"
 	StatusPaused      Status = "paused"

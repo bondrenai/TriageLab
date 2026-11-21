@@ -66,9 +66,9 @@ Expected: The health check allows five seconds for a response.
 Actual: The deadline expires after five milliseconds.
 ```
 
-Attach only the sanitized files the procedure needs (`.py`, `.json`, `.txt`,
-`.log`; append `.txt` if Zendesk rejects an extension). At most four files of
-1 MiB each enter a run, and the report records the source of each.
+Attach only the sanitized files the procedure needs. At most four files of
+1 MiB each enter a run, and the report records the source of each. See [ticket evidence files](/TriageLab/guides/workspace/#ticket-evidence-files)
+for accepted files and inline code blocks.
 
 A procedure can start automatically when the evidence is ready.
 [Automatic ticket investigations](/TriageLab/guides/workspace/#automatic-ticket-investigations).

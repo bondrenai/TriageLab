@@ -84,7 +84,8 @@ Actual: The deadline expires after five milliseconds.
 
 Upload sanitized files that meet the procedure's attachment rules
 to GitHub, keeping the standard Markdown attachment links in the author's body
-or comment. Supported files are `.py`, `.json`, `.txt`, and `.log`. If GitHub
+or comment. See the [workspace guide](../docs-site/src/content/docs/guides/workspace.mdx#ticket-evidence-files)
+for supported file types. If GitHub
 rejects a script or configuration extension, append `.txt`, such as
 `app.py.txt` or `config.json.txt`; TriageLab restores the original extension.
 Names must be unique after this normalization. At most four files, each no

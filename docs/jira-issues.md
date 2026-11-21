@@ -102,7 +102,8 @@ Actual: The deadline expires after five milliseconds.
 ```
 
 Attach sanitized files that meet the procedure's attachment rules to the
-issue. Supported files are `.py`, `.json`, `.txt`, and `.log`. Attachments
+issue. See the [workspace guide](../docs-site/src/content/docs/guides/workspace.mdx#ticket-evidence-files)
+for supported file types. Attachments
 download through the authorized Jira content endpoint, which answers with one
 signed redirect to Atlassian's media host; the site credential never travels
 to that host and the signed URL itself is the grant. A changed host or shape
