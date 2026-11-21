@@ -26,6 +26,10 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
   const [selected, setSelected] = useState(0);
   const draft = procedures[selected];
   const [revision, setRevision] = useState(version.revision);
+  const [procedureEdits, setProcedureEdits] = useState(0);
+  const [evidenceRemovals, setEvidenceRemovals] = useState(0);
+  // Inserting or removing an entry can replace the draft at the same index.
+  const editorKey = `${selected}-${revision}-${procedureEdits}`;
   const [ticketID, setTicketID] = useState("");
   const save = useSaveProcedure();
   const preview = usePreviewProcedure();
@@ -68,7 +72,13 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
       policy: { tag: "", auto_questions: false, max_questions: 0 },
       evidence: [], clarification: "", routes: [], default_agent: draft.default_agent, sandbox: draft.sandbox,
     });
+    setProcedureEdits(count => count + 1);
     updateProcedures(next, index);
+  }
+
+  function removeProcedure() {
+    setProcedureEdits(count => count + 1);
+    updateProcedures(procedures.filter((_, i) => i !== selected), Math.min(selected, procedures.length - 2));
   }
 
   function moveProcedure(direction: -1 | 1) {
@@ -88,6 +98,11 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
 
   function addEvidence(kind: EvidenceRule["kind"]) {
     update({ ...draft, evidence: [...draft.evidence, { kind, match: "", required: true }] });
+  }
+
+  function removeEvidence(index: number) {
+    setEvidenceRemovals(count => count + 1);
+    update({ ...draft, evidence: draft.evidence.filter((_, i) => i !== index) });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -135,12 +150,10 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
             <Button type="button" disabled={procedures.length >= 8} onClick={newProcedure}>Add procedure</Button>
             <Button type="button" disabled={selected === 0} onClick={() => moveProcedure(-1)}>Move earlier</Button>
             <Button type="button" disabled={selected === procedures.length - 1} onClick={() => moveProcedure(1)}>Move later</Button>
-            <Button type="button" disabled={procedures.length === 1} onClick={() => updateProcedures(
-              procedures.filter((_, i) => i !== selected), Math.min(selected, procedures.length - 2),
-            )}>Remove procedure</Button>
+            <Button type="button" disabled={procedures.length === 1} onClick={removeProcedure}>Remove procedure</Button>
           </div>
         </fieldset>
-        <fieldset className="agent-fields agent-inset" disabled={busy}>
+        <fieldset className="agent-fields agent-inset" disabled={busy} key={`match-${editorKey}`}>
           <legend className="field-label">Match cases</legend>
           <Field label={draft.policy.match_condition ? "Procedure label" : `Required ${tagLabel}`}>
             <input className="field" required maxLength={100} value={draft.policy.tag} onChange={e => updatePolicy({ tag: e.target.value })} />
@@ -171,16 +184,16 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
           </>}
         </fieldset>
 
-        <TicketConditionEditor key={`match-${selected}`} connection={connection} source={source} label="Procedure match condition"
+        <TicketConditionEditor connection={connection} source={source} label="Procedure match condition"
           value={draft.policy.match_condition ?? ""} emptyHint="An empty condition uses the procedure’s tag to match tickets."
           hint="A CEL match condition takes the place of the tag check. Use tags in the condition if the procedure still needs them."
           onChange={value => updatePolicy({ match_condition: value || undefined })} />
 
-        <fieldset className="agent-fields agent-inset" disabled={busy}>
+        <fieldset className="agent-fields agent-inset" disabled={busy} key={`evidence-${editorKey}`}>
           <legend className="field-label">Evidence and clarification</legend>
           <p className="field-help">Choose what to collect from the {zendesk ? "requester" : "issue author"}. Missing required items block a run and add a question to the clarification.</p>
           {draft.evidence.length === 0 && <p>Matching cases can proceed without an evidence checklist.</p>}
-          {draft.evidence.map((rule, index) => <fieldset className="agent-fields agent-inset" key={index}>
+          {draft.evidence.map((rule, index) => <fieldset className="agent-fields agent-inset" key={`${evidenceRemovals}-${index}`}>
             <legend className="field-label">{rule.kind === "field" ? "Text field" : "Attachment"} {index + 1}</legend>
             {rule.kind === "field" ? <>
               <div className="agent-field-grid">
@@ -215,7 +228,7 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
                 value={rule.required_when ?? ""} emptyHint="An empty condition makes this item required for every matching ticket."
                 onChange={value => updateEvidence(index, { required_when: value || undefined })} />
             </details>}
-            <div><Button type="button" onClick={() => update({ ...draft, evidence: draft.evidence.filter((_, i) => i !== index) })}>Remove evidence item</Button></div>
+            <div><Button type="button" onClick={() => removeEvidence(index)}>Remove evidence item</Button></div>
           </fieldset>)}
           <div className="button-row">
             <Button type="button" disabled={draft.evidence.length >= 12} onClick={() => addEvidence("field")}>Add text field</Button>
@@ -237,7 +250,7 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
                 <input className="field" type="number" min={1} max={clarificationLimit} required value={draft.policy.max_questions}
                   onChange={e => updatePolicy({ max_questions: Number(e.target.value) })} />
               </Field>
-              <TicketConditionEditor key={`clarify-${selected}`}
+              <TicketConditionEditor
                 connection={connection} source={source} label="Clarification condition" value={draft.policy.auto_question_condition ?? ""}
                 emptyHint="An empty condition allows clarifications when required evidence is missing."
                 onChange={value => updatePolicy({ auto_question_condition: value || undefined })} />
@@ -252,7 +265,7 @@ export function TicketProcedureEditor({ connection, version, source, connected, 
               onChange={e => updatePolicy({ auto_runs: e.target.checked })} />
             Start automatically when evidence is ready
           </label>}
-          {autoRunsAllowed && draft.policy.auto_runs && <TicketConditionEditor key={`start-${selected}`}
+          {autoRunsAllowed && draft.policy.auto_runs && <TicketConditionEditor key={`start-${editorKey}`}
             connection={connection} source={source} label="Automatic start condition" value={draft.policy.auto_run_condition ?? ""}
             emptyHint="An empty condition allows automatic starts when evidence is ready."
             onChange={value => updatePolicy({ auto_run_condition: value || undefined })} />}

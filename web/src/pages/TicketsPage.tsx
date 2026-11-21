@@ -217,7 +217,7 @@ function ConnectionSection({ connection, canAct, isAdmin, oauthResult }: {
   const procedures = orderedProcedures(connection.procedure);
   const matched = procedures.find(p => p.policy.tag === (active ?? preview)?.matched_tag);
   const caseSettings = matched ? { ...connection.settings, policy: matched.policy } : undefined;
-  const commentsEnabled = connection.settings.investigation_comments || procedures.some(p => p.policy.auto_questions);
+  const commentsEnabled = connection.settings.investigation_comments || connection.settings.internal_notes || procedures.some(p => p.policy.auto_questions);
 
   function perform(input: TicketAction) {
     mutation.mutate({ ...input, connection: connection.id }, { onSuccess: (ticket) => {

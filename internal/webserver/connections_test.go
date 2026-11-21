@@ -296,3 +296,90 @@ func TestZendeskOAuthCookieRoutesToItsOwnConnection(t *testing.T) {
 		t.Fatalf("state from another connection accepted: HTTP %d", w.Code)
 	}
 }
+
+func TestUnsavedConnectionTestRoute(t *testing.T) {
+	s := newTestServer(t, nil)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() == "/api/v4/projects/acme%2Ftooling" {
+			if r.Header.Get("PRIVATE-TOKEN") != "good-gl-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":1,"path_with_namespace":"acme/tooling"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(origin.Close)
+
+	worker := loginAs(t, s, "worker", "user-password-1")
+	if w := requestAs(s, worker, http.MethodPost, "/api/tickets/connections/test", strings.NewReader(`{}`)); w.Code != 403 {
+		t.Fatalf("non-admin tested connection: %d", w.Code)
+	}
+	if w := request(s, http.MethodGet, "/api/tickets/connections/test", nil); w.Code != 405 {
+		t.Fatalf("GET test route: %d", w.Code)
+	}
+	w := request(s, http.MethodPost, "/api/tickets/connections/test", strings.NewReader(
+		`{"token":"good-gl-token","config":{"source":"gitlab","repository":"acme/tooling","origin":"`+origin.URL+`","policy":{"tag":"reproduce"}}}`))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("unsaved connection test failed: HTTP %d %s", w.Code, w.Body)
+	}
+	// A rejected provider credential produces a failed test result.
+	w = request(s, http.MethodPost, "/api/tickets/connections/test", strings.NewReader(
+		`{"token":"bad-secret-token-value","config":{"source":"gitlab","repository":"acme/tooling","origin":"`+origin.URL+`","policy":{"tag":"reproduce"}}}`))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"ok":false`) {
+		t.Fatalf("unsaved connection test failure: HTTP %d %s", w.Code, w.Body)
+	}
+
+	// Use a fixture credential that also occurs in the validation message so
+	// the test exercises redaction independently of provider error formatting.
+	const secret = "GitLab"
+	t.Setenv("TRIAGELAB_PROBE_TOKEN", secret)
+	for _, credential := range []struct{ token, config string }{
+		{token: `"token":"` + secret + `",`},
+		{config: `"token_env":"TRIAGELAB_PROBE_TOKEN",`},
+	} {
+		w := request(s, http.MethodPost, "/api/tickets/connections/test", strings.NewReader(`{`+credential.token+
+			`"config":{`+credential.config+`"source":"gitlab","policy":{"tag":"reproduce"}}}`))
+		body := w.Body.String()
+		if w.Code != 200 || !strings.Contains(body, `"ok":false`) || !strings.Contains(body, "[REDACTED]") || strings.Contains(body, secret) {
+			t.Fatalf("unsaved connection test did not redact its credential: HTTP %d %s", w.Code, body)
+		}
+	}
+}
+
+func TestUpdateConnectionClearsStoredTokenWhenSwitchingMode(t *testing.T) {
+	s := newTestServer(t, nil)
+	const secret = "stored-github-secret-value"
+	code, id := createConnection(t, s, `{"label":"Repo","token":"`+secret+`","config":{`+
+		`"source":"github","repository":"owner/repo","policy":{"tag":"reproduce"}}}`)
+	if code != 201 {
+		t.Fatalf("create: %d", code)
+	}
+	// Switching to an environment variable clears the stored token even if token is omitted.
+	t.Setenv("TRIAGELAB_SWITCHED_GH_TOKEN", "env-token-value")
+	w := request(s, http.MethodPut, "/api/tickets/connections/"+id, strings.NewReader(
+		`{"label":"Repo","config":{"source":"github","repository":"owner/repo","token_env":"TRIAGELAB_SWITCHED_GH_TOKEN","policy":{"tag":"reproduce"}}}`))
+	if w.Code != 200 {
+		t.Fatalf("switch to env: %d %s", w.Code, w.Body)
+	}
+	records, err := ticketflow.LoadConnections(s.ticketRoot())
+	if err != nil || len(records) != 1 || records[0].Token != "" || records[0].CredentialMode() != "env" {
+		t.Fatalf("stored token survived switch to env: %+v err=%v", records, err)
+	}
+	// Re-store a token, then explicitly clear it to anonymous read.
+	w = request(s, http.MethodPut, "/api/tickets/connections/"+id, strings.NewReader(
+		`{"label":"Repo","token":"`+secret+`","config":{"source":"github","repository":"owner/repo","policy":{"tag":"reproduce"}}}`))
+	if w.Code != 200 {
+		t.Fatalf("re-store token: %d %s", w.Code, w.Body)
+	}
+	w = request(s, http.MethodPut, "/api/tickets/connections/"+id, strings.NewReader(
+		`{"label":"Repo","token":"","config":{"source":"github","repository":"owner/repo","policy":{"tag":"reproduce"}}}`))
+	if w.Code != 200 {
+		t.Fatalf("switch to anonymous: %d %s", w.Code, w.Body)
+	}
+	records, err = ticketflow.LoadConnections(s.ticketRoot())
+	if err != nil || len(records) != 1 || records[0].Token != "" || records[0].CredentialMode() != "none" {
+		t.Fatalf("stored token survived switch to anonymous: %+v err=%v", records, err)
+	}
+}

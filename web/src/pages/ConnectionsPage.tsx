@@ -131,15 +131,15 @@ function ConnectionForm({ source, status, onDone }: { source: TicketSource; stat
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm(previous => ({ ...previous, [key]: value }));
 
-  // A blank stored token keeps the saved credential when editing; the server
-  // also falls back to the saved credential when a saved-connection test
-  // arrives without one.
-  const input = (): ConnectionInput => ({
-    label: form.label.trim(),
-    config: configFrom(form),
-    ...(form.credential === "stored" && form.token !== "" ? { token: form.token } : {}),
-    ...(confirmReset ? { confirm_reset: true } : {}),
-  });
+  // A blank stored token keeps the saved credential when editing; switching
+  // away from stored mode sends an empty token so the server clears it.
+  const input = (): ConnectionInput => {
+    const input: ConnectionInput = { label: form.label.trim(), config: configFrom(form) };
+    if (form.credential === "stored" && form.token !== "") input.token = form.token;
+    if (form.credential !== "stored" && editing) input.token = "";
+    if (confirmReset) input.confirm_reset = true;
+    return input;
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -343,11 +343,12 @@ function SourceCatalog({ list, onPick }: { list: ConnectionStatus[]; onPick: (so
 
 export function ConnectionsPage() {
   const session = useSession();
-  const connections = useConnections();
+  const isAdmin = roleAtLeast(session.data?.role, "admin");
+  const connections = useConnections(isAdmin);
   const [adding, setAdding] = useState<TicketSource | null>(null);
   const [editing, setEditing] = useState<ConnectionStatus | null>(null);
 
-  if (!roleAtLeast(session.data?.role, "admin")) {
+  if (!isAdmin) {
     return <>
       <PageTitle title="Connections" description="Managing ticket connections requires the admin role." />
       <Panel title="Ticket connections"><div className="panel-body"><p>Ask an administrator to connect a ticket or issue source.</p></div></Panel>

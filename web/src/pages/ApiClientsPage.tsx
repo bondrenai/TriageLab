@@ -95,14 +95,15 @@ function ClientRow({ client, onReveal }: { client: APIClient; onReveal: (id: str
 
 export function ApiClientsPage() {
   const session = useSession();
-  const clients = useClients();
+  const isAdmin = roleAtLeast(session.data?.role, "admin");
+  const clients = useClients(isAdmin);
   const create = useCreateClient();
   const [id, setId] = useState("");
   const [scopes, setScopes] = useState<Scope[]>(["investigations:run"]);
   const [reveal, setReveal] = useState<{ id: string; secret: string } | null>(null);
   const validId = VALID_ID.test(id);
 
-  if (!roleAtLeast(session.data?.role, "admin")) {
+  if (!isAdmin) {
     return <>
       <PageTitle title="API clients" description="Managing API clients requires the admin role." />
       <Panel title="API clients"><div className="panel-body"><p>Ask an administrator to create or change API clients.</p></div></Panel>

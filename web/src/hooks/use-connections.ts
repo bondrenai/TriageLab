@@ -11,8 +11,8 @@ const refreshConnections = (client: ReturnType<typeof useQueryClient>) => () => 
   void client.invalidateQueries({ queryKey: queryKeys.tickets });
 };
 
-export function useConnections() {
-  return useQuery({ queryKey: queryKeys.connections, queryFn: listConnections });
+export function useConnections(enabled: boolean) {
+  return useQuery({ queryKey: queryKeys.connections, queryFn: listConnections, enabled });
 }
 
 export function useCreateConnection() {

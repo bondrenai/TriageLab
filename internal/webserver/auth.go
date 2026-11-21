@@ -53,8 +53,8 @@ func actorFrom(ctx context.Context) auth.Identity {
 }
 
 // currentSessionIdentity returns the active session identity, re-checking local
-// accounts so CLI or admin role changes, disables, and removals take effect on
-// running sessions immediately. An unreadable user file fails the request
+// accounts so role changes, disables, removals, and password resets take
+// effect on the next request. An unreadable user file fails the request
 // closed with errUserStoreUnavailable but keeps the session, so a transient
 // error or a mid-edit file does not sign everybody out.
 func (s *Server) currentSessionIdentity(g *gate, token string) (auth.Identity, bool, error) {
@@ -67,7 +67,7 @@ func (s *Server) currentSessionIdentity(g *gate, token string) (auth.Identity, b
 		if err != nil {
 			return auth.Identity{}, false, errUserStoreUnavailable
 		}
-		if !exists || user.Disabled {
+		if !exists || user.Disabled || user.Password == "" || identity.CredentialDigest != auth.PasswordDigest(user.Password) {
 			g.sessions.End(token)
 			return auth.Identity{}, false, nil
 		}
@@ -252,7 +252,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.limiter.RecordSuccess(input.Username)
-	identity := auth.Identity{Username: user.Username, Role: user.Role, Via: "password"}
+	identity := auth.Identity{Username: user.Username, Role: user.Role, Via: "password", CredentialDigest: auth.PasswordDigest(user.Password)}
 	s.recordAudit(identity, "auth.login", user.Username, "ok", string(user.Role))
 	s.startSession(w, identity)
 }

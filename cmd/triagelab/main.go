@@ -637,10 +637,11 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		return 0
 	case "remove":
 		name := opts.username
-		if name == "" && len(rest) == 1 {
+		switch {
+		case name == "" && len(rest) == 1:
 			name = rest[0]
-		}
-		if name == "" || len(rest) > 1 {
+		case name != "" && len(rest) == 0:
+		default:
 			fmt.Fprintln(errout, "Use user remove NAME")
 			return 2
 		}
@@ -651,11 +652,16 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		fmt.Fprintf(out, "Removed %s from %s\n", name, store.Path())
 		return 0
 	case "set-role":
-		name, newRole := opts.username, ""
-		if name == "" && len(rest) == 2 {
+		name, newRole := opts.username, opts.role
+		switch {
+		case name == "" && newRole == "" && len(rest) == 2:
 			name, newRole = rest[0], rest[1]
-		}
-		if name == "" || newRole == "" || len(rest) > 2 {
+		case name != "" && newRole == "" && len(rest) == 1:
+			newRole = rest[0]
+		case name == "" && newRole != "" && len(rest) == 1:
+			name = rest[0]
+		case name != "" && newRole != "" && len(rest) == 0:
+		default:
 			fmt.Fprintln(errout, "Use user set-role NAME ROLE")
 			return 2
 		}
@@ -672,11 +678,12 @@ func runUserCommand(args []string, out, errout io.Writer, stdin io.Reader) int {
 		return 0
 	case "set-password":
 		name := opts.username
-		if name == "" && len(rest) == 1 {
+		switch {
+		case name == "" && len(rest) == 1:
 			name = rest[0]
-		}
-		if name == "" || len(rest) > 1 {
-			fmt.Fprintln(errout, "Use user set-password NAME [--password-stdin]")
+		case name != "" && len(rest) == 0:
+		default:
+			fmt.Fprintln(errout, "Use user set-password --password-stdin NAME")
 			return 2
 		}
 		secret, err := readPassword("a replacement password is required")

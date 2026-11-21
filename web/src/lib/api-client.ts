@@ -1,5 +1,9 @@
 export class APIError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -15,8 +19,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       if (typeof body.error === "string") message = body.error;
     } catch { /* A proxy may return an HTML error instead of API JSON. */ }
     // A rejected session ends the workspace view; the app shell listens for
-    // this and returns to the sign-in page.
-    if (response.status === 401 && !path.startsWith("/api/auth/")) {
+    // this and returns to the sign-in page. Only the sign-in attempt itself
+    // expects a 401 without an existing session.
+    if (response.status === 401 && path !== "/api/auth/login") {
       window.dispatchEvent(new CustomEvent("triagelab:unauthorized"));
     }
     throw new APIError(message, response.status);

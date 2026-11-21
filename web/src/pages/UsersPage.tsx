@@ -74,14 +74,15 @@ function AccountRow({ account, self }: { account: Account; self: string }) {
 
 export function UsersPage() {
   const session = useSession();
-  const accounts = useAccounts();
+  const isAdmin = roleAtLeast(session.data?.role, "admin");
+  const accounts = useAccounts(isAdmin);
   const create = useCreateAccount();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("viewer");
   const self = session.data?.username ?? "";
 
-  if (!roleAtLeast(session.data?.role, "admin")) {
+  if (!isAdmin) {
     return <>
       <PageTitle title="Accounts" description="Managing sign-in accounts requires the admin role." />
       <Panel title="Account management"><div className="panel-body"><p>Ask an administrator to change roles or accounts.</p></div></Panel>

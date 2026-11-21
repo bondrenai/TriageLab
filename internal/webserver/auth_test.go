@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -314,6 +315,11 @@ func TestOIDCRedirectGlue(t *testing.T) {
 	// A provider whose token endpoint always rejects: the glue around the
 	// redirect flow is under test here, not token verification.
 	mux := http.NewServeMux()
+	var exchanges atomic.Int32
+	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+		exchanges.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+	})
 	var issuerURL string
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -388,6 +394,85 @@ func TestOIDCRedirectGlue(t *testing.T) {
 	s.ServeHTTP(cw, callback)
 	if cw.Code != 303 || cw.Header().Get("Location") != "/login?signin=failed" {
 		t.Fatalf("failed exchange: %d %s", cw.Code, cw.Header().Get("Location"))
+	}
+
+	// Browser redirects from an external or different-port IdP carry
+	// Sec-Fetch-Site: cross-site or same-site on the callback and landing pages.
+	for _, site := range []string{"cross-site", "same-site"} {
+		sw = httptest.NewRecorder()
+		s.ServeHTTP(sw, start)
+		stateCookies := sw.Result().Cookies()
+		if sw.Code != 303 || len(stateCookies) != 1 {
+			t.Fatalf("start for browser %s callback: %d %v", site, sw.Code, stateCookies)
+		}
+		stateCookie := stateCookies[0]
+		before := exchanges.Load()
+		browserCallback := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/auth/oidc/callback?state="+stateCookie.Value+"&code=x", nil)
+		browserCallback.AddCookie(stateCookie)
+		browserCallback.Header.Set("Sec-Fetch-Site", site)
+		browserCallback.Header.Set("Sec-Fetch-Mode", "navigate")
+		browserCallback.Header.Set("Sec-Fetch-Dest", "document")
+		cw = httptest.NewRecorder()
+		s.ServeHTTP(cw, browserCallback)
+		if cw.Code != 303 || cw.Header().Get("Location") != "/login?signin=failed" {
+			t.Fatalf("browser %s callback: %d %s", site, cw.Code, cw.Header().Get("Location"))
+		}
+		if exchanges.Load() != before+1 {
+			t.Fatalf("browser %s callback did not reach the provider token endpoint", site)
+		}
+		for _, landing := range []string{"/", "/login?signin=failed"} {
+			nav := httptest.NewRequest(http.MethodGet, "http://localhost:8080"+landing, nil)
+			nav.Header.Set("Sec-Fetch-Site", site)
+			nav.Header.Set("Sec-Fetch-Mode", "navigate")
+			nav.Header.Set("Sec-Fetch-Dest", "document")
+			nw := httptest.NewRecorder()
+			s.ServeHTTP(nw, nav)
+			if nw.Code != 200 {
+				t.Fatalf("browser %s landing %s: %d %s", site, landing, nw.Code, nw.Body)
+			}
+		}
+	}
+	// Non-navigation cross-site requests to the callback stay rejected.
+	fetchCallback := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/auth/oidc/callback?state=x&code=y", nil)
+	fetchCallback.Header.Set("Sec-Fetch-Site", "cross-site")
+	fetchCallback.Header.Set("Sec-Fetch-Mode", "cors")
+	fetchCallback.Header.Set("Sec-Fetch-Dest", "empty")
+	fw := httptest.NewRecorder()
+	s.ServeHTTP(fw, fetchCallback)
+	if fw.Code != 403 {
+		t.Fatalf("non-navigation cross-site callback: %d %s", fw.Code, fw.Body)
+	}
+}
+
+func TestPasswordResetRevokesActiveSession(t *testing.T) {
+	s := newTestServer(t, nil)
+	admin := loginAs(t, s, "admin", "admin-password-1")
+	worker := loginAs(t, s, "worker", "user-password-1")
+	if w := requestAs(s, worker, "GET", "/api/settings", nil); w.Code != 200 {
+		t.Fatalf("worker before reset: %d %s", w.Code, w.Body)
+	}
+	// Admin password reset via API revokes active sessions for that user.
+	if w := requestAs(s, admin, "POST", "/api/auth/admin/users/worker/password",
+		strings.NewReader(`{"password":"user-password-2"}`)); w.Code != 200 {
+		t.Fatalf("admin password reset: %d %s", w.Code, w.Body)
+	}
+	if w := requestAs(s, worker, "GET", "/api/settings", nil); w.Code != 401 {
+		t.Fatalf("session survived admin password reset: %d %s", w.Code, w.Body)
+	}
+	// Signing in with the new password works, and an out-of-band CLI reset also revokes it.
+	worker2 := loginAs(t, s, "worker", "user-password-2")
+	other, err := auth.OpenStore(s.auth.users.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.SetPassword("worker", "user-password-3"); err != nil {
+		t.Fatal(err)
+	}
+	if w := requestAs(s, worker2, "GET", "/api/settings", nil); w.Code != 401 {
+		t.Fatalf("session survived out-of-band password reset: %d %s", w.Code, w.Body)
+	}
+	if w := requestAs(s, worker2, "GET", "/api/auth/session", nil); w.Code != 200 || strings.Contains(w.Body.String(), `"authenticated":true`) {
+		t.Fatalf("session info stayed authenticated after reset: %d %s", w.Code, w.Body)
 	}
 }
 

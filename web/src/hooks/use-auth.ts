@@ -14,7 +14,10 @@ export function useSignIn() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: { username: string; password: string }) => signIn(input.username, input.password),
-    onSuccess: session => client.setQueryData(queryKeys.session, session),
+    onSuccess: session => {
+      client.removeQueries({ predicate: query => query.queryKey[0] !== queryKeys.session[0] });
+      client.setQueryData(queryKeys.session, session);
+    },
   });
 }
 
@@ -32,7 +35,8 @@ export function useSignOut() {
 const refreshAccounts = (client: ReturnType<typeof useQueryClient>) => () =>
   client.invalidateQueries({ queryKey: queryKeys.accounts });
 
-export const useAccounts = () => useQuery({ queryKey: queryKeys.accounts, queryFn: listAccounts });
+export const useAccounts = (enabled: boolean) =>
+  useQuery({ queryKey: queryKeys.accounts, queryFn: listAccounts, enabled });
 
 export function useCreateAccount() {
   const client = useQueryClient();
@@ -42,7 +46,8 @@ export function useCreateAccount() {
 export function useUpdateAccount() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { username: string; role?: Role; disabled?: boolean }) => updateAccount(input.username, input),
+    mutationFn: ({ username, ...patch }: { username: string; role?: Role; disabled?: boolean }) =>
+      updateAccount(username, patch),
     onSuccess: refreshAccounts(client),
   });
 }
@@ -63,7 +68,8 @@ export function useRemoveAccount() {
 const refreshClients = (client: ReturnType<typeof useQueryClient>) => () =>
   client.invalidateQueries({ queryKey: queryKeys.apiClients });
 
-export const useClients = () => useQuery({ queryKey: queryKeys.apiClients, queryFn: listClients });
+export const useClients = (enabled: boolean) =>
+  useQuery({ queryKey: queryKeys.apiClients, queryFn: listClients, enabled });
 
 export function useCreateClient() {
   const client = useQueryClient();
@@ -73,7 +79,8 @@ export function useCreateClient() {
 export function useUpdateClient() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { id: string; scopes?: Scope[]; disabled?: boolean }) => updateClient(input.id, input),
+    mutationFn: ({ id, ...patch }: { id: string; scopes?: Scope[]; disabled?: boolean }) =>
+      updateClient(id, patch),
     onSuccess: refreshClients(client),
   });
 }
