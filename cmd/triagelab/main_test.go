@@ -315,3 +315,43 @@ func TestCleanupRefusesReportSchemaItDoesNotWrite(t *testing.T) {
 		})
 	}
 }
+
+func TestUserCommandFlagsAndPositionalArgs(t *testing.T) {
+	dir := t.TempDir()
+	runUser := func(stdin string, args ...string) (int, string, string) {
+		var out, errout bytes.Buffer
+		full := append([]string{args[0], "--output", dir}, args[1:]...)
+		code := runUserCommand(full, &out, &errout, strings.NewReader(stdin))
+		return code, out.String(), errout.String()
+	}
+	if code, _, errout := runUser("password-123\n", "add", "--username", "alice", "--role", "viewer", "--password-stdin"); code != 0 {
+		t.Fatalf("add failed: %d %s", code, errout)
+	}
+	for _, args := range [][]string{
+		{"set-role", "--username", "alice", "--role", "admin"},
+		{"set-role", "--username", "alice", "user"},
+		{"set-role", "--role", "viewer", "alice"},
+		{"set-role", "alice", "admin"},
+	} {
+		if code, _, errout := runUser("", args...); code != 0 {
+			t.Fatalf("%v failed: %d %s", args, code, errout)
+		}
+	}
+	// Unexpected positional arguments must be rejected even when flags are set.
+	for _, args := range [][]string{
+		{"set-role", "--username", "alice", "--role", "user", "extra"},
+		{"set-role", "--username", "alice", "user", "extra"},
+		{"remove", "--username", "alice", "extra"},
+		{"set-password", "--username", "alice", "--password", "password-456", "extra"},
+	} {
+		if code, _, _ := runUser("", args...); code != 2 {
+			t.Fatalf("%v should have failed with 2, got %d", args, code)
+		}
+	}
+	if code, _, errout := runUser("password-456\n", "set-password", "--username", "alice", "--password-stdin"); code != 0 {
+		t.Fatalf("set-password failed: %d %s", code, errout)
+	}
+	if code, _, errout := runUser("", "remove", "--username", "alice"); code != 0 {
+		t.Fatalf("remove failed: %d %s", code, errout)
+	}
+}

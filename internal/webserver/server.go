@@ -329,11 +329,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// The browser can carry Zendesk's cross-site classification through
-	// the callback redirect to the ticket workspace document.
-	ticketNavigation := r.Method == http.MethodGet && r.URL.Path == "/tickets" &&
-		r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Dest") == "document"
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" && !ticketNavigation {
+	// Top-level document navigations from an identity provider or Zendesk
+	// OAuth redirect carry a cross-site or same-site Sec-Fetch-Site through
+	// the callback and onto the landing document. The OIDC callback checks
+	// one-time state against the browser cookie before exchanging the code.
+	crossSiteNav := r.Method == http.MethodGet &&
+		r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Dest") == "document" &&
+		(r.URL.Path == "/tickets" || r.URL.Path == "/api/auth/oidc/callback" || r.URL.Path == "/" || r.URL.Path == "/login")
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" && !crossSiteNav {
 		fail(w, http.StatusForbidden, "Cross-origin requests are not allowed")
 		return
 	}

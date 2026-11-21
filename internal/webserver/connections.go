@@ -3,7 +3,6 @@ package webserver
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -172,6 +171,18 @@ func (s *Server) connectionsRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if path == "test" {
+		if r.Method != http.MethodPost {
+			fail(w, 405, "Method not allowed")
+			return
+		}
+		input, ok := decodeConnectionInput(w, r, 32<<10)
+		if !ok {
+			return
+		}
+		s.testConnection(w, r, input.Config, derefToken(input.Token))
+		return
+	}
 	parts := strings.Split(path, "/")
 	if !connectionIDPath.MatchString(parts[0]) {
 		fail(w, 404, "Unknown ticket connection route")
@@ -246,7 +257,7 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 	record := ticketflow.Connection{ID: id, Label: input.Label, Config: input.Config, Token: derefToken(input.Token)}
 	conn, err := s.openTicketConnection(record)
 	if err != nil {
-		fail(w, 400, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
+		fail(w, 400, s.connectionError(err, record.Config, record.Token))
 		return
 	}
 	records, err := ticketflow.LoadConnections(s.ticketRoot())
@@ -294,9 +305,11 @@ func (s *Server) updateConnection(w http.ResponseWriter, r *http.Request, id str
 		Token: previous.Token}
 	if input.Token != nil {
 		record.Token = *input.Token
+	} else if input.Config.TokenEnv != "" {
+		record.Token = ""
 	}
 	if _, err := record.Prepared(); err != nil {
-		fail(w, 400, err.Error())
+		fail(w, 400, s.connectionError(err, record.Config, record.Token))
 		return
 	}
 	if ticketflow.SourceAccount(record.Config) != ticketflow.SourceAccount(previous.Config) && !input.ConfirmReset {
@@ -320,7 +333,7 @@ func (s *Server) updateConnection(w http.ResponseWriter, r *http.Request, id str
 	conn, err := s.openTicketConnection(record)
 	if err != nil {
 		s.recordAudit(actorFrom(r.Context()), "ticket.connection.update", id, "error", record.Config.Provider())
-		fail(w, 502, fmt.Sprint(report.Redact(err.Error(), s.secretList()...)))
+		fail(w, 502, s.connectionError(err, record.Config, record.Token))
 		return
 	}
 	s.replaceTicketConnection(id, conn)
@@ -363,6 +376,12 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request, id str
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) connectionError(err error, config ticketflow.Config, token string) string {
+	secrets := append(s.secretList(), token, os.Getenv(config.TokenEnv))
+	detail, _ := report.Redacted(err.Error(), secrets...)
+	return detail
+}
+
 func (s *Server) testConnection(w http.ResponseWriter, r *http.Request, config ticketflow.Config, token string) {
 	probe, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -372,7 +391,7 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request, config t
 			fail(w, 504, "The source did not answer the connection test in time")
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"ok": false, "detail": fmt.Sprint(report.Redact(err.Error(), s.secretList()...))})
+		jsonResponse(w, 200, map[string]any{"ok": false, "detail": s.connectionError(err, config, token)})
 		return
 	}
 	if config.Provider() == "zendesk" {
@@ -388,7 +407,7 @@ func (s *Server) testSavedConnection(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	token := derefToken(input.Token)
-	if input.Token == nil {
+	if input.Token == nil && input.Config.TokenEnv == "" {
 		if records, err := ticketflow.LoadConnections(s.ticketRoot()); err == nil {
 			for _, record := range records {
 				if record.ID == id {

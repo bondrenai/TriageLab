@@ -102,7 +102,7 @@ export function EgressPolicyEditor({ onPreview, deployment, editor }: {
         const destination: EgressDestinationDefinition = { origin: field(data, `origin-${id}`).trim() };
         if (header) {
           destination.header = header;
-          destination.prefix = field(data, `prefix-${id}`).trim();
+          destination.prefix = field(data, `prefix-${id}`);
           destination.secret_name = field(data, `secret-name-${id}`).trim();
           destination.secret_key = field(data, `secret-key-${id}`).trim();
         }

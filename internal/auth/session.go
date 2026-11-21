@@ -27,6 +27,15 @@ type Identity struct {
 	// Via records how the actor authenticated: "password", "oidc", or
 	// "oauth" for an API client.
 	Via string
+	// CredentialDigest binds a password session to the encoded password hash
+	// that authenticated it so password resets end existing sessions.
+	CredentialDigest [sha256.Size]byte
+}
+
+// PasswordDigest returns a fixed-size digest of an encoded password hash for
+// binding password sessions without keeping hash material in session state.
+func PasswordDigest(encodedHash string) [sha256.Size]byte {
+	return sha256.Sum256([]byte(encodedHash))
 }
 
 // SessionStore authenticates browser sessions with random tokens. Only the
